@@ -1,0 +1,46 @@
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-feature-settings: "cv02" 1, "cv03" 1, "cv04" 1, "cv11" 1;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: clamp(2rem, 1.45rem + 2.4vw, 3.2rem);
+}
+
+h2 {
+  font-size: clamp(1.45rem, 1.2rem + 1.1vw, 2.1rem);
+}
+
+h3 {
+  font-size: clamp(1.1rem, 1rem + 0.45vw, 1.35rem);
+}
+
+p {
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+small {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  transition: color 180ms ease;
+}

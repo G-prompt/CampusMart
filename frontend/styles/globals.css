@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "./variables.css";
+@import "./typography.css";
+@import "./animations.css";
+
+:root {
+  color: #0F172A;
+  background-color: #F8FAFC;
+  font-size: 16px;
+}
+
+html {
+  min-height: 100%;
+  background: radial-gradient(circle at top, rgba(30, 58, 95, 0.08), transparent 35%), #F8FAFC;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased min-h-screen;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(13, 148, 136, 0.22);
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(13, 148, 136, 0.34);
+  outline-offset: 2px;
+}
+
+.main-container {
+  @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
+}
+
+.site-card {
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 1.75rem;
+  background-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 20px 45px -24px rgba(15, 23, 42, 0.28);
+}
+
+.section-shell {
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 2rem;
+  background-color: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 20px 50px -28px rgba(15, 23, 42, 0.25);
+  backdrop-filter: blur(12px);
+}
