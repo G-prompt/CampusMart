@@ -1,4 +1,7 @@
+"use client";
+
 import PageShell from "@/components/common/PageShell";
+import { useAuth } from "@/components/common/AuthContext";
 
 const benefits = [
     "Verified student identity for trusted selling",
@@ -7,6 +10,8 @@ const benefits = [
 ];
 
 export default function Page() {
+    const { openAuth } = useAuth();
+
     return (
         <PageShell title="Sell on CampusMart" description="Start your student vendor journey with a verified campus marketplace account.">
             <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
@@ -21,8 +26,8 @@ export default function Page() {
                 </div>
                 <div className="site-card p-6">
                     <p className="text-sm font-semibold uppercase tracking-[0.24em] text-brand-700">Start now</p>
-                    <a href="/auth/signup" className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-brand-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700">Create vendor account</a>
-                    <p className="mt-4 text-sm leading-7 text-slate-600">Your registration can include full name, contact details, university, faculty, department, student proof, NIN and more.</p>
+                    <button type="button" onClick={() => openAuth("register", "vendor")} className="mt-4 inline-flex w-full items-center justify-center rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-accent-500">Create vendor account</button>
+                    <p className="mt-4 text-sm leading-7 text-slate-600">Sign up in seconds, then complete your student verification from your vendor dashboard.</p>
                 </div>
             </div>
         </PageShell>

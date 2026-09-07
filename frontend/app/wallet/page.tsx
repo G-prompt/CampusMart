@@ -47,7 +47,7 @@ export default function Page() {
                         <p className="font-semibold text-slate-950">Current transfer fee</p>
                         <p className="mt-1">₦{fee.toLocaleString()} for this wallet balance tier.</p>
                     </div>
-                    <button type="button" className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-brand-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700">Connect fintech wallet</button>
+                    <button type="button" className="mt-6 inline-flex w-full items-center justify-center rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-accent-500">Connect fintech wallet</button>
                 </div>
             </div>
         </PageShell>

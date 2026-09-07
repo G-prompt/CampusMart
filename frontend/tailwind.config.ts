@@ -5,11 +5,11 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        brand: {50: "#F6F8FA",100: "#E8EDF2",200: "#C8D4E0",300: "#9EB1C5",400: "#728CA9",500: "#4F6F8F",600: "#365878",700: "#29486B",800: "#1E3A5F",900: "#152C48"},
-        accent: {50: "#F0FDFA",100: "#CCFBF1",200: "#99F6E4",300: "#5EEAD4",400: "#2DD4BF",500: "#14B8A6",600: "#0D9488",700: "#0F766E",800: "#115E59",900: "#134E4A"}
+        brand: {50: "#F7F7F7",100: "#EDEDED",200: "#D6D6D6",300: "#B0B0B0",400: "#8A8A8A",500: "#5C5C5C",600: "#3D3D3D",700: "#242424",800: "#151515",900: "#0A0A0A"},
+        accent: {50: "#FFFDF2",100: "#FFF8D6",200: "#FFEEA3",300: "#FFE066",400: "#FFD429",500: "#FACC15",600: "#EAB308",700: "#CA8A04",800: "#A16207",900: "#713F12"}
       },
       boxShadow: {soft: "0 20px 45px rgba(15, 23, 42, 0.08)", card: "0 18px 40px rgba(15, 23, 42, 0.06)"},
-      backgroundImage: {"brand-gradient": "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)"}
+      backgroundImage: {"brand-gradient": "linear-gradient(90deg, #0A0A0A 0%, #FACC15 100%)"}
     }
   },
   plugins: [],

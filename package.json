@@ -1,6 +1,12 @@
 {
     "name": "campusmart",
+    "version": "1.0.0",
     "private": true,
+    "description": "CampusMart is a polished frontend concept for a student-first marketplace experience built with Next.js and Tailwind CSS.",
+    "license": "ISC",
+    "author": "",
+    "type": "commonjs",
+    "main": "index.js",
     "scripts": {
         "dev": "cd frontend && npm run dev -- --hostname 0.0.0.0 --port 3000",
         "build": "cd frontend && npm run build",

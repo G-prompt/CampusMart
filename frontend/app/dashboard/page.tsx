@@ -1,26 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import PageShell from "@/components/common/PageShell";
-
-type UserProfile = { name: string; role: "vendor" | "client"; email: string };
+import { useAuth } from "@/components/common/AuthContext";
 
 export default function Page() {
-    const [user, setUser] = useState<UserProfile | null>(null);
-    const router = useRouter();
+    const { user, isAuthenticated, openAuth } = useAuth();
 
-    useEffect(() => {
-        const storedUser = localStorage.getItem("campusmart-user");
-        const isAuth = localStorage.getItem("campusmart-auth");
-
-        if (!storedUser || !isAuth) {
-            router.push("/auth/login");
-            return;
-        }
-
-        setUser(JSON.parse(storedUser));
-    }, [router]);
+    if (!isAuthenticated) {
+        return (
+            <PageShell title="Dashboard" description="Sign in to view your personalized CampusMart hub for orders, activity, and growth.">
+                <div className="site-card mx-auto max-w-md p-8 text-center">
+                    <p className="text-sm font-semibold uppercase tracking-[0.24em] text-brand-700">Members only</p>
+                    <h2 className="mt-3 text-2xl font-semibold text-slate-950">Sign in to continue</h2>
+                    <p className="mt-3 text-sm leading-7 text-slate-600">Your dashboard, orders, and wallet are waiting for you.</p>
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                        <button type="button" onClick={() => openAuth("login")} className="inline-flex items-center justify-center rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-accent-500">Sign in</button>
+                        <button type="button" onClick={() => openAuth("register")} className="inline-flex items-center justify-center rounded-[10px] bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-200">Create account</button>
+                    </div>
+                </div>
+            </PageShell>
+        );
+    }
 
     return (
         <PageShell title="Dashboard" description="Your personalized CampusMart hub for orders, activity, and growth.">
