@@ -5,7 +5,15 @@ import authRoutes from "./routes/auth.routes";
 
 const app = express();
 
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "https://campusmart-sigma.vercel.app",
+    ],
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 
