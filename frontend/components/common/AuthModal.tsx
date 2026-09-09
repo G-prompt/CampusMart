@@ -17,6 +17,8 @@ export default function AuthModal() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (authOpen) setMode(authMode);
@@ -38,6 +40,8 @@ export default function AuthModal() {
       setName("");
       setEmail("");
       setPassword("");
+      setShowPassword(false);
+      setError("");
     }
   }, [authOpen]);
 
@@ -45,6 +49,11 @@ export default function AuthModal() {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
+    setError("");
+    if (password.length < 6) {
+      setError("Use at least 6 characters for your password.");
+      return;
+    }
     if (mode === "login") {
       login(email, password, roleHint);
     } else {
@@ -109,16 +118,23 @@ export default function AuthModal() {
 
             <label className="block text-sm font-semibold text-slate-700">
               Password
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="mt-1.5 w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-black focus:bg-white focus:ring-2 focus:ring-accent-200"
-                placeholder="••••••••"
-              />
+              <div className="relative mt-1.5">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 pr-20 text-sm text-slate-900 outline-none transition focus:border-black focus:bg-white focus:ring-2 focus:ring-accent-200"
+                  placeholder="At least 6 characters"
+                />
+                <button type="button" onClick={() => setShowPassword((visible) => !visible)} className="absolute inset-y-0 right-2 px-2 text-xs font-bold text-slate-500 hover:text-black" aria-label={showPassword ? "Hide password" : "Show password"}>
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
             </label>
+
+            {error ? <p className="text-sm font-semibold text-red-600" role="alert">{error}</p> : null}
 
             <button
               type="submit"

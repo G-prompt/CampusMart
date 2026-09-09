@@ -9,10 +9,11 @@ CampusMart is a polished frontend concept for a student-first marketplace experi
 
 ## Local development
 ```bash
-cd frontend
 npm install
 npm run dev
 ```
+
+Run the commands from the repository root. The root script installs and starts the Next.js app in `frontend` on port 3000. If PowerShell blocks `npm.ps1`, use `npm.cmd run dev` instead.
 
 Open http://localhost:3000 to view the app.
 

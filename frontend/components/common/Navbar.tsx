@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthContext";
 import { useCart } from "./CartContext";
-import { CartIcon } from "./icons";
+import { CartIcon, HeartIcon as NavHeartIcon, HomeIcon, UserIcon } from "./icons";
+import { categories } from "@/lib/products";
 
 const navLinks = [
   { href: "/marketplace", label: "Marketplace" },
@@ -16,7 +18,12 @@ const navLinks = [
   { href: "/admin/dashboard", label: "Admin" },
 ];
 
-const categories = ["All", "Technology", "Books", "Beauty", "Fashion", "Entertainment", "Events"];
+const mobileLinks = [
+  { href: "/marketplace", label: "Shop", Icon: HomeIcon },
+  { href: "/marketplace/favourites", label: "Saved", Icon: NavHeartIcon },
+  { href: "/cart", label: "Cart", Icon: CartIcon },
+  { href: "/profile", label: "Profile", Icon: UserIcon },
+];
 
 function MenuIcon() {
   return (
@@ -56,13 +63,25 @@ export default function Navbar() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const searchCloseRef = useRef<HTMLButtonElement>(null);
+  const sidebarCloseRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
+  const pathname = usePathname();
+  const [activeCategory, setActiveCategory] = useState("All");
+  const searchSuggestions = ["Books", "Technology", "Events"].filter((suggestion) => suggestion.toLowerCase().includes(query.toLowerCase()));
+
+  useEffect(() => {
+    const requestedCategory = new URLSearchParams(window.location.search).get("category") ?? "All";
+    setActiveCategory(categories.includes(requestedCategory) ? requestedCategory : "All");
+  }, [pathname]);
 
   useEffect(() => {
     if (!sidebarOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && setSidebarOpen(false);
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", closeOnEscape);
+    sidebarCloseRef.current?.focus();
     return () => {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", closeOnEscape);
@@ -74,6 +93,7 @@ export default function Navbar() {
     const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && setSearchOpen(false);
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", closeOnEscape);
+    searchCloseRef.current?.focus();
     return () => {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", closeOnEscape);
@@ -103,28 +123,30 @@ export default function Navbar() {
   return (
     <>
       <header className="border-b border-slate-200 bg-white">
-        <div className="relative flex min-h-[72px] w-full items-center justify-between gap-6 px-4 py-3 sm:px-6 lg:px-8">
+        <div className="grid min-h-[64px] w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-0 px-2 py-2 sm:min-h-[72px] sm:gap-6 sm:px-6 sm:py-3 lg:px-8">
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}
-            className="-ml-2 inline-flex h-11 w-11 shrink-0 items-center justify-center text-black transition hover:text-brand-700"
+            className="-ml-1 inline-flex h-10 w-10 shrink-0 items-center justify-center justify-self-start text-black transition hover:text-brand-700 sm:-ml-2 sm:h-11 sm:w-11"
             aria-label="Open navigation menu"
             aria-expanded={sidebarOpen}
           >
             <MenuIcon />
           </button>
 
-          <Link href="/" className="absolute left-1/2 -translate-x-1/2 text-2xl font-bold tracking-tight text-black sm:text-3xl" aria-label="CampusMart home">
+          <Link href="/" className="min-w-0 max-w-[9rem] justify-self-center truncate text-xl font-bold tracking-tight text-black sm:max-w-none sm:text-3xl" aria-label="CampusMart home">
             CampusMart
           </Link>
 
-          <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:gap-4">
-            <form onSubmit={handleSearch} className="relative hidden w-[clamp(14rem,27vw,31rem)] md:block" role="search">
+          <div className="ml-auto flex min-w-0 items-center justify-self-end gap-0 sm:gap-4">
+            <form onSubmit={handleSearch} className="relative hidden w-[clamp(14rem,27vw,31rem)] lg:block" role="search">
               <label htmlFor="site-search" className="sr-only">Search CampusMart</label>
               <input
                 id="site-search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
                 placeholder="Search CampusMart"
                 className="h-10 w-full border-0 bg-slate-100 py-2 pl-4 pr-11 text-sm text-slate-900 outline-none transition placeholder:text-slate-500 focus:bg-slate-50 focus:ring-2 focus:ring-slate-300"
                 style={{ borderRadius: 5 }}
@@ -132,14 +154,19 @@ export default function Navbar() {
               <button type="submit" className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-500 transition hover:text-brand-700" aria-label="Search">
                 <SearchIcon />
               </button>
+              {searchFocused && query.length > 0 && searchSuggestions.length > 0 ? (
+                <div className="absolute left-0 right-0 top-12 z-20 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+                  {searchSuggestions.map((suggestion) => <button key={suggestion} type="button" onMouseDown={() => { setQuery(suggestion); router.push(`/marketplace/search?q=${encodeURIComponent(suggestion)}`); }} className="block w-full rounded-md px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-100">{suggestion}</button>)}
+                </div>
+              ) : null}
             </form>
-            <button type="button" onClick={() => setSearchOpen(true)} className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-black transition hover:text-brand-700 md:hidden" aria-label="Open search">
+            <button type="button" onClick={() => setSearchOpen(true)} className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-black transition hover:text-brand-700 sm:h-11 sm:w-11 lg:hidden" aria-label="Open search">
               <SearchIcon />
             </button>
-            <Link href="/marketplace/favourites" className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-black transition hover:text-brand-700" aria-label="Wishlist">
+            <Link href="/marketplace/favourites" className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-black transition hover:text-brand-700 sm:h-11 sm:w-11" aria-label="Wishlist">
               <HeartIcon />
             </Link>
-            <Link href="/cart" className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center text-black transition hover:text-brand-700" aria-label="Cart">
+            <Link href="/cart" className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center text-black transition hover:text-brand-700 sm:h-11 sm:w-11" aria-label="Cart">
               <CartIcon />
               {itemCount > 0 ? (
                 <span className="absolute right-0 top-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent-400 px-1 text-[11px] font-bold leading-none text-black">
@@ -153,7 +180,7 @@ export default function Navbar() {
         <div>
           <nav className="flex w-full items-center justify-start gap-10 overflow-x-auto px-4 py-3.5 sm:px-6 md:justify-between lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Product categories">
             {categories.map((category) => (
-              <button key={category} type="button" className="shrink-0 text-base font-bold text-black transition hover:text-brand-800">{category}</button>
+              <Link key={category} href={category === "All" ? "/marketplace" : `/marketplace?category=${encodeURIComponent(category)}`} onClick={() => setActiveCategory(category)} aria-current={pathname === "/marketplace" && activeCategory === category ? "page" : undefined} className={`shrink-0 border-b-2 pb-1 text-base font-bold transition ${pathname === "/marketplace" && activeCategory === category ? "border-accent-500 text-black" : "border-transparent text-slate-600 hover:border-slate-300 hover:text-black"}`}>{category}</Link>
             ))}
           </nav>
         </div>
@@ -170,7 +197,7 @@ export default function Navbar() {
         <section className={`relative w-full bg-white px-4 pb-6 pt-4 shadow-xl transition-transform duration-200 ${searchOpen ? "translate-y-0" : "-translate-y-full"}`} aria-label="Search panel">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-bold text-black">Search CampusMart</h2>
-            <button type="button" onClick={() => setSearchOpen(false)} className="inline-flex h-10 w-10 items-center justify-center text-black" aria-label="Close search">
+            <button ref={searchCloseRef} type="button" onClick={() => setSearchOpen(false)} className="inline-flex h-10 w-10 items-center justify-center text-black" aria-label="Close search">
               <CloseIcon />
             </button>
           </div>
@@ -202,7 +229,7 @@ export default function Navbar() {
         />
         <aside className={`relative flex h-full w-[min(88vw,360px)] flex-col bg-white shadow-2xl transition-transform duration-300 ease-out ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`} aria-label="Main navigation">
           <div className="flex items-center justify-end px-5 py-4">
-            <button type="button" onClick={() => setSidebarOpen(false)} className="inline-flex h-10 w-10 items-center justify-center text-slate-600 transition hover:text-slate-950" aria-label="Close navigation menu">
+            <button ref={sidebarCloseRef} type="button" onClick={() => setSidebarOpen(false)} className="inline-flex h-10 w-10 items-center justify-center text-slate-600 transition hover:text-slate-950" aria-label="Close navigation menu">
               <CloseIcon />
             </button>
           </div>
@@ -222,8 +249,8 @@ export default function Navbar() {
           </div>
 
           <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-5">
-            {navLinks.map((item) => (
-              <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)} className="rounded-lg px-4 py-3.5 text-lg font-bold text-black transition hover:bg-slate-50 hover:text-brand-900">{item.label}</Link>
+            {navLinks.filter((item) => item.label !== "Admin").map((item) => (
+              <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)} aria-current={pathname.startsWith(item.href) ? "page" : undefined} className={`rounded-lg border-l-2 px-4 py-3.5 text-lg font-bold transition ${pathname.startsWith(item.href) ? "border-accent-500 bg-slate-50 text-black" : "border-transparent text-black hover:bg-slate-50 hover:text-brand-900"}`}>{item.label}</Link>
             ))}
           </nav>
 
@@ -232,6 +259,13 @@ export default function Navbar() {
           </div>
         </aside>
       </div>
+
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden" aria-label="Mobile navigation">
+        {mobileLinks.map((item) => {
+          const active = pathname === item.href || (item.href === "/marketplace" && pathname.startsWith("/marketplace"));
+          return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg text-[11px] font-bold transition ${active ? "text-black" : "text-slate-500"}`}><item.Icon className={active ? "h-5 w-5 text-accent-600" : "h-5 w-5 text-slate-500"} />{item.label}</Link>;
+        })}
+      </nav>
     </>
   );
 }
