@@ -53,6 +53,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
       return [...current, { id: product.id, title: product.title, price: product.price, quantity }];
     });
+    window.dispatchEvent(new CustomEvent("campusmart-toast", { detail: { message: `${product.title} added to cart` } }));
   }, []);
 
   const removeFromCart = useCallback((id: number) => {

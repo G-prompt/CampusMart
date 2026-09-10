@@ -3,6 +3,7 @@ import Navbar from "@/components/common/Navbar";
 import Footer from "@/components/common/Footer";
 import GlobalLoader from "@/components/common/GlobalLoader";
 import AuthModal from "@/components/common/AuthModal";
+import ToastHost from "@/components/common/ToastHost";
 import { AuthProvider } from "@/components/common/AuthContext";
 import { CartProvider } from "@/components/common/CartContext";
 
@@ -17,10 +18,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="flex min-h-screen flex-col bg-white">
               <GlobalLoader />
               <Navbar />
-              <div className="flex-1 bg-white">{children}</div>
+              <div className="flex-1 bg-white pb-20 md:pb-0">{children}</div>
               <Footer />
             </div>
             <AuthModal />
+            <ToastHost />
           </CartProvider>
         </AuthProvider>
       </body>

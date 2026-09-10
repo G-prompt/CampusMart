@@ -14,12 +14,13 @@ function CloseIcon() {
 export default function AuthModal() {
   const { authOpen, authMode, closeAuth, roleHint, login, register } = useAuth();
   const [mode, setMode] = useState<"login" | "register">(authMode);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+const [name, setName] = useState("");
+const [email, setEmail] = useState("");
+const [password, setPassword] = useState("");
 
+const [error, setError] = useState("");
+const [loading, setLoading] = useState(false);
+const [showPassword, setShowPassword] = useState(false);
   useEffect(() => {
     if (authOpen) setMode(authMode);
   }, [authOpen, authMode]);
@@ -40,6 +41,8 @@ export default function AuthModal() {
       setName("");
       setEmail("");
       setPassword("");
+      setShowPassword(false);
+      setError("");
     }
   }, [authOpen]);
 
@@ -77,6 +80,7 @@ const handleSubmit = async (
     setLoading(false);
   }
 };
+
 
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center px-4 py-8" role="dialog" aria-modal="true" aria-label={mode === "login" ? "Sign in" : "Register"}>
@@ -135,20 +139,30 @@ const handleSubmit = async (
 
             <label className="block text-sm font-semibold text-slate-700">
               Password
-              <input
-                type="password"
-                required
-                minLength={8}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="mt-1.5 w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-black focus:bg-white focus:ring-2 focus:ring-accent-200"
-                placeholder="••••••••"
-              />
-            </label>
+<div className="relative mt-1.5">
+  <input
+    type={showPassword ? "text" : "password"}
+    required
+    minLength={8}
+    value={password}
+    onChange={(event) => setPassword(event.target.value)}
+    className="w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 pr-20 text-base text-slate-900 outline-none transition focus:border-accent-400 focus:bg-white"
+    placeholder="At least 8 characters"
+  />
 
-            {error ? (
+  <button
+    type="button"
+    onClick={() => setShowPassword((visible) => !visible)}
+    className="absolute inset-y-0 right-3 my-auto h-fit text-sm font-semibold text-slate-500 transition hover:text-slate-900"
+  >
+    {showPassword ? "Hide" : "Show"}
+  </button>
+</div>
+</label>
+
+{error ? (
   <p
-    className="rounded-[10px] bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
+    className="text-sm font-semibold text-red-600"
     role="alert"
   >
     {error}

@@ -7,6 +7,31 @@
   animation: floatIn 0.8s ease-out both;
 }
 
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+main {
+  animation: pageEnter 320ms ease-out both;
+}
+
+@keyframes campusmartLoader {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.campusmart-loader-bar {
+  background-size: 200% 100%;
+  animation: campusmartLoader 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transition: width 240ms ease-out;
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
