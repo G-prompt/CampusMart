@@ -32,6 +32,10 @@ type AuthResult = {
   message?: string;
 };
 
+type RegistrationData = Omit<UserProfile, "id"> & {
+  password: string;
+};
+
 type AuthContextValue = {
   user: UserProfile | null;
   isAuthenticated: boolean;
@@ -51,7 +55,7 @@ type AuthContextValue = {
     password: string
   ) => Promise<AuthResult>;
 
-  register: (data: UserProfile & { password: string }) => Promise<AuthResult>;
+  register: (data: RegistrationData) => Promise<AuthResult>;
 
   logout: () => void;
   updateProfile: (updates: Partial<Omit<UserProfile, "email" | "role">>) => void;
@@ -230,7 +234,7 @@ export function AuthProvider({
   );
 
   const register = useCallback(
-    async (data: UserProfile & { password: string }): Promise<AuthResult> => {
+    async (data: RegistrationData): Promise<AuthResult> => {
       try {
         const response = await fetch(
           `${API_URL}/api/auth/register`,
