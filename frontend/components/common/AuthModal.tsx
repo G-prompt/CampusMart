@@ -14,12 +14,13 @@ function CloseIcon() {
 export default function AuthModal() {
   const { authOpen, authMode, closeAuth, roleHint, login, register } = useAuth();
   const [mode, setMode] = useState<"login" | "register">(authMode);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+const [name, setName] = useState("");
+const [email, setEmail] = useState("");
+const [password, setPassword] = useState("");
 
+const [error, setError] = useState("");
+const [loading, setLoading] = useState(false);
+const [showPassword, setShowPassword] = useState(false);
   useEffect(() => {
     if (authOpen) setMode(authMode);
   }, [authOpen, authMode]);
@@ -47,19 +48,39 @@ export default function AuthModal() {
 
   if (!authOpen) return null;
 
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    setError("");
-    if (password.length < 6) {
-      setError("Use at least 6 characters for your password.");
-      return;
+const handleSubmit = async (
+  event: FormEvent
+) => {
+  event.preventDefault();
+
+  setError("");
+  setLoading(true);
+
+  try {
+    const result =
+      mode === "login"
+        ? await login(
+            email,
+            password
+          )
+        : await register({
+            name,
+            email,
+            password,
+            role: roleHint,
+          });
+
+    if (!result.success) {
+      setError(
+        result.message ||
+          "Something went wrong."
+      );
     }
-    if (mode === "login") {
-      login(email, password, roleHint);
-    } else {
-      register({ name, email, password, role: roleHint });
-    }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center px-4 py-8" role="dialog" aria-modal="true" aria-label={mode === "login" ? "Sign in" : "Register"}>
@@ -118,30 +139,49 @@ export default function AuthModal() {
 
             <label className="block text-sm font-semibold text-slate-700">
               Password
-              <div className="relative mt-1.5">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 pr-20 text-sm text-slate-900 outline-none transition focus:border-black focus:bg-white focus:ring-2 focus:ring-accent-200"
-                  placeholder="At least 6 characters"
-                />
-                <button type="button" onClick={() => setShowPassword((visible) => !visible)} className="absolute inset-y-0 right-2 px-2 text-xs font-bold text-slate-500 hover:text-black" aria-label={showPassword ? "Hide password" : "Show password"}>
-                  {showPassword ? "Hide" : "Show"}
-                </button>
-              </div>
-            </label>
+<div className="relative mt-1.5">
+  <input
+    type={showPassword ? "text" : "password"}
+    required
+    minLength={8}
+    value={password}
+    onChange={(event) => setPassword(event.target.value)}
+    className="w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 pr-20 text-base text-slate-900 outline-none transition focus:border-accent-400 focus:bg-white"
+    placeholder="At least 8 characters"
+  />
 
-            {error ? <p className="text-sm font-semibold text-red-600" role="alert">{error}</p> : null}
+  <button
+    type="button"
+    onClick={() => setShowPassword((visible) => !visible)}
+    className="absolute inset-y-0 right-3 my-auto h-fit text-sm font-semibold text-slate-500 transition hover:text-slate-900"
+  >
+    {showPassword ? "Hide" : "Show"}
+  </button>
+</div>
+</label>
+
+{error ? (
+  <p
+    className="text-sm font-semibold text-red-600"
+    role="alert"
+  >
+    {error}
+  </p>
+) : null}
 
             <button
-              type="submit"
-              className="!mt-6 inline-flex w-full items-center justify-center rounded-[10px] bg-accent-400 px-5 py-3 text-base font-bold text-black transition hover:bg-accent-500"
-            >
-              {mode === "login" ? "Sign in" : "Create account"}
-            </button>
+  type="submit"
+  disabled={loading}
+  className="!mt-6 inline-flex w-full items-center justify-center rounded-[10px] bg-accent-400 px-5 py-3 text-base font-bold text-black transition hover:bg-accent-500 disabled:cursor-not-allowed disabled:opacity-60"
+>
+  {loading
+    ? mode === "login"
+      ? "Signing in..."
+      : "Creating account..."
+    : mode === "login"
+    ? "Sign in"
+    : "Create account"}
+</button>
           </form>
 
           <p className="mt-6 text-center text-sm text-slate-600">
