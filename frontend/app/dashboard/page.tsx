@@ -2,9 +2,16 @@
 
 import PageShell from "@/components/common/PageShell";
 import { useAuth } from "@/components/common/AuthContext";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Page() {
     const { user, isAuthenticated, openAuth } = useAuth();
+    const router = useRouter();
+
+    useEffect(() => {
+        if (user) router.replace(user.role === "vendor" ? "/vendor/dashboard" : "/buyer/dashboard");
+    }, [router, user]);
 
     if (!isAuthenticated) {
         return (

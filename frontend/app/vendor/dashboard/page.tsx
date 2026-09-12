@@ -1,5 +1,15 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import PageShell from "@/components/common/PageShell";
+import { useAuth } from "@/components/common/AuthContext";
+import { getStoredListings } from "@/lib/listings";
 
 export default function Page() {
-  return <PageShell title="Vendor dashboard" description="Manage your listings, orders, and analytics." />;
+  const { user, openAuth } = useAuth();
+  const [listingCount, setListingCount] = useState(0);
+  useEffect(() => { const load = () => setListingCount(getStoredListings().filter((listing) => listing.seller === user?.name).length); load(); window.addEventListener("campusmart-listings-change", load); return () => window.removeEventListener("campusmart-listings-change", load); }, [user?.name]);
+  if (user?.role !== "vendor") return <PageShell title="Vendor dashboard" description="Manage your listings, orders, and analytics."><div className="site-card max-w-md p-8 text-center"><h2 className="text-2xl font-bold text-slate-950">Create a vendor account</h2><p className="mt-3 text-sm leading-7 text-slate-600">Use a vendor account to publish products and manage your campus shop.</p><button type="button" onClick={() => openAuth("register", "vendor")} className="mt-6 rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black">Create vendor account</button></div></PageShell>;
+  return <PageShell title="Vendor dashboard" description="Manage your campus shop, listings, and incoming orders."><div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]"><section className="site-card p-6 sm:p-8"><p className="text-sm font-bold uppercase tracking-[0.2em] text-brand-700">Vendor account</p><h2 className="mt-3 text-3xl font-bold text-slate-950">Welcome, {user.name}</h2><p className="mt-3 text-sm leading-7 text-slate-600">Your shop is ready. Publish clear, detailed listings so campus buyers can find and trust what you offer.</p><div className="mt-7 grid gap-4 sm:grid-cols-3"><div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">Your listings</p><p className="mt-2 text-2xl font-bold text-slate-950">{listingCount}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">Orders</p><p className="mt-2 text-2xl font-bold text-slate-950">0</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-sm text-slate-500">Revenue</p><p className="mt-2 text-2xl font-bold text-slate-950">₦0</p></div></div></section><aside className="site-card p-6"><p className="text-sm font-bold uppercase tracking-[0.2em] text-brand-700">Shop actions</p><div className="mt-5 space-y-3"><Link href="/vendor/add-listing" className="flex items-center justify-between rounded-xl bg-accent-400 p-4 text-sm font-bold text-black">Add a product <span>→</span></Link><Link href="/vendor/listings" className="flex items-center justify-between rounded-xl border border-slate-200 p-4 text-sm font-bold text-slate-950">Manage listings <span>→</span></Link><Link href="/marketplace" className="flex items-center justify-between rounded-xl border border-slate-200 p-4 text-sm font-bold text-slate-950">View marketplace <span>→</span></Link></div></aside></div></PageShell>;
 }

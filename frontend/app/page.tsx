@@ -2,6 +2,7 @@ import Link from "next/link";
 import { products } from "@/lib/products";
 import { ChevronRightIcon } from "@/components/common/icons";
 import ProductCard from "@/components/common/ProductCard";
+import MarketplaceCta from "@/components/common/MarketplaceCta";
 
 const latestListings = products.slice(0, 4);
 const browseCategories = [
@@ -57,6 +58,8 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      <MarketplaceCta />
 
       <section className="main-container py-14 sm:py-16 lg:py-20">
         <div className="mb-7 flex items-end justify-between gap-4">

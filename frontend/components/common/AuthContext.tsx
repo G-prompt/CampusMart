@@ -4,7 +4,18 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 export type Role = "vendor" | "client";
 export type AuthMode = "login" | "register";
-export type UserProfile = { name: string; role: Role; email: string };
+export type UserProfile = {
+  name: string;
+  role: Role;
+  email: string;
+  campus?: string;
+  phone?: string;
+  bio?: string;
+  avatarUrl?: string;
+  businessName?: string;
+  businessDescription?: string;
+  pickupLocation?: string;
+};
 
 type AuthContextValue = {
   user: UserProfile | null;
@@ -15,11 +26,15 @@ type AuthContextValue = {
   closeAuth: () => void;
   roleHint: Role;
   login: (email: string, password: string, role: Role) => void;
-  register: (data: { name: string; email: string; password: string; role: Role }) => void;
+  register: (data: Omit<StoredAccount, never>) => void;
   logout: () => void;
+  updateProfile: (updates: Partial<Omit<UserProfile, "email" | "role">>) => void;
+  changePassword: (currentPassword: string, newPassword: string) => boolean;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const ACCOUNTS_KEY = "campusmart-accounts";
+type StoredAccount = UserProfile & { password: string };
 
 function readStoredUser(): UserProfile | null {
   if (typeof window === "undefined") return null;
@@ -62,15 +77,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(
-    (email: string, _password: string, role: Role) => {
-      persistUser({ name: email.split("@")[0].replace(/[._-]/g, " ") || "Student", role, email });
+    (email: string, password: string, _role: Role) => {
+      const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) ?? "[]") as StoredAccount[];
+      const account = accounts.find((item) => item.email.toLowerCase() === email.toLowerCase() && item.password === password);
+      if (!account) return;
+      const { password: _storedPassword, ...profile } = account;
+      persistUser(profile);
     },
     [persistUser]
   );
 
   const register = useCallback(
-    (data: { name: string; email: string; password: string; role: Role }) => {
-      persistUser({ name: data.name, role: data.role, email: data.email });
+    (data: StoredAccount) => {
+      const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) ?? "[]") as StoredAccount[];
+      if (accounts.some((item) => item.email.toLowerCase() === data.email.toLowerCase())) return;
+      localStorage.setItem(ACCOUNTS_KEY, JSON.stringify([...accounts, data]));
+      const { password: _password, ...profile } = data;
+      persistUser(profile);
     },
     [persistUser]
   );
@@ -81,9 +104,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const updateProfile = useCallback((updates: Partial<Omit<UserProfile, "email" | "role">>) => {
+    if (!user) return;
+    const nextProfile = { ...user, ...updates };
+    const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) ?? "[]") as StoredAccount[];
+    const nextAccounts = accounts.map((account) => account.email.toLowerCase() === user.email.toLowerCase() ? { ...account, ...updates } : account);
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(nextAccounts));
+    persistUser(nextProfile);
+  }, [persistUser, user]);
+
+  const changePassword = useCallback((currentPassword: string, newPassword: string) => {
+    if (!user) return false;
+    const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) ?? "[]") as StoredAccount[];
+    const account = accounts.find((item) => item.email.toLowerCase() === user.email.toLowerCase());
+    if (!account || account.password !== currentPassword) return false;
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts.map((item) => item.email.toLowerCase() === user.email.toLowerCase() ? { ...item, password: newPassword } : item)));
+    return true;
+  }, [user]);
+
   const value = useMemo(
-    () => ({ user, isAuthenticated: Boolean(user), authOpen, authMode, openAuth, closeAuth, roleHint, login, register, logout }),
-    [user, authOpen, authMode, openAuth, closeAuth, roleHint, login, register, logout]
+    () => ({ user, isAuthenticated: Boolean(user), authOpen, authMode, openAuth, closeAuth, roleHint, login, register, logout, updateProfile, changePassword }),
+    [user, authOpen, authMode, openAuth, closeAuth, roleHint, login, register, logout, updateProfile, changePassword]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

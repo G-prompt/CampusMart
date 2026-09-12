@@ -238,6 +238,7 @@ export default function Navbar() {
             {user ? (
               <div className="space-y-3">
                 <p className="text-base text-slate-600">Signed in as <span className="font-semibold text-slate-900">{user.name}</span></p>
+                <Link href={user.role === "vendor" ? "/vendor/dashboard" : "/buyer/dashboard"} onClick={() => setSidebarOpen(false)} className="block w-full rounded-[10px] border border-slate-200 px-4 py-3 text-center text-base font-semibold text-slate-700 transition hover:bg-slate-50">Open dashboard</Link>
                 <button type="button" onClick={handleLogout} className="w-full rounded-[10px] bg-slate-100 px-4 py-3 text-base font-semibold text-slate-700 transition hover:bg-slate-200 hover:text-black">Sign out</button>
               </div>
             ) : (

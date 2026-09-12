@@ -29,7 +29,7 @@ export default function ProductCard({ product }: { product: Product }) {
   return (
     <article className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
       <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
-        <Link href={`/marketplace/products/${product.id}`} aria-label={`View ${product.title}`}>
+        <Link href={`/marketplace/products/${product.id}`} aria-label={`View ${product.title}`} className="relative block h-full">
           {imageFailed ? (
             <div className="flex h-full items-center justify-center bg-slate-900 p-6 text-center text-sm font-bold text-white">CampusMart listing image</div>
           ) : (

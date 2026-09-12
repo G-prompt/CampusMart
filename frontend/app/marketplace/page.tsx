@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { products, categories } from "@/lib/products";
 import ProductCard from "@/components/common/ProductCard";
 import { FilterIcon } from "@/components/common/icons";
+import { getStoredListings } from "@/lib/listings";
 
 export default function Page() {
     const router = useRouter();
@@ -12,6 +13,7 @@ export default function Page() {
     const [sortBy, setSortBy] = useState("newest");
     const [maxPrice, setMaxPrice] = useState("all");
     const [filtersOpen, setFiltersOpen] = useState(false);
+    const [communityListings, setCommunityListings] = useState<import("@/lib/products").Product[]>([]);
     const filterCloseRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
@@ -21,6 +23,15 @@ export default function Page() {
         setSortBy(search.get("sort") ?? "newest");
         setMaxPrice(search.get("maxPrice") ?? "all");
     }, []);
+
+    useEffect(() => {
+        const loadListings = () => setCommunityListings(getStoredListings());
+        loadListings();
+        window.addEventListener("campusmart-listings-change", loadListings);
+        return () => window.removeEventListener("campusmart-listings-change", loadListings);
+    }, []);
+
+    const allProducts = [...communityListings, ...products];
 
     useEffect(() => {
         if (!filtersOpen) return;
@@ -52,7 +63,7 @@ export default function Page() {
         router.replace(category === "All" ? "/marketplace" : `/marketplace?category=${encodeURIComponent(category)}`, { scroll: false });
     };
 
-    const filtered = (activeCategory === "All" ? products : products.filter((product) => product.category === activeCategory))
+    const filtered = (activeCategory === "All" ? allProducts : allProducts.filter((product) => product.category === activeCategory))
         .filter((product) => maxPrice === "all" || product.price <= Number(maxPrice))
         .sort((first, second) => {
             if (sortBy === "price-low") return first.price - second.price;
