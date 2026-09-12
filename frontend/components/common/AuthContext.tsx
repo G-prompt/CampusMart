@@ -1,10 +1,20 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 export type Role = "vendor" | "client";
+
 export type AuthMode = "login" | "register";
+
 export type UserProfile = {
+  id: string;
   name: string;
   role: Role;
   email: string;
@@ -17,121 +27,341 @@ export type UserProfile = {
   pickupLocation?: string;
 };
 
+type AuthResult = {
+  success: boolean;
+  message?: string;
+};
+
 type AuthContextValue = {
   user: UserProfile | null;
   isAuthenticated: boolean;
   authOpen: boolean;
   authMode: AuthMode;
-  openAuth: (mode?: AuthMode, roleHint?: Role) => void;
-  closeAuth: () => void;
   roleHint: Role;
-  login: (email: string, password: string, role: Role) => void;
-  register: (data: Omit<StoredAccount, never>) => void;
+
+  openAuth: (
+    mode?: AuthMode,
+    roleHint?: Role
+  ) => void;
+
+  closeAuth: () => void;
+
+  login: (
+    email: string,
+    password: string
+  ) => Promise<AuthResult>;
+
+  register: (data: UserProfile & { password: string }) => Promise<AuthResult>;
+
   logout: () => void;
   updateProfile: (updates: Partial<Omit<UserProfile, "email" | "role">>) => void;
   changePassword: (currentPassword: string, newPassword: string) => boolean;
 };
 
-const AuthContext = createContext<AuthContextValue | null>(null);
-const ACCOUNTS_KEY = "campusmart-accounts";
-type StoredAccount = UserProfile & { password: string };
+const AuthContext =
+  createContext<AuthContextValue | null>(null);
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5000";
 
 function readStoredUser(): UserProfile | null {
-  if (typeof window === "undefined") return null;
-  const stored = localStorage.getItem("campusmart-user");
-  if (!stored) return null;
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const stored =
+    localStorage.getItem("campusmart-user");
+
+  if (!stored) {
+    return null;
+  }
+
   try {
     return JSON.parse(stored) as UserProfile;
   } catch {
     localStorage.removeItem("campusmart-user");
+    localStorage.removeItem("campusmart-token");
+
     return null;
   }
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [roleHint, setRoleHint] = useState<Role>("client");
+export function AuthProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [user, setUser] =
+    useState<UserProfile | null>(null);
+
+  const [authOpen, setAuthOpen] =
+    useState(false);
+
+  const [authMode, setAuthMode] =
+    useState<AuthMode>("login");
+
+  const [roleHint, setRoleHint] =
+    useState<Role>("client");
 
   useEffect(() => {
     setUser(readStoredUser());
-    const onStorage = () => setUser(readStoredUser());
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+
+    const onStorage = () => {
+      setUser(readStoredUser());
+    };
+
+    window.addEventListener(
+      "storage",
+      onStorage
+    );
+
+    return () => {
+      window.removeEventListener(
+        "storage",
+        onStorage
+      );
+    };
   }, []);
 
-  const openAuth = useCallback((mode: AuthMode = "login", role?: Role) => {
-    setAuthMode(mode);
-    if (role) setRoleHint(role);
-    setAuthOpen(true);
-  }, []);
+  const openAuth = useCallback(
+    (
+      mode: AuthMode = "login",
+      role?: Role
+    ) => {
+      setAuthMode(mode);
 
-  const closeAuth = useCallback(() => setAuthOpen(false), []);
+      if (role) {
+        setRoleHint(role);
+      }
 
-  const persistUser = useCallback((profile: UserProfile) => {
-    localStorage.setItem("campusmart-user", JSON.stringify(profile));
-    localStorage.setItem("campusmart-auth", "true");
-    setUser(profile);
+      setAuthOpen(true);
+    },
+    []
+  );
+
+  const closeAuth = useCallback(() => {
     setAuthOpen(false);
   }, []);
 
-  const login = useCallback(
-    (email: string, password: string, _role: Role) => {
-      const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) ?? "[]") as StoredAccount[];
-      const account = accounts.find((item) => item.email.toLowerCase() === email.toLowerCase() && item.password === password);
-      if (!account) return;
-      const { password: _storedPassword, ...profile } = account;
-      persistUser(profile);
+  const persistSession = useCallback(
+    (
+      profile: UserProfile,
+      token: string
+    ) => {
+      localStorage.setItem(
+        "campusmart-user",
+        JSON.stringify(profile)
+      );
+
+      localStorage.setItem(
+        "campusmart-token",
+        token
+      );
+
+      localStorage.setItem(
+        "campusmart-auth",
+        "true"
+      );
+
+      setUser(profile);
+      setAuthOpen(false);
     },
-    [persistUser]
+    []
+  );
+
+  const login = useCallback(
+    async (
+      email: string,
+      password: string
+    ): Promise<AuthResult> => {
+      try {
+        const response = await fetch(
+          `${API_URL}/api/auth/login`,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              email,
+              password,
+            }),
+          }
+        );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          return {
+            success: false,
+            message:
+              data.message ||
+              "Login failed.",
+          };
+        }
+
+        persistSession(
+          data.user,
+          data.token
+        );
+
+        return {
+          success: true,
+        };
+      } catch (error) {
+        console.error(
+          "Login request failed:",
+          error
+        );
+
+        return {
+          success: false,
+          message:
+            "Unable to connect to the server.",
+        };
+      }
+    },
+    [persistSession]
   );
 
   const register = useCallback(
-    (data: StoredAccount) => {
-      const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) ?? "[]") as StoredAccount[];
-      if (accounts.some((item) => item.email.toLowerCase() === data.email.toLowerCase())) return;
-      localStorage.setItem(ACCOUNTS_KEY, JSON.stringify([...accounts, data]));
-      const { password: _password, ...profile } = data;
-      persistUser(profile);
+    async (data: UserProfile & { password: string }): Promise<AuthResult> => {
+      try {
+        const response = await fetch(
+          `${API_URL}/api/auth/register`,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify(data),
+          }
+        );
+
+        const result =
+          await response.json();
+
+        if (!response.ok) {
+          return {
+            success: false,
+            message:
+              result.message ||
+              "Registration failed.",
+          };
+        }
+
+        const loginResult =
+          await login(
+            data.email,
+            data.password
+          );
+
+        if (!loginResult.success) {
+          return {
+            success: false,
+            message:
+              "Account created, but automatic login failed.",
+          };
+        }
+
+        return {
+          success: true,
+        };
+      } catch (error) {
+        console.error(
+          "Registration request failed:",
+          error
+        );
+
+        return {
+          success: false,
+          message:
+            "Unable to connect to the server.",
+        };
+      }
     },
-    [persistUser]
+    [login]
   );
 
   const logout = useCallback(() => {
-    localStorage.removeItem("campusmart-user");
-    localStorage.removeItem("campusmart-auth");
+    localStorage.removeItem(
+      "campusmart-user"
+    );
+
+    localStorage.removeItem(
+      "campusmart-token"
+    );
+
+    localStorage.removeItem(
+      "campusmart-auth"
+    );
+
     setUser(null);
   }, []);
 
   const updateProfile = useCallback((updates: Partial<Omit<UserProfile, "email" | "role">>) => {
     if (!user) return;
-    const nextProfile = { ...user, ...updates };
-    const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) ?? "[]") as StoredAccount[];
-    const nextAccounts = accounts.map((account) => account.email.toLowerCase() === user.email.toLowerCase() ? { ...account, ...updates } : account);
-    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(nextAccounts));
-    persistUser(nextProfile);
-  }, [persistUser, user]);
-
-  const changePassword = useCallback((currentPassword: string, newPassword: string) => {
-    if (!user) return false;
-    const accounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) ?? "[]") as StoredAccount[];
-    const account = accounts.find((item) => item.email.toLowerCase() === user.email.toLowerCase());
-    if (!account || account.password !== currentPassword) return false;
-    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts.map((item) => item.email.toLowerCase() === user.email.toLowerCase() ? { ...item, password: newPassword } : item)));
-    return true;
+    const next = { ...user, ...updates };
+    localStorage.setItem("campusmart-user", JSON.stringify(next));
+    setUser(next);
   }, [user]);
 
+  const changePassword = useCallback((_currentPassword: string, _newPassword: string) => false, []);
+
   const value = useMemo(
-    () => ({ user, isAuthenticated: Boolean(user), authOpen, authMode, openAuth, closeAuth, roleHint, login, register, logout, updateProfile, changePassword }),
-    [user, authOpen, authMode, openAuth, closeAuth, roleHint, login, register, logout, updateProfile, changePassword]
+    () => ({
+      user,
+      isAuthenticated: Boolean(user),
+      authOpen,
+      authMode,
+      openAuth,
+      closeAuth,
+      roleHint,
+      login,
+      register,
+      logout,
+      updateProfile,
+      changePassword,
+    }),
+    [
+      user,
+      authOpen,
+      authMode,
+      openAuth,
+      closeAuth,
+      roleHint,
+      login,
+      register,
+      logout,
+      updateProfile,
+      changePassword,
+    ]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
-  return ctx;
+  const context =
+    useContext(AuthContext);
+
+  if (!context) {
+    throw new Error(
+      "useAuth must be used within an AuthProvider"
+    );
+  }
+
+  return context;
 }
