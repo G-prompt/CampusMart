@@ -92,7 +92,7 @@ const handleSubmit = async (
 
 
   return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center px-4 py-8" role="dialog" aria-modal="true" aria-label={mode === "login" ? "Sign in" : "Register"}>
+    <div className="fixed inset-0 z-[999] flex items-start justify-center overflow-y-auto overscroll-contain px-4 py-8 sm:items-center" role="dialog" aria-modal="true" aria-label={mode === "login" ? "Sign in" : "Register"}>
       <button
         type="button"
         onClick={closeAuth}
@@ -100,7 +100,7 @@ const handleSubmit = async (
         className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm animate-[fadeIn_0.15s_ease-out]"
       />
 
-      <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl animate-[modalIn_0.18s_ease-out]">
+      <div className="relative my-auto max-h-[calc(100dvh-4rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl bg-white shadow-2xl animate-[modalIn_0.18s_ease-out]">
         <button
           type="button"
           onClick={closeAuth}
