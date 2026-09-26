@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware";
 
 import { prisma } from "../lib/prisma";
 import { UserRole } from "../generated/prisma/client";
@@ -193,4 +194,21 @@ export const login = async (
       message: "Something went wrong while logging in.",
     });
   }
+};
+
+export const getMe = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: "Authentication required.",
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    user: req.user,
+  });
 };
