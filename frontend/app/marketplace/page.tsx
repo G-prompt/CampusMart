@@ -1,39 +1,70 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+    useEffect,
+    useRef,
+    useState,
+} from "react";
 import { useRouter } from "next/navigation";
 
 import ProductCard from "@/components/common/ProductCard";
 import { FilterIcon } from "@/components/common/icons";
-import { categories, type Product } from "@/lib/products";
+import {
+    categories,
+    type Product,
+} from "@/lib/products";
 
 export default function Page() {
     const router = useRouter();
 
-    const [activeCategory, setActiveCategory] = useState("All");
-    const [sortBy, setSortBy] = useState("newest");
-    const [maxPrice, setMaxPrice] = useState("all");
-    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [activeCategory, setActiveCategory] =
+        useState("All");
+    const [sortBy, setSortBy] =
+        useState("newest");
+    const [maxPrice, setMaxPrice] =
+        useState("all");
+    const [filtersOpen, setFiltersOpen] =
+        useState(false);
 
-    const [products, setProducts] = useState<Product[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
+        const [moreCategoriesOpen, setMoreCategoriesOpen] = useState(false);
 
-    const filterCloseRef = useRef<HTMLButtonElement>(null);
+    const [products, setProducts] =
+        useState<Product[]>([]);
+    const [loading, setLoading] =
+        useState(true);
+    const [error, setError] =
+        useState("");
+
+    const filterCloseRef =
+        useRef<HTMLButtonElement>(null);
+
+    const categoryRailRef =
+        useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const search = new URLSearchParams(window.location.search);
+        const search =
+            new URLSearchParams(
+                window.location.search
+            );
 
-        const requestedCategory = search.get("category") ?? "All";
+        const requestedCategory =
+            search.get("category") ?? "All";
 
         setActiveCategory(
-            categories.includes(requestedCategory)
+            categories.includes(
+                requestedCategory
+            )
                 ? requestedCategory
                 : "All"
         );
 
-        setSortBy(search.get("sort") ?? "newest");
-        setMaxPrice(search.get("maxPrice") ?? "all");
+        setSortBy(
+            search.get("sort") ?? "newest"
+        );
+
+        setMaxPrice(
+            search.get("maxPrice") ?? "all"
+        );
     }, []);
 
     useEffect(() => {
@@ -45,16 +76,22 @@ export default function Page() {
                 setError("");
 
                 const apiUrl =
-                    process.env.NEXT_PUBLIC_API_URL ||
+                    process.env
+                        .NEXT_PUBLIC_API_URL ||
                     "http://localhost:5000";
 
-                const response = await fetch(
-                    `${apiUrl}/api/products`
-                );
+                const response =
+                    await fetch(
+                        `${apiUrl}/api/products`
+                    );
 
-                const data = await response.json();
+                const data =
+                    await response.json();
 
-                if (!response.ok || !data.success) {
+                if (
+                    !response.ok ||
+                    !data.success
+                ) {
                     throw new Error(
                         data.message ||
                             "Unable to load marketplace listings."
@@ -62,7 +99,9 @@ export default function Page() {
                 }
 
                 if (active) {
-                    setProducts(data.products);
+                    setProducts(
+                        data.products
+                    );
                 }
             } catch (err) {
                 console.error(
@@ -92,18 +131,30 @@ export default function Page() {
     useEffect(() => {
         if (!filtersOpen) return;
 
-        const closeOnEscape = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
+        const closeOnEscape = (
+            event: KeyboardEvent
+        ) => {
+            if (
+                event.key === "Escape"
+            ) {
                 setFiltersOpen(false);
             }
         };
 
-        document.body.style.overflow = "hidden";
-        window.addEventListener("keydown", closeOnEscape);
+        document.body.style.overflow =
+            "hidden";
+
+        window.addEventListener(
+            "keydown",
+            closeOnEscape
+        );
+
         filterCloseRef.current?.focus();
 
         return () => {
-            document.body.style.overflow = "";
+            document.body.style.overflow =
+                "";
+
             window.removeEventListener(
                 "keydown",
                 closeOnEscape
@@ -111,24 +162,54 @@ export default function Page() {
         };
     }, [filtersOpen]);
 
+    const scrollCategories = (
+        direction: "left" | "right"
+    ) => {
+        const rail =
+            categoryRailRef.current;
+
+        if (!rail) return;
+
+        rail.scrollBy({
+            left:
+                direction === "right"
+                    ? 320
+                    : -320,
+            behavior: "smooth",
+        });
+    };
+
     const updateFilters = (
         nextSort: string,
         nextMaxPrice: string
     ) => {
-        const params = new URLSearchParams(
-            window.location.search
-        );
+        const params =
+            new URLSearchParams(
+                window.location.search
+            );
 
-        if (nextSort === "newest") {
+        if (
+            nextSort === "newest"
+        ) {
             params.delete("sort");
         } else {
-            params.set("sort", nextSort);
+            params.set(
+                "sort",
+                nextSort
+            );
         }
 
-        if (nextMaxPrice === "all") {
-            params.delete("maxPrice");
+        if (
+            nextMaxPrice === "all"
+        ) {
+            params.delete(
+                "maxPrice"
+            );
         } else {
-            params.set("maxPrice", nextMaxPrice);
+            params.set(
+                "maxPrice",
+                nextMaxPrice
+            );
         }
 
         router.replace(
@@ -137,17 +218,25 @@ export default function Page() {
                     ? `?${params.toString()}`
                     : ""
             }`,
-            { scroll: false }
+            {
+                scroll: false,
+            }
         );
     };
 
     const resetFilters = () => {
         setSortBy("newest");
         setMaxPrice("all");
-        updateFilters("newest", "all");
+
+        updateFilters(
+            "newest",
+            "all"
+        );
     };
 
-    const selectCategory = (category: string) => {
+    const selectCategory = (
+        category: string
+    ) => {
         setActiveCategory(category);
 
         router.replace(
@@ -156,7 +245,9 @@ export default function Page() {
                 : `/marketplace?category=${encodeURIComponent(
                       category
                   )}`,
-            { scroll: false }
+            {
+                scroll: false,
+            }
         );
     };
 
@@ -165,62 +256,192 @@ export default function Page() {
             ? products
             : products.filter(
                   (product) =>
-                      product.category === activeCategory
+                      product.category ===
+                      activeCategory
               )
     )
         .filter(
             (product) =>
                 maxPrice === "all" ||
-                product.price <= Number(maxPrice)
+                product.price <=
+                    Number(maxPrice)
         )
-        .sort((first, second) => {
-            if (sortBy === "price-low") {
-                return first.price - second.price;
-            }
+        .sort(
+            (
+                first,
+                second
+            ) => {
+                if (
+                    sortBy ===
+                    "price-low"
+                ) {
+                    return (
+                        first.price -
+                        second.price
+                    );
+                }
 
-            if (sortBy === "price-high") {
-                return second.price - first.price;
-            }
+                if (
+                    sortBy ===
+                    "price-high"
+                ) {
+                    return (
+                        second.price -
+                        first.price
+                    );
+                }
 
-            if (sortBy === "rating") {
-                return second.rating - first.rating;
-            }
+                if (
+                    sortBy ===
+                    "rating"
+                ) {
+                    return (
+                        second.rating -
+                        first.rating
+                    );
+                }
 
-            return second.id - first.id;
-        });
+                return (
+                    second.id -
+                    first.id
+                );
+            }
+        );
 
     return (
         <main className="main-container py-10 sm:py-12 lg:py-14">
-            <div className="flex flex-wrap gap-2.5">
-                {categories.map((category) => (
-                    <button
-                        key={category}
-                        type="button"
-                        onClick={() =>
-                            selectCategory(category)
-                        }
-                        className={`rounded-[10px] px-4 py-2 text-sm font-bold transition ${
-                            activeCategory === category
-                                ? "bg-black text-white"
-                                : "bg-slate-100 text-black hover:bg-slate-200"
-                        }`}
-                    >
-                        {category}
-                    </button>
-                ))}
-            </div>
+          {/* MARKETPLACE CATEGORIES */}
+<div className="relative">
+    <div className="flex flex-wrap items-center gap-2.5">
+        {[
+            "All",
+            "Clothes & Accessories",
+            "Food & Drink",
+            "Technology",
+            "Books",
+            "Events",
+        ].map((category) => (
+            <button
+                key={category}
+                type="button"
+                onClick={() => {
+                    selectCategory(category);
+                    setMoreCategoriesOpen(false);
+                }}
+                className={`whitespace-nowrap rounded-[10px] px-4 py-2 text-sm font-bold transition ${
+                    activeCategory === category
+                        ? "bg-black text-white"
+                        : "bg-slate-100 text-black hover:bg-slate-200"
+                }`}
+            >
+                {category}
+            </button>
+        ))}
 
+        <div className="relative">
+            <button
+                type="button"
+                onClick={() =>
+                    setMoreCategoriesOpen((open) => !open)
+                }
+                className={`inline-flex items-center gap-2 whitespace-nowrap rounded-[10px] px-4 py-2 text-sm font-bold transition ${
+                    categories
+                        .filter(
+                            (category) =>
+                                ![
+                                    "All",
+                                    "Clothes & Accessories",
+                                    "Food & Drink",
+                                    "Technology",
+                                    "Books",
+                                    "Events",
+                                ].includes(category)
+                        )
+                        .includes(activeCategory)
+                        ? "bg-black text-white"
+                        : "bg-slate-100 text-black hover:bg-slate-200"
+                }`}
+                aria-expanded={moreCategoriesOpen}
+            >
+                + More
+
+                <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    className={`h-4 w-4 transition-transform ${
+                        moreCategoriesOpen
+                            ? "rotate-180"
+                            : ""
+                    }`}
+                    aria-hidden="true"
+                >
+                    <path
+                        d="m5 7.5 5 5 5-5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    />
+                </svg>
+            </button>
+
+            {moreCategoriesOpen ? (
+                <div className="absolute left-0 top-[calc(100%+0.5rem)] z-30 w-[280px] overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-xl sm:w-[320px]">
+                    <div className="grid gap-1">
+                        {categories
+                            .filter(
+                                (category) =>
+                                    ![
+                                        "All",
+                                        "Clothes & Accessories",
+                                        "Food & Drink",
+                                        "Technology",
+                                        "Books",
+                                        "Events",
+                                    ].includes(category)
+                            )
+                            .map((category) => (
+                                <button
+                                    key={category}
+                                    type="button"
+                                    onClick={() => {
+                                        selectCategory(category);
+                                        setMoreCategoriesOpen(false);
+                                    }}
+                                    className={`rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition ${
+                                        activeCategory === category
+                                            ? "bg-black text-white"
+                                            : "text-slate-700 hover:bg-slate-100 hover:text-black"
+                                    }`}
+                                >
+                                    {category}
+                                </button>
+                            ))}
+                    </div>
+                </div>
+            ) : null}
+        </div>
+    </div>
+</div>
+
+            {/* RESULT COUNT + FILTERS */}
             <div className="mt-7 flex flex-col gap-3 border-y border-slate-200 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-slate-600">
                     <span className="font-bold text-black">
-                        {filtered.length}
+                        {
+                            filtered.length
+                        }
                     </span>{" "}
                     listings to explore
                 </p>
 
                 <button
                     type="button"
-                    onClick={() => setFiltersOpen(true)}
+                    onClick={() =>
+                        setFiltersOpen(
+                            true
+                        )
+                    }
                     className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-black md:hidden"
                 >
                     <FilterIcon />
@@ -234,15 +455,23 @@ export default function Page() {
                         </span>
 
                         <select
-                            value={maxPrice}
-                            onChange={(event) => {
+                            value={
+                                maxPrice
+                            }
+                            onChange={(
+                                event
+                            ) => {
                                 setMaxPrice(
-                                    event.target.value
+                                    event
+                                        .target
+                                        .value
                                 );
 
                                 updateFilters(
                                     sortBy,
-                                    event.target.value
+                                    event
+                                        .target
+                                        .value
                                 );
                             }}
                             className="bg-transparent font-bold text-black outline-none"
@@ -250,14 +479,20 @@ export default function Page() {
                             <option value="all">
                                 Any
                             </option>
+
                             <option value="10000">
-                                Under ₦10k
+                                Under
+                                ₦10k
                             </option>
+
                             <option value="20000">
-                                Under ₦20k
+                                Under
+                                ₦20k
                             </option>
+
                             <option value="30000">
-                                Under ₦30k
+                                Under
+                                ₦30k
                             </option>
                         </select>
                     </label>
@@ -268,14 +503,22 @@ export default function Page() {
                         </span>
 
                         <select
-                            value={sortBy}
-                            onChange={(event) => {
+                            value={
+                                sortBy
+                            }
+                            onChange={(
+                                event
+                            ) => {
                                 setSortBy(
-                                    event.target.value
+                                    event
+                                        .target
+                                        .value
                                 );
 
                                 updateFilters(
-                                    event.target.value,
+                                    event
+                                        .target
+                                        .value,
                                     maxPrice
                                 );
                             }}
@@ -284,20 +527,26 @@ export default function Page() {
                             <option value="newest">
                                 Newest
                             </option>
+
                             <option value="rating">
                                 Top rated
                             </option>
+
                             <option value="price-low">
-                                Price: low
+                                Price:
+                                low
                             </option>
+
                             <option value="price-high">
-                                Price: high
+                                Price:
+                                high
                             </option>
                         </select>
                     </label>
                 </div>
             </div>
 
+            {/* MOBILE FILTER MODAL */}
             {filtersOpen ? (
                 <div
                     className="fixed inset-0 z-[70] md:hidden"
@@ -308,7 +557,9 @@ export default function Page() {
                     <button
                         type="button"
                         onClick={() =>
-                            setFiltersOpen(false)
+                            setFiltersOpen(
+                                false
+                            )
                         }
                         className="absolute inset-0 bg-slate-950/35"
                         aria-label="Close filters"
@@ -317,14 +568,19 @@ export default function Page() {
                     <section className="absolute inset-x-0 bottom-0 rounded-t-2xl bg-white p-5 shadow-2xl animate-[modalIn_0.18s_ease-out]">
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-bold text-black">
-                                Filter listings
+                                Filter
+                                listings
                             </h2>
 
                             <button
-                                ref={filterCloseRef}
+                                ref={
+                                    filterCloseRef
+                                }
                                 type="button"
                                 onClick={() =>
-                                    setFiltersOpen(false)
+                                    setFiltersOpen(
+                                        false
+                                    )
                                 }
                                 className="text-sm font-bold text-slate-500"
                             >
@@ -335,19 +591,28 @@ export default function Page() {
                         <div className="mt-5 grid gap-3 sm:grid-cols-2">
                             <label className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-700">
                                 <span>
-                                    Maximum price
+                                    Maximum
+                                    price
                                 </span>
 
                                 <select
-                                    value={maxPrice}
-                                    onChange={(event) => {
+                                    value={
+                                        maxPrice
+                                    }
+                                    onChange={(
+                                        event
+                                    ) => {
                                         setMaxPrice(
-                                            event.target.value
+                                            event
+                                                .target
+                                                .value
                                         );
 
                                         updateFilters(
                                             sortBy,
-                                            event.target.value
+                                            event
+                                                .target
+                                                .value
                                         );
                                     }}
                                     className="bg-transparent font-bold text-black outline-none"
@@ -355,14 +620,20 @@ export default function Page() {
                                     <option value="all">
                                         Any
                                     </option>
+
                                     <option value="10000">
-                                        Under ₦10k
+                                        Under
+                                        ₦10k
                                     </option>
+
                                     <option value="20000">
-                                        Under ₦20k
+                                        Under
+                                        ₦20k
                                     </option>
+
                                     <option value="30000">
-                                        Under ₦30k
+                                        Under
+                                        ₦30k
                                     </option>
                                 </select>
                             </label>
@@ -373,14 +644,22 @@ export default function Page() {
                                 </span>
 
                                 <select
-                                    value={sortBy}
-                                    onChange={(event) => {
+                                    value={
+                                        sortBy
+                                    }
+                                    onChange={(
+                                        event
+                                    ) => {
                                         setSortBy(
-                                            event.target.value
+                                            event
+                                                .target
+                                                .value
                                         );
 
                                         updateFilters(
-                                            event.target.value,
+                                            event
+                                                .target
+                                                .value,
                                             maxPrice
                                         );
                                     }}
@@ -389,14 +668,20 @@ export default function Page() {
                                     <option value="newest">
                                         Newest
                                     </option>
+
                                     <option value="rating">
-                                        Top rated
+                                        Top
+                                        rated
                                     </option>
+
                                     <option value="price-low">
-                                        Price: low
+                                        Price:
+                                        low
                                     </option>
+
                                     <option value="price-high">
-                                        Price: high
+                                        Price:
+                                        high
                                     </option>
                                 </select>
                             </label>
@@ -404,7 +689,9 @@ export default function Page() {
 
                         <button
                             type="button"
-                            onClick={resetFilters}
+                            onClick={
+                                resetFilters
+                            }
                             className="mt-4 text-sm font-bold text-slate-500 underline underline-offset-4"
                         >
                             Reset filters
@@ -413,12 +700,15 @@ export default function Page() {
                 </div>
             ) : null}
 
+            {/* LOADING */}
             {loading ? (
                 <p className="mt-10 text-center text-sm text-slate-600">
-                    Loading marketplace listings...
+                    Loading marketplace
+                    listings...
                 </p>
             ) : null}
 
+            {/* ERROR */}
             {error ? (
                 <p
                     className="mt-10 text-center text-sm font-semibold text-red-600"
@@ -428,20 +718,36 @@ export default function Page() {
                 </p>
             ) : null}
 
-            {!loading && !error ? (
+            {/* PRODUCTS */}
+            {!loading &&
+            !error ? (
                 <>
                     <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                        {filtered.map((product) => (
-                            <ProductCard
-                                key={product.id}
-                                product={product}
-                            />
-                        ))}
+                        {filtered.map(
+                            (
+                                product
+                            ) => (
+                                <ProductCard
+                                    key={
+                                        product.id
+                                    }
+                                    product={
+                                        product
+                                    }
+                                />
+                            )
+                        )}
                     </div>
 
-                    {filtered.length === 0 ? (
+                    {filtered.length ===
+                    0 ? (
                         <p className="mt-10 text-center text-sm text-slate-600">
-                            No listings in this category yet — check back soon.
+                            No listings
+                            in this
+                            category
+                            yet —
+                            check back
+                            soon.
                         </p>
                     ) : null}
                 </>

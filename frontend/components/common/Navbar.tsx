@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+
 import {
   FormEvent,
   useEffect,
   useRef,
   useState,
 } from "react";
+
 import {
   usePathname,
   useRouter,
@@ -14,6 +16,7 @@ import {
 
 import { useAuth } from "./AuthContext";
 import { useCart } from "./CartContext";
+import { useSaved } from "./SavedContext";
 
 import {
   CartIcon,
@@ -21,8 +24,6 @@ import {
   HomeIcon,
   UserIcon,
 } from "./icons";
-
-import { categories } from "@/lib/products";
 
 const navLinks = [
   {
@@ -149,6 +150,24 @@ function HeartIcon() {
   );
 }
 
+function CountBadge({
+  count,
+}: {
+  count: number;
+}) {
+  if (count <= 0) {
+    return null;
+  }
+
+  return (
+    <span className="absolute -right-1 -top-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent-400 px-1 text-[10px] font-bold leading-none text-black shadow-sm">
+      {count > 9
+        ? "9+"
+        : count}
+    </span>
+  );
+}
+
 export default function Navbar() {
   const {
     user,
@@ -156,8 +175,13 @@ export default function Navbar() {
     logout,
   } = useAuth();
 
-  const { itemCount } =
-    useCart();
+  const {
+    itemCount,
+  } = useCart();
+
+  const {
+    savedCount,
+  } = useSaved();
 
   const router =
     useRouter();
@@ -165,30 +189,35 @@ export default function Navbar() {
   const pathname =
     usePathname();
 
-  const [sidebarOpen, setSidebarOpen] =
-    useState(false);
+  const [
+    sidebarOpen,
+    setSidebarOpen,
+  ] = useState(false);
 
-  const [searchOpen, setSearchOpen] =
-    useState(false);
+  const [
+    searchOpen,
+    setSearchOpen,
+  ] = useState(false);
 
-  const [query, setQuery] =
-    useState("");
+  const [
+    query,
+    setQuery,
+  ] = useState("");
 
   const [
     searchFocused,
     setSearchFocused,
   ] = useState(false);
 
-  const [
-    activeCategory,
-    setActiveCategory,
-  ] = useState("All");
-
   const searchCloseRef =
-    useRef<HTMLButtonElement>(null);
+    useRef<HTMLButtonElement>(
+      null
+    );
 
   const sidebarCloseRef =
-    useRef<HTMLButtonElement>(null);
+    useRef<HTMLButtonElement>(
+      null
+    );
 
   const firstName =
     user?.name
@@ -200,50 +229,27 @@ export default function Navbar() {
     pathname === "/" &&
     Boolean(user);
 
-  const showCategoryNavigation =
-    pathname.startsWith(
-      "/marketplace"
-    );
-
   const searchSuggestions = [
     "Books",
     "Technology",
     "Events",
-  ].filter((suggestion) =>
-    suggestion
-      .toLowerCase()
-      .includes(
-        query.toLowerCase()
-      )
+    "Clothes",
+    "Food",
+  ].filter(
+    (
+      suggestion
+    ) =>
+      suggestion
+        .toLowerCase()
+        .includes(
+          query.toLowerCase()
+        )
   );
 
   useEffect(() => {
     if (
-      !showCategoryNavigation
+      !sidebarOpen
     ) {
-      return;
-    }
-
-    const requestedCategory =
-      new URLSearchParams(
-        window.location.search
-      ).get("category") ??
-      "All";
-
-    setActiveCategory(
-      categories.includes(
-        requestedCategory
-      )
-        ? requestedCategory
-        : "All"
-    );
-  }, [
-    pathname,
-    showCategoryNavigation,
-  ]);
-
-  useEffect(() => {
-    if (!sidebarOpen) {
       return;
     }
 
@@ -254,7 +260,9 @@ export default function Navbar() {
         event.key ===
         "Escape"
       ) {
-        setSidebarOpen(false);
+        setSidebarOpen(
+          false
+        );
       }
     };
 
@@ -277,10 +285,14 @@ export default function Navbar() {
         closeOnEscape
       );
     };
-  }, [sidebarOpen]);
+  }, [
+    sidebarOpen,
+  ]);
 
   useEffect(() => {
-    if (!searchOpen) {
+    if (
+      !searchOpen
+    ) {
       return;
     }
 
@@ -291,7 +303,9 @@ export default function Navbar() {
         event.key ===
         "Escape"
       ) {
-        setSearchOpen(false);
+        setSearchOpen(
+          false
+        );
       }
     };
 
@@ -314,24 +328,35 @@ export default function Navbar() {
         closeOnEscape
       );
     };
-  }, [searchOpen]);
+  }, [
+    searchOpen,
+  ]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout =
+    () => {
+      logout();
 
-    setSidebarOpen(false);
+      setSidebarOpen(
+        false
+      );
 
-    router.push("/");
-  };
+      router.push(
+        "/"
+      );
+    };
 
   const handleOpenAuth = (
     mode:
       | "login"
       | "register"
   ) => {
-    setSidebarOpen(false);
+    setSidebarOpen(
+      false
+    );
 
-    openAuth(mode);
+    openAuth(
+      mode
+    );
   };
 
   const handleSearch = (
@@ -346,7 +371,9 @@ export default function Navbar() {
       return;
     }
 
-    setSearchOpen(false);
+    setSearchOpen(
+      false
+    );
 
     router.push(
       `/marketplace/search?q=${encodeURIComponent(
@@ -355,15 +382,55 @@ export default function Navbar() {
     );
   };
 
+  const isMobileLinkActive = (
+    href: string
+  ) => {
+    if (
+      href ===
+      "/marketplace"
+    ) {
+      return (
+        pathname ===
+          "/marketplace" ||
+        pathname.startsWith(
+          "/marketplace/products/"
+        ) ||
+        pathname.startsWith(
+          "/marketplace/search"
+        )
+      );
+    }
+
+    if (
+      href ===
+      "/marketplace/favourites"
+    ) {
+      return (
+        pathname ===
+        "/marketplace/favourites"
+      );
+    }
+
+    return (
+      pathname ===
+        href ||
+      pathname.startsWith(
+        `${href}/`
+      )
+    );
+  };
+
   return (
     <>
-      <header className="border-b border-[#E6D8CB] bg-[#FBF6ED]">
+      <header className="sticky top-0 z-50 border-b border-[#E6D8CB] bg-[#FBF6ED]/95 backdrop-blur-md">
         <div className="relative flex min-h-[70px] items-center justify-between px-3 py-2 sm:min-h-[78px] sm:px-6 lg:px-8">
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none sm:gap-3">
             <button
               type="button"
               onClick={() =>
-                setSidebarOpen(true)
+                setSidebarOpen(
+                  true
+                )
               }
               className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-[#4A1724] transition hover:text-[#7B293B]"
               aria-label="Open navigation menu"
@@ -375,39 +442,44 @@ export default function Navbar() {
             </button>
 
             {showHomeWelcome ? (
-  <div className="min-w-0">
-    <p className="truncate text-[10px] font-bold text-black sm:text-sm">
-      Welcome back, {firstName}
-    </p>
+              <div className="min-w-0">
+                <p className="truncate text-[10px] font-bold text-black sm:text-sm">
+                  Welcome
+                  back,{" "}
+                  {
+                    firstName
+                  }
+                </p>
 
-    <div className="mt-0.5 flex items-center gap-2">
-      <Link
-        href="/marketplace"
-        className="text-[10px] font-bold text-slate-700 transition hover:text-black sm:text-xs"
-      >
-        Buy
-      </Link>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <Link
+                    href="/marketplace"
+                    className="text-[10px] font-bold text-slate-700 transition hover:text-black sm:text-xs"
+                  >
+                    Buy
+                  </Link>
 
-      {user?.role === "vendor" ? (
-        <Link
-          href="/vendor/add-listing"
-          className="rounded-md bg-accent-400 px-2.5 py-1 text-[10px] font-bold text-black transition hover:bg-accent-500 sm:text-xs"
-        >
-          Sell
-        </Link>
-      ) : null}
-    </div>
-  </div>
-) : null}
+                  {user?.role ===
+                  "vendor" ? (
+                    <Link
+                      href="/vendor/add-listing"
+                      className="rounded-md bg-accent-400 px-2.5 py-1 text-[10px] font-bold text-black transition hover:bg-accent-500 sm:text-xs"
+                    >
+                      Sell
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <Link
-  href="/"
-  className="ml-auto mr-1 shrink-0 text-[17px] font-bold tracking-tight text-black sm:absolute sm:left-1/2 sm:mr-0 sm:max-w-none sm:-translate-x-1/2 sm:text-3xl"
-  aria-label="CampusMart home"
->
-  CampusMart
-</Link>
+            href="/"
+            className="ml-auto mr-1 shrink-0 text-[17px] font-bold tracking-tight text-black sm:absolute sm:left-1/2 sm:mr-0 sm:-translate-x-1/2 sm:text-3xl"
+            aria-label="CampusMart home"
+          >
+            CampusMart
+          </Link>
 
           <div className="flex shrink-0 items-center gap-0 sm:ml-auto sm:gap-2 lg:gap-4">
             <form
@@ -421,17 +493,21 @@ export default function Navbar() {
                 htmlFor="site-search"
                 className="sr-only"
               >
-                Search CampusMart
+                Search
+                CampusMart
               </label>
 
               <input
                 id="site-search"
-                value={query}
+                value={
+                  query
+                }
                 onChange={(
                   event
                 ) =>
                   setQuery(
-                    event.target
+                    event
+                      .target
                       .value
                   )
                 }
@@ -462,7 +538,8 @@ export default function Navbar() {
               </button>
 
               {searchFocused &&
-              query.length > 0 &&
+              query.length >
+                0 &&
               searchSuggestions.length >
                 0 ? (
                 <div className="absolute left-0 right-0 top-12 z-20 rounded-lg border border-[#E5D8CC] bg-[#FBF6ED] p-2 shadow-xl">
@@ -501,7 +578,9 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() =>
-                setSearchOpen(true)
+                setSearchOpen(
+                  true
+                )
               }
               className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-[#4A1724] transition hover:text-[#7B293B] lg:hidden"
               aria-label="Open search"
@@ -511,80 +590,46 @@ export default function Navbar() {
 
             <Link
               href="/marketplace/favourites"
-              className="hidden h-10 w-10 shrink-0 items-center justify-center text-[#4A1724] transition hover:text-[#7B293B] sm:inline-flex"
-              aria-label="Wishlist"
+              className="relative hidden h-10 w-10 shrink-0 items-center justify-center text-[#4A1724] transition hover:text-[#7B293B] sm:inline-flex"
+              aria-label={`Wishlist${
+                savedCount >
+                0
+                  ? `, ${savedCount} saved items`
+                  : ""
+              }`}
             >
               <HeartIcon />
+
+              <CountBadge
+                count={
+                  savedCount
+                }
+              />
             </Link>
 
             <Link
               href="/cart"
               className="relative hidden h-10 w-10 shrink-0 items-center justify-center text-[#4A1724] transition hover:text-[#7B293B] sm:inline-flex"
-              aria-label="Cart"
+              aria-label={`Cart${
+                itemCount >
+                0
+                  ? `, ${itemCount} items`
+                  : ""
+              }`}
             >
               <CartIcon />
 
-              {itemCount > 0 ? (
-                <span className="absolute right-0 top-0 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent-400 px-1 text-[11px] font-bold leading-none text-black">
-                  {itemCount >
-                  9
-                    ? "9+"
-                    : itemCount}
-                </span>
-              ) : null}
+              <CountBadge
+                count={
+                  itemCount
+                }
+              />
             </Link>
           </div>
         </div>
-
-        {showCategoryNavigation ? (
-          <nav
-            className="flex w-full items-center justify-start gap-10 overflow-x-auto border-t border-[#E8DDD3] px-4 py-3 sm:px-6 md:justify-between lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            aria-label="Product categories"
-          >
-            {categories.map(
-              (category) => {
-                const active =
-                  activeCategory ===
-                    category &&
-                  pathname ===
-                    "/marketplace";
-
-                return (
-                  <Link
-                    key={category}
-                    href={
-                      category ===
-                      "All"
-                        ? "/marketplace"
-                        : `/marketplace?category=${encodeURIComponent(
-                            category
-                          )}`
-                    }
-                    onClick={() =>
-                      setActiveCategory(
-                        category
-                      )
-                    }
-                    aria-current={
-                      active
-                        ? "page"
-                        : undefined
-                    }
-                    className={`shrink-0 border-b-2 pb-1 text-sm font-bold transition sm:text-base ${
-                      active
-                        ? "border-[#8A3D48] text-[#4A1724]"
-                        : "border-transparent text-[#795F5F] hover:border-[#C7AAA2] hover:text-[#4A1724]"
-                    }`}
-                  >
-                    {category}
-                  </Link>
-                );
-              }
-            )}
-          </nav>
-        ) : null}
       </header>
 
+      {/* MOBILE SEARCH */}
       <div
         className={`fixed inset-0 z-[60] transition md:hidden ${
           searchOpen
@@ -603,11 +648,15 @@ export default function Navbar() {
               : "opacity-0"
           }`}
           onClick={() =>
-            setSearchOpen(false)
+            setSearchOpen(
+              false
+            )
           }
           aria-label="Close search"
           tabIndex={
-            searchOpen ? 0 : -1
+            searchOpen
+              ? 0
+              : -1
           }
         />
 
@@ -621,7 +670,8 @@ export default function Navbar() {
         >
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-bold text-[#4A1724]">
-              Search CampusMart
+              Search
+              CampusMart
             </h2>
 
             <button
@@ -630,7 +680,9 @@ export default function Navbar() {
               }
               type="button"
               onClick={() =>
-                setSearchOpen(false)
+                setSearchOpen(
+                  false
+                )
               }
               className="inline-flex h-10 w-10 items-center justify-center text-[#4A1724]"
               aria-label="Close search"
@@ -650,17 +702,21 @@ export default function Navbar() {
               htmlFor="mobile-site-search"
               className="sr-only"
             >
-              Search CampusMart
+              Search
+              CampusMart
             </label>
 
             <input
               id="mobile-site-search"
-              value={query}
+              value={
+                query
+              }
               onChange={(
                 event
               ) =>
                 setQuery(
-                  event.target
+                  event
+                    .target
                     .value
                 )
               }
@@ -682,6 +738,7 @@ export default function Navbar() {
         </section>
       </div>
 
+      {/* SIDEBAR */}
       <div
         className={`fixed inset-0 z-50 transition ${
           sidebarOpen
@@ -700,7 +757,9 @@ export default function Navbar() {
               : "opacity-0"
           }`}
           onClick={() =>
-            setSidebarOpen(false)
+            setSidebarOpen(
+              false
+            )
           }
           aria-label="Close navigation menu"
           tabIndex={
@@ -725,7 +784,9 @@ export default function Navbar() {
               }
               type="button"
               onClick={() =>
-                setSidebarOpen(false)
+                setSidebarOpen(
+                  false
+                )
               }
               className="inline-flex h-10 w-10 items-center justify-center text-[#4A1724]"
               aria-label="Close navigation menu"
@@ -738,9 +799,12 @@ export default function Navbar() {
             {user ? (
               <div className="space-y-3">
                 <p className="text-sm text-[#795F5F]">
-                  Signed in as{" "}
+                  Signed in
+                  as{" "}
                   <span className="font-bold text-[#4A1724]">
-                    {user.name}
+                    {
+                      user.name
+                    }
                   </span>
                 </p>
 
@@ -802,7 +866,9 @@ export default function Navbar() {
 
           <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-5">
             {navLinks.map(
-              (item) => {
+              (
+                item
+              ) => {
                 const active =
                   pathname.startsWith(
                     item.href
@@ -843,26 +909,35 @@ export default function Navbar() {
 
           <div className="px-5 py-4">
             <p className="text-xs tracking-wide text-[#8A7070]">
-              © CampusMart 2026
+              © CampusMart
+              2026
             </p>
           </div>
         </aside>
       </div>
 
+      {/* MOBILE BOTTOM NAV */}
       <nav
         className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-[#E4D8CC] bg-[#FBF6ED]/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(74,23,36,0.08)] backdrop-blur md:hidden"
         aria-label="Mobile navigation"
       >
         {mobileLinks.map(
-          (item) => {
+          (
+            item
+          ) => {
             const active =
-              pathname ===
-                item.href ||
-              (item.href ===
-                "/marketplace" &&
-                pathname.startsWith(
-                  "/marketplace"
-                ));
+              isMobileLinkActive(
+                item.href
+              );
+
+            const count =
+              item.href ===
+              "/marketplace/favourites"
+                ? savedCount
+                : item.href ===
+                    "/cart"
+                  ? itemCount
+                  : 0;
 
             return (
               <Link
@@ -883,15 +958,25 @@ export default function Navbar() {
                     : "text-[#8A7070]"
                 }`}
               >
-                <item.Icon
-                  className={`h-5 w-5 ${
-                    active
-                      ? "text-[#8A3D48]"
-                      : "text-[#8A7070]"
-                  }`}
-                />
+                <span className="relative">
+                  <item.Icon
+                    className={`h-5 w-5 ${
+                      active
+                        ? "text-[#8A3D48]"
+                        : "text-[#8A7070]"
+                    }`}
+                  />
 
-                {item.label}
+                  <CountBadge
+                    count={
+                      count
+                    }
+                  />
+                </span>
+
+                {
+                  item.label
+                }
               </Link>
             );
           }
