@@ -22,4 +22,23 @@ model User {
   role         UserRole @default(client)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  products Product[]
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  slug        String   @unique
+  title       String
+  category    String
+  price       Int
+  rating      Float    @default(0)
+  description String
+  images      String[]
+
+  vendorId String
+  vendor   User   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
