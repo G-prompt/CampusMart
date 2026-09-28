@@ -112,7 +112,32 @@ export const products: Product[] = [
   },
 ];
 
-export const categories = ["All", "Events", "Books", "Food & Drink", "Technology"];
+export const categories = [
+  "All",
+
+  "Clothes & Accessories",
+  "Cosmetics & Deodorants",
+  "Hair & Beauty",
+  "Shoes & Bags",
+
+  "Food & Drink",
+  "Technology",
+  "Books",
+  "Events",
+
+  "Home & Hostel Essentials",
+  "Printing & Stationery",
+  "Fitness & Sports",
+
+  "Tutoring & Academic Services",
+  "Design & Digital Services",
+  "Photography & Media",
+  "Repairs & Technical Services",
+  "Laundry & Cleaning",
+  "Transportation & Errands",
+
+  "Other",
+];
 
 export function getProductById(id: number) {
   return products.find((product) => product.id === id);

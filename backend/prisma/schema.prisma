@@ -14,16 +14,55 @@ enum UserRole {
   vendor
 }
 
+enum OrderStatus {
+  pending
+  confirmed
+  completed
+  cancelled
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  refunded
+}
+
 model User {
   id           String   @id @default(uuid())
   name         String
   email        String   @unique
   passwordHash String
   role         UserRole @default(client)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+
+  campus String?
+  phone  String?
+  bio    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   products Product[]
+
+  vendorProfile VendorProfile?
+
+  buyerOrders      Order[]     @relation("BuyerOrders")
+  vendorOrderItems OrderItem[] @relation("VendorOrderItems")
+}
+
+model VendorProfile {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  businessName        String
+  businessDescription String
+  pickupLocation      String
+
+  verified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Product {
@@ -39,6 +78,56 @@ model Product {
   vendorId String
   vendor   User   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
+  orderItems OrderItem[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id String @id @default(uuid())
+
+  buyerId String
+  buyer   User   @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
+
+  status        OrderStatus   @default(pending)
+  paymentStatus PaymentStatus @default(pending)
+
+  subtotal Int
+  fee      Int @default(0)
+  total    Int
+
+  pickupLocation String?
+  preferredSlot  String?
+
+  items OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrderItem {
+  id String @id @default(uuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId Int?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  vendorId String
+  vendor   User   @relation("VendorOrderItems", fields: [vendorId], references: [id], onDelete: Restrict)
+
+  productTitle String
+  unitPrice    Int
+  quantity     Int
+  lineTotal    Int
+
+  status OrderStatus @default(pending)
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([vendorId])
+  @@index([productId])
 }

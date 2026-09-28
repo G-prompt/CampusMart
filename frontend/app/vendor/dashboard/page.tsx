@@ -1,33 +1,69 @@
 "use client";
 
 import Link from "next/link";
+
 import {
   useEffect,
   useState,
 } from "react";
 
 import PageShell from "@/components/common/PageShell";
-import { useAuth } from "@/components/common/AuthContext";
+
+import {
+  useAuth,
+} from "@/components/common/AuthContext";
+
+import {
+  formatNaira,
+} from "@/lib/products";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000";
 
+type VendorStats = {
+  listingCount: number;
+  orderCount: number;
+  pendingOrderCount: number;
+  itemCount: number;
+  revenue: number;
+};
+
 export default function Page() {
-  const { user, openAuth } = useAuth();
+  const {
+    user,
+    openAuth,
+  } = useAuth();
 
   const [
-    listingCount,
-    setListingCount,
-  ] = useState<number | null>(
-    null
-  );
+    stats,
+    setStats,
+  ] =
+    useState<VendorStats>({
+      listingCount: 0,
+      orderCount: 0,
+      pendingOrderCount: 0,
+      itemCount: 0,
+      revenue: 0,
+    });
 
-  const [countError, setCountError] =
-    useState("");
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+  const [
+    error,
+    setError,
+  ] = useState("");
 
   useEffect(() => {
-    if (user?.role !== "vendor") {
+    if (
+      user?.role !==
+      "vendor"
+    ) {
+      setLoading(false);
+
       return;
     }
 
@@ -37,7 +73,8 @@ export default function Page() {
     const loadDashboard =
       async () => {
         try {
-          setCountError("");
+          setLoading(true);
+          setError("");
 
           const token =
             localStorage.getItem(
@@ -46,43 +83,108 @@ export default function Page() {
 
           if (!token) {
             throw new Error(
-              "Session unavailable."
+              "Your session is unavailable."
             );
           }
 
-          const response =
-            await fetch(
-              `${API_URL}/api/products/mine`,
-              {
-                headers: {
-                  Authorization:
-                    `Bearer ${token}`,
-                },
-                signal:
-                  controller.signal,
-              }
-            );
+          const headers = {
+            Authorization:
+              `Bearer ${token}`,
+          };
 
-          const data =
-            await response.json();
+          /*
+           * Load listings and order
+           * statistics at the same time.
+           */
+          const [
+            listingsResponse,
+            ordersResponse,
+          ] =
+            await Promise.all([
+              fetch(
+                `${API_URL}/api/products/mine`,
+                {
+                  headers,
+                  signal:
+                    controller.signal,
+                }
+              ),
+
+              fetch(
+                `${API_URL}/api/orders/vendor`,
+                {
+                  headers,
+                  signal:
+                    controller.signal,
+                }
+              ),
+            ]);
+
+          const [
+            listingsData,
+            ordersData,
+          ] =
+            await Promise.all([
+              listingsResponse.json(),
+              ordersResponse.json(),
+            ]);
 
           if (
-            !response.ok ||
-            !data.success
+            !listingsResponse.ok ||
+            !listingsData.success
           ) {
             throw new Error(
-              data.message ||
-                "Unable to load dashboard."
+              listingsData.message ||
+                "Unable to load your listings."
             );
           }
 
-          setListingCount(
+          if (
+            !ordersResponse.ok ||
+            !ordersData.success
+          ) {
+            throw new Error(
+              ordersData.message ||
+                "Unable to load your orders."
+            );
+          }
+
+          const listingCount =
             Array.isArray(
-              data.products
+              listingsData.products
             )
-              ? data.products.length
-              : 0
-          );
+              ? listingsData
+                  .products
+                  .length
+              : 0;
+
+          setStats({
+            listingCount,
+
+            orderCount:
+              Number(
+                ordersData.summary
+                  ?.orderCount
+              ) || 0,
+
+            pendingOrderCount:
+              Number(
+                ordersData.summary
+                  ?.pendingOrderCount
+              ) || 0,
+
+            itemCount:
+              Number(
+                ordersData.summary
+                  ?.itemCount
+              ) || 0,
+
+            revenue:
+              Number(
+                ordersData.summary
+                  ?.revenue
+              ) || 0,
+          });
         } catch (error) {
           if (
             error instanceof
@@ -98,11 +200,13 @@ export default function Page() {
             error
           );
 
-          setCountError(
-            "Unable to refresh shop statistics."
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Unable to refresh shop statistics."
           );
-
-          setListingCount(0);
+        } finally {
+          setLoading(false);
         }
       };
 
@@ -112,7 +216,10 @@ export default function Page() {
       controller.abort();
   }, [user]);
 
-  if (user?.role !== "vendor") {
+  if (
+    user?.role !==
+    "vendor"
+  ) {
     return (
       <PageShell
         title="Vendor dashboard"
@@ -120,12 +227,14 @@ export default function Page() {
       >
         <div className="site-card max-w-md p-8 text-center">
           <h2 className="text-2xl font-bold text-slate-950">
-            Vendor access required
+            Vendor access
+            required
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Sign in with a vendor account
-            to manage your shop.
+            Sign in with a
+            vendor account to
+            manage your shop.
           </p>
 
           <button
@@ -159,10 +268,10 @@ export default function Page() {
         </Link>
 
         <Link
-          href="/support"
+          href="/vendor/orders"
           className="rounded-[10px] border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:border-black hover:text-black"
         >
-          Learn more
+          View orders
         </Link>
       </div>
 
@@ -173,15 +282,16 @@ export default function Page() {
           </p>
 
           <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-950">
-            Welcome, {user.name}
+            Welcome,{" "}
+            {user.name}
           </h2>
 
           <p className="mt-3 max-w-xl text-sm leading-7 text-slate-600">
             Your shop is ready.
-            Publish clear, detailed
-            listings so campus buyers
-            can find and trust what
-            you offer.
+            Manage your listings
+            and keep track of
+            incoming CampusMart
+            orders here.
           </p>
 
           <div className="mt-7 grid gap-4 sm:grid-cols-3">
@@ -194,36 +304,91 @@ export default function Page() {
               </p>
 
               <p className="mt-2 text-2xl font-bold text-slate-950">
-                {listingCount === null
+                {loading
                   ? "—"
-                  : listingCount}
+                  : stats.listingCount}
               </p>
             </Link>
 
-            <div className="rounded-xl bg-slate-50 p-4">
+            <Link
+              href="/vendor/orders"
+              className="rounded-xl bg-slate-50 p-4 transition hover:bg-slate-100"
+            >
               <p className="text-sm text-slate-500">
                 Orders
               </p>
 
               <p className="mt-2 text-2xl font-bold text-slate-950">
-                0
+                {loading
+                  ? "—"
+                  : stats.orderCount}
               </p>
-            </div>
 
-            <div className="rounded-xl bg-slate-50 p-4">
+              {!loading &&
+              stats.pendingOrderCount >
+                0 ? (
+                <p className="mt-1 text-xs font-semibold text-amber-700">
+                  {
+                    stats.pendingOrderCount
+                  }{" "}
+                  pending
+                </p>
+              ) : null}
+            </Link>
+
+            <Link
+              href="/vendor/orders"
+              className="rounded-xl bg-slate-50 p-4 transition hover:bg-slate-100"
+            >
               <p className="text-sm text-slate-500">
                 Revenue
               </p>
 
               <p className="mt-2 text-2xl font-bold text-slate-950">
-                ₦0
+                {loading
+                  ? "—"
+                  : formatNaira(
+                      stats.revenue
+                    )}
               </p>
-            </div>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Paid & completed
+              </p>
+            </Link>
           </div>
 
-          {countError ? (
-            <p className="mt-4 text-xs font-semibold text-red-600">
-              {countError}
+          {!loading &&
+          stats.orderCount >
+            0 ? (
+            <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-200 pt-4 text-sm text-slate-600">
+              <span>
+                <strong className="text-slate-950">
+                  {
+                    stats.itemCount
+                  }
+                </strong>{" "}
+                {stats.itemCount ===
+                1
+                  ? "item"
+                  : "items"}{" "}
+                ordered
+              </span>
+
+              <span>
+                <strong className="text-slate-950">
+                  {
+                    stats.pendingOrderCount
+                  }
+                </strong>{" "}
+                pending
+              </span>
+            </div>
+          ) : null}
+
+          {error ? (
+            <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-xs font-semibold text-red-600">
+              {error}
             </p>
           ) : null}
         </section>
@@ -253,6 +418,19 @@ export default function Page() {
             >
               <span>
                 Manage listings
+              </span>
+
+              <span aria-hidden="true">
+                →
+              </span>
+            </Link>
+
+            <Link
+              href="/vendor/orders"
+              className="flex items-center justify-between rounded-[10px] border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-950 transition hover:border-black"
+            >
+              <span>
+                View orders
               </span>
 
               <span aria-hidden="true">
