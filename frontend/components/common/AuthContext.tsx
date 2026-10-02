@@ -17,6 +17,52 @@ export type AuthMode =
   | "login"
   | "register";
 
+export type StudentVerificationStatus =
+  | "not_started"
+  | "pending"
+  | "verified"
+  | "failed";
+
+export type VendorVerificationStatus =
+  | "not_started"
+  | "pending"
+  | "verified"
+  | "rejected";
+
+export type VendorAccessStatus =
+  | "active"
+  | "pending_review"
+  | "restricted"
+  | "suspended";
+
+export type UniversityVerificationMethod =
+  | "none"
+  | "manual"
+  | "database"
+  | "api";
+
+export type UniversitySummary = {
+  id: string;
+  name: string;
+  shortName: string;
+  slug: string;
+
+  country: string;
+  state: string;
+  city: string;
+
+  studentVerificationEnabled: boolean;
+
+  verificationMethod:
+    UniversityVerificationMethod;
+
+  matricValidationEnabled: boolean;
+
+  matricFormatHint:
+    | string
+    | null;
+};
+
 export type UserProfile = {
   id: string;
   name: string;
@@ -24,16 +70,50 @@ export type UserProfile = {
   email: string;
 
   campus?: string;
+
   phone?: string;
   bio?: string;
 
   avatarUrl?: string;
 
+  universityId?: string;
+
+  university?:
+    | UniversitySummary
+    | null;
+
+  matricNumber?: string;
+
+  studentVerificationStatus?:
+    StudentVerificationStatus;
+
+  studentVerificationSource?: string;
+
+  studentVerifiedAt?: string;
+
+  fallbackUniversityName?: string;
+  fallbackState?: string;
+  fallbackCity?: string;
+
   businessName?: string;
+
   businessDescription?: string;
+
   pickupLocation?: string;
 
   vendorVerified?: boolean;
+
+  vendorAccessStatus?:
+    VendorAccessStatus;
+
+  vendorVerificationStatus?:
+    VendorVerificationStatus;
+
+  verificationSubmittedAt?:
+    string;
+
+  vendorVerifiedAt?:
+    string;
 };
 
 export type RegistrationData = {
@@ -42,26 +122,70 @@ export type RegistrationData = {
   password: string;
   role: Role;
 
-  campus: string;
   phone?: string;
   bio?: string;
 
+  universityId:
+    | string
+    | null;
+
+  matricNumber?: string;
+
+  fallbackUniversityName?: string;
+  fallbackState?: string;
+  fallbackCity?: string;
+
   businessName?: string;
+
   businessDescription?: string;
+
   pickupLocation?: string;
 };
 
-type AuthResult = {
+export type AuthResult = {
   success: boolean;
+
   message?: string;
+
+  code?: string;
+
+  matricFormatHint?:
+    | string
+    | null;
 };
 
 type ApiVendorProfile = {
   id?: string;
-  businessName?: string | null;
-  businessDescription?: string | null;
-  pickupLocation?: string | null;
+
+  businessName?:
+    | string
+    | null;
+
+  businessDescription?:
+    | string
+    | null;
+
+  pickupLocation?:
+    | string
+    | null;
+
   verified?: boolean;
+
+  accessStatus?:
+    | VendorAccessStatus
+    | null;
+
+  vendorVerificationStatus?:
+    | VendorVerificationStatus
+    | null;
+
+  verificationSubmittedAt?:
+    | string
+    | null;
+
+  vendorVerifiedAt?:
+    | string
+    | null;
 };
 
 type ApiUser = {
@@ -70,24 +194,76 @@ type ApiUser = {
   email: string;
   role: Role;
 
-  campus?: string | null;
-  phone?: string | null;
-  bio?: string | null;
+  campus?:
+    | string
+    | null;
 
-  avatarUrl?: string | null;
+  phone?:
+    | string
+    | null;
 
-  vendorProfile?: ApiVendorProfile | null;
+  bio?:
+    | string
+    | null;
+
+  avatarUrl?:
+    | string
+    | null;
+
+  universityId?:
+    | string
+    | null;
+
+  university?:
+    | UniversitySummary
+    | null;
+
+  matricNumber?:
+    | string
+    | null;
+
+  studentVerificationStatus?:
+    | StudentVerificationStatus
+    | null;
+
+  studentVerificationSource?:
+    | string
+    | null;
+
+  studentVerifiedAt?:
+    | string
+    | null;
+
+  fallbackUniversityName?:
+    | string
+    | null;
+
+  fallbackState?:
+    | string
+    | null;
+
+  fallbackCity?:
+    | string
+    | null;
+
+  vendorProfile?:
+    | ApiVendorProfile
+    | null;
 
   createdAt?: string;
 };
 
 type AuthContextValue = {
-  user: UserProfile | null;
+  user:
+    | UserProfile
+    | null;
 
   isAuthenticated: boolean;
 
   authOpen: boolean;
+
   authMode: AuthMode;
+
   roleHint: Role;
 
   openAuth: (
@@ -124,9 +300,9 @@ type AuthContextValue = {
 };
 
 const AuthContext =
-  createContext<AuthContextValue | null>(
-    null
-  );
+  createContext<
+    AuthContextValue | null
+  >(null);
 
 const API_URL =
   process.env
@@ -146,10 +322,17 @@ function normalizeUser(
   user: ApiUser
 ): UserProfile {
   return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
+    id:
+      user.id,
+
+    name:
+      user.name,
+
+    email:
+      user.email,
+
+    role:
+      user.role,
 
     campus:
       user.campus ||
@@ -165,6 +348,42 @@ function normalizeUser(
 
     avatarUrl:
       user.avatarUrl ||
+      undefined,
+
+    universityId:
+      user.universityId ||
+      undefined,
+
+    university:
+      user.university ??
+      null,
+
+    matricNumber:
+      user.matricNumber ||
+      undefined,
+
+    studentVerificationStatus:
+      user.studentVerificationStatus ||
+      undefined,
+
+    studentVerificationSource:
+      user.studentVerificationSource ||
+      undefined,
+
+    studentVerifiedAt:
+      user.studentVerifiedAt ||
+      undefined,
+
+    fallbackUniversityName:
+      user.fallbackUniversityName ||
+      undefined,
+
+    fallbackState:
+      user.fallbackState ||
+      undefined,
+
+    fallbackCity:
+      user.fallbackCity ||
       undefined,
 
     businessName:
@@ -186,6 +405,26 @@ function normalizeUser(
       user.vendorProfile
         ?.verified ??
       false,
+
+    vendorAccessStatus:
+      user.vendorProfile
+        ?.accessStatus ||
+      undefined,
+
+    vendorVerificationStatus:
+      user.vendorProfile
+        ?.vendorVerificationStatus ||
+      undefined,
+
+    verificationSubmittedAt:
+      user.vendorProfile
+        ?.verificationSubmittedAt ||
+      undefined,
+
+    vendorVerifiedAt:
+      user.vendorProfile
+        ?.vendorVerifiedAt ||
+      undefined,
   };
 }
 
@@ -232,15 +471,16 @@ function readStoredUser():
 export function AuthProvider({
   children,
 }: {
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
 }) {
   const [
     user,
     setUser,
   ] =
-    useState<UserProfile | null>(
-      null
-    );
+    useState<
+      UserProfile | null
+    >(null);
 
   const [
     authOpen,
@@ -269,11 +509,12 @@ export function AuthProvider({
       readStoredUser()
     );
 
-    const onStorage = () => {
-      setUser(
-        readStoredUser()
-      );
-    };
+    const onStorage =
+      () => {
+        setUser(
+          readStoredUser()
+        );
+      };
 
     window.addEventListener(
       "storage",
@@ -291,31 +532,45 @@ export function AuthProvider({
   const openAuth =
     useCallback(
       (
-        mode: AuthMode =
+        mode:
+          AuthMode =
           "login",
-        role?: Role
+
+        role?:
+          Role
       ) => {
-        setAuthMode(mode);
+        setAuthMode(
+          mode
+        );
 
         if (role) {
-          setRoleHint(role);
+          setRoleHint(
+            role
+          );
         }
 
-        setAuthOpen(true);
+        setAuthOpen(
+          true
+        );
       },
       []
     );
 
   const closeAuth =
     useCallback(() => {
-      setAuthOpen(false);
+      setAuthOpen(
+        false
+      );
     }, []);
 
   const persistSession =
     useCallback(
       (
-        apiUser: ApiUser,
-        token: string
+        apiUser:
+          ApiUser,
+
+        token:
+          string
       ) => {
         const profile =
           normalizeUser(
@@ -339,9 +594,13 @@ export function AuthProvider({
           "true"
         );
 
-        setUser(profile);
+        setUser(
+          profile
+        );
 
-        setAuthOpen(false);
+        setAuthOpen(
+          false
+        );
       },
       []
     );
@@ -349,8 +608,11 @@ export function AuthProvider({
   const login =
     useCallback(
       async (
-        email: string,
-        password: string
+        email:
+          string,
+
+        password:
+          string
       ): Promise<AuthResult> => {
         try {
           const response =
@@ -389,6 +651,9 @@ export function AuthProvider({
               message:
                 data.message ||
                 "Login failed.",
+
+              code:
+                data.code,
             };
           }
 
@@ -412,6 +677,9 @@ export function AuthProvider({
 
           return {
             success: true,
+
+            message:
+              data.message,
           };
         } catch (error) {
           console.error(
@@ -420,20 +688,24 @@ export function AuthProvider({
           );
 
           return {
-            success: false,
+            success:
+              false,
 
             message:
               "Unable to connect to the server.",
           };
         }
       },
-      [persistSession]
+      [
+        persistSession,
+      ]
     );
 
   const register =
     useCallback(
       async (
-        data: RegistrationData
+        data:
+          RegistrationData
       ): Promise<AuthResult> => {
         try {
           const payload = {
@@ -451,9 +723,6 @@ export function AuthProvider({
             role:
               data.role,
 
-            campus:
-              data.campus.trim(),
-
             phone:
               data.phone?.trim() ||
               "",
@@ -465,24 +734,56 @@ export function AuthProvider({
                   ""
                 : "",
 
+            universityId:
+              data.universityId,
+
+            matricNumber:
+              data.matricNumber
+                ?.trim() ||
+              "",
+
+            fallbackUniversityName:
+              data.universityId
+                ? ""
+                : data.fallbackUniversityName
+                    ?.trim() ||
+                  "",
+
+            fallbackState:
+              data.universityId
+                ? ""
+                : data.fallbackState
+                    ?.trim() ||
+                  "",
+
+            fallbackCity:
+              data.universityId
+                ? ""
+                : data.fallbackCity
+                    ?.trim() ||
+                  "",
+
             businessName:
               data.role ===
               "vendor"
-                ? data.businessName?.trim() ||
+                ? data.businessName
+                    ?.trim() ||
                   ""
                 : "",
 
             businessDescription:
               data.role ===
               "vendor"
-                ? data.businessDescription?.trim() ||
+                ? data.businessDescription
+                    ?.trim() ||
                   ""
                 : "",
 
             pickupLocation:
               data.role ===
               "vendor"
-                ? data.pickupLocation?.trim() ||
+                ? data.pickupLocation
+                    ?.trim() ||
                   ""
                 : "",
           };
@@ -520,18 +821,16 @@ export function AuthProvider({
               message:
                 result.message ||
                 "Registration failed.",
+
+              code:
+                result.code,
+
+              matricFormatHint:
+                result.matricFormatHint ??
+                null,
             };
           }
 
-          /*
-           * Registration endpoint
-           * creates the account.
-           *
-           * We then log in normally
-           * so the frontend receives
-           * a JWT and the complete
-           * profile.
-           */
           const loginResult =
             await login(
               payload.email,
@@ -552,6 +851,10 @@ export function AuthProvider({
 
           return {
             success: true,
+
+            message:
+              result.message ||
+              "Account created successfully.",
           };
         } catch (error) {
           console.error(
@@ -568,7 +871,9 @@ export function AuthProvider({
           };
         }
       },
-      [login]
+      [
+        login,
+      ]
     );
 
   const logout =
@@ -585,25 +890,22 @@ export function AuthProvider({
         AUTH_STORAGE_KEY
       );
 
-      setUser(null);
+      setUser(
+        null
+      );
     }, []);
 
-  /*
-   * This currently updates the
-   * locally stored profile only.
-   *
-   * We can connect profile editing
-   * to the backend separately.
-   */
   const updateProfile =
     useCallback(
       (
-        updates: Partial<
-          Omit<
-            UserProfile,
-            "email" | "role"
+        updates:
+          Partial<
+            Omit<
+              UserProfile,
+              "email" |
+                "role"
+            >
           >
-        >
       ) => {
         if (!user) {
           return;
@@ -616,23 +918,28 @@ export function AuthProvider({
 
         localStorage.setItem(
           USER_STORAGE_KEY,
-          JSON.stringify(next)
+          JSON.stringify(
+            next
+          )
         );
 
-        setUser(next);
+        setUser(
+          next
+        );
       },
-      [user]
+      [
+        user,
+      ]
     );
 
-  /*
-   * Password changing is not yet
-   * connected to the backend.
-   */
   const changePassword =
     useCallback(
       (
-        _currentPassword: string,
-        _newPassword: string
+        _currentPassword:
+          string,
+
+        _newPassword:
+          string
       ) => false,
       []
     );
@@ -643,7 +950,9 @@ export function AuthProvider({
         user,
 
         isAuthenticated:
-          Boolean(user),
+          Boolean(
+            user
+          ),
 
         authOpen,
         authMode,
@@ -657,6 +966,7 @@ export function AuthProvider({
         logout,
 
         updateProfile,
+
         changePassword,
       }),
       [

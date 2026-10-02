@@ -4,6 +4,7 @@ import {
   getMe,
   login,
   register,
+  updateStudentDetails,
 } from "../controllers/auth.controller";
 
 import {
@@ -12,10 +13,26 @@ import {
 
 const router = Router();
 
-router.post("/register", register);
+router.post(
+  "/register",
+  register
+);
 
-router.post("/login", login);
+router.post(
+  "/login",
+  login
+);
 
-router.get("/me", requireAuth, getMe);
+router.get(
+  "/me",
+  requireAuth,
+  getMe
+);
+
+router.patch(
+  "/student-details",
+  requireAuth,
+  updateStudentDetails
+);
 
 export default router;

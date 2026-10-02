@@ -14,6 +14,80 @@ enum UserRole {
   vendor
 }
 
+enum AdminRole {
+  super_admin
+  verification_officer
+  university_manager
+  marketplace_moderator
+  customer_support
+  disputes
+  finance
+  technical_admin
+}
+
+enum StudentVerificationStatus {
+  not_started
+  pending
+  verified
+  failed
+}
+
+enum StudentVerificationSource {
+  none
+  university_database
+  university_api
+  manual_document_review
+  university_manual_confirmation
+}
+
+enum VendorVerificationStatus {
+  not_started
+  pending
+  verified
+  rejected
+}
+
+enum VendorAccessStatus {
+  active
+  pending_review
+  restricted
+  suspended
+}
+
+enum UniversityVerificationMethod {
+  none
+  manual
+  database
+  api
+}
+
+enum VerificationAppealStatus {
+  draft
+  pending
+  under_review
+  more_information_required
+  approved
+  rejected
+  cancelled
+}
+
+enum VerificationAppealReason {
+  record_not_found
+  university_system_unavailable
+  recent_admission_or_transfer
+  integration_error
+  university_not_supported
+  other
+}
+
+enum VerificationEvidenceType {
+  student_id
+  student_portal
+  institutional_email
+  admission_record
+  other
+}
+
 enum OrderStatus {
   pending
   confirmed
@@ -27,6 +101,40 @@ enum PaymentStatus {
   refunded
 }
 
+model University {
+  id String @id @default(uuid())
+
+  name      String
+  shortName String
+  slug      String @unique
+
+  country String @default("Nigeria")
+  state   String
+  city    String
+
+  logoUrl String?
+
+  active Boolean @default(true)
+
+  studentVerificationEnabled Boolean @default(false)
+
+  verificationMethod UniversityVerificationMethod @default(none)
+
+  matricValidationEnabled Boolean @default(false)
+  matricPattern           String?
+  matricFormatHint        String?
+
+  users               User[]
+  verificationAppeals VerificationAppeal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@index([state])
+  @@index([city])
+}
+
 model User {
   id           String   @id @default(uuid())
   name         String
@@ -34,9 +142,28 @@ model User {
   passwordHash String
   role         UserRole @default(client)
 
+  phone String?
+  bio   String?
+
+  // Temporary legacy compatibility field.
   campus String?
-  phone  String?
-  bio    String?
+
+  universityId String?
+  university   University? @relation(fields: [universityId], references: [id], onDelete: SetNull)
+
+  // Stored in normalized/canonical form.
+  matricNumber String?
+
+  studentVerificationStatus StudentVerificationStatus @default(not_started)
+
+  studentVerificationSource StudentVerificationSource @default(none)
+
+  studentVerifiedAt DateTime?
+
+  // Used when the university is not currently listed.
+  fallbackUniversityName String?
+  fallbackState          String?
+  fallbackCity           String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -45,8 +172,48 @@ model User {
 
   vendorProfile VendorProfile?
 
+  verificationAppeals VerificationAppeal[]
+
   buyerOrders      Order[]     @relation("BuyerOrders")
   vendorOrderItems OrderItem[] @relation("VendorOrderItems")
+
+  @@unique([universityId, matricNumber])
+  @@index([universityId])
+  @@index([fallbackState])
+  @@index([studentVerificationStatus])
+  @@index([studentVerificationSource])
+}
+
+model Admin {
+  id String @id @default(uuid())
+
+  name String
+
+  email String @unique
+
+  passwordHash String
+
+  role AdminRole
+
+  active Boolean @default(true)
+
+  /**
+   * Super Admin can eventually create
+   * other Admin accounts.
+   */
+  createdByAdminId String?
+
+  createdByAdmin Admin?  @relation("AdminCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  createdAdmins  Admin[] @relation("AdminCreatedBy")
+
+  reviewedVerificationAppeals VerificationAppeal[] @relation("VerificationAppealReviewer")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([active])
+  @@index([createdByAdminId])
 }
 
 model VendorProfile {
@@ -59,10 +226,97 @@ model VendorProfile {
   businessDescription String
   pickupLocation      String
 
+  // Temporary legacy compatibility field.
   verified Boolean @default(false)
+
+  accessStatus VendorAccessStatus @default(active)
+
+  vendorVerificationStatus VendorVerificationStatus @default(not_started)
+
+  verificationSubmittedAt DateTime?
+  vendorVerifiedAt        DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([accessStatus])
+  @@index([vendorVerificationStatus])
+}
+
+model VerificationAppeal {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  universityId String?
+  university   University? @relation(fields: [universityId], references: [id], onDelete: SetNull)
+
+  reason VerificationAppealReason
+
+  explanation String?
+
+  status VerificationAppealStatus @default(draft)
+
+  /**
+   * Snapshot of the identity details
+   * being appealed.
+   */
+  submittedName           String
+  submittedMatricNumber   String?
+  submittedUniversityName String
+  submittedState          String?
+  submittedCity           String?
+
+  decisionReason String?
+
+  /**
+   * The administrator who handled
+   * the manual verification review.
+   */
+  reviewedByAdminId String?
+
+  reviewedByAdmin Admin? @relation("VerificationAppealReviewer", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime  @default(now())
+  submittedAt DateTime?
+
+  reviewedAt DateTime?
+
+  updatedAt DateTime @updatedAt
+
+  evidence VerificationAppealEvidence[]
+
+  @@index([userId])
+  @@index([universityId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([submittedAt])
+  @@index([reviewedByAdminId])
+}
+
+model VerificationAppealEvidence {
+  id String @id @default(uuid())
+
+  appealId String
+  appeal   VerificationAppeal @relation(fields: [appealId], references: [id], onDelete: Cascade)
+
+  type VerificationEvidenceType
+
+  /**
+   * Private storage reference.
+   * Never expose directly to normal clients.
+   */
+  storageKey String
+
+  originalFileName String?
+  mimeType         String?
+  fileSizeBytes    Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([appealId])
+  @@index([type])
 }
 
 model Product {

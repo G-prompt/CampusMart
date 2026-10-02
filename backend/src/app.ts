@@ -1,14 +1,30 @@
 import express from "express";
 import cors from "cors";
 
-import { prisma } from "./lib/prisma";
+import "./lib/supabaseAdmin";
+
+import {
+  prisma,
+} from "./lib/prisma";
 
 import authRoutes from "./routes/auth.routes";
 import productRoutes from "./routes/product.routes";
 import orderRoutes from "./routes/order.routes";
+import universityRoutes from "./routes/university.routes";
+import verificationRoutes from "./routes/verification.routes";
+import vendorRoutes from "./routes/vendor.routes";
+
+import adminAuthRoutes from "./routes/adminAuth.routes";
+import adminVerificationRoutes from "./routes/adminVerification.routes";
 
 const app =
   express();
+
+/*
+ * --------------------------------------------------
+ * Global middleware
+ * --------------------------------------------------
+ */
 
 app.use(
   cors({
@@ -18,12 +34,32 @@ app.use(
     ],
 
     credentials: true,
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+    ],
   })
 );
 
 app.use(
   express.json()
 );
+
+/*
+ * --------------------------------------------------
+ * Customer API
+ * --------------------------------------------------
+ */
 
 app.use(
   "/api/auth",
@@ -40,6 +76,43 @@ app.use(
   orderRoutes
 );
 
+app.use(
+  "/api/universities",
+  universityRoutes
+);
+
+app.use(
+  "/api/verification",
+  verificationRoutes
+);
+
+app.use(
+  "/api/vendor",
+  vendorRoutes
+);
+
+/*
+ * --------------------------------------------------
+ * Admin API
+ * --------------------------------------------------
+ */
+
+app.use(
+  "/api/admin/auth",
+  adminAuthRoutes
+);
+
+app.use(
+  "/api/admin/verification",
+  adminVerificationRoutes
+);
+
+/*
+ * --------------------------------------------------
+ * Backend status
+ * --------------------------------------------------
+ */
+
 app.get(
   "/",
   (
@@ -48,11 +121,18 @@ app.get(
   ) => {
     res.json({
       success: true,
+
       message:
         "CampusMart backend is running",
     });
   }
 );
+
+/*
+ * --------------------------------------------------
+ * Health checks
+ * --------------------------------------------------
+ */
 
 app.get(
   "/api/health",
@@ -62,6 +142,7 @@ app.get(
   ) => {
     res.json({
       success: true,
+
       status:
         "healthy",
     });
@@ -79,14 +160,22 @@ app.get(
         userCount,
         productCount,
         orderCount,
+        universityCount,
+        adminCount,
       ] =
         await Promise.all([
           prisma.user.count(),
+
           prisma.product.count(),
+
           prisma.order.count(),
+
+          prisma.university.count(),
+
+          prisma.admin.count(),
         ]);
 
-      res.json({
+      return res.json({
         success: true,
 
         status:
@@ -100,6 +189,12 @@ app.get(
 
         orders:
           orderCount,
+
+        universities:
+          universityCount,
+
+        admins:
+          adminCount,
       });
     } catch (error) {
       console.error(
@@ -107,7 +202,7 @@ app.get(
         error
       );
 
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
 
         status:
