@@ -3,15 +3,21 @@
 import Link from "next/link";
 
 import {
+  FormEvent,
   useEffect,
   useState,
 } from "react";
 
 import {
   useParams,
+  useRouter,
 } from "next/navigation";
 
 import PageShell from "@/components/common/PageShell";
+
+import {
+  useAuth,
+} from "@/components/common/AuthContext";
 
 import {
   formatNaira,
@@ -20,6 +26,9 @@ import {
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000";
+
+const MESSAGE_MAX_LENGTH =
+  2000;
 
 type StorefrontUniversity = {
   id:
@@ -120,12 +129,28 @@ type StorefrontResponse = {
     string;
 };
 
+type ExistingConversation = {
+  id:
+    string;
+
+  contextType:
+    | "general"
+    | "listing"
+    | "order";
+
+  otherParty: {
+    id: string;
+  };
+};
+
 function formatMemberSince(
   value:
     string
 ) {
   const date =
-    new Date(value);
+    new Date(
+      value
+    );
 
   if (
     Number.isNaN(
@@ -154,7 +179,9 @@ function sellerInitials(
   const parts =
     value
       .trim()
-      .split(/\s+/)
+      .split(
+        /\s+/
+      )
       .filter(
         Boolean
       );
@@ -185,6 +212,15 @@ function sellerInitials(
 export default function Page() {
   const params =
     useParams();
+
+  const router =
+    useRouter();
+
+  const {
+    user,
+    openAuth,
+  } =
+    useAuth();
 
   const vendorId =
     typeof params.vendorId ===
@@ -226,6 +262,52 @@ export default function Page() {
   ] =
     useState(
       ""
+    );
+
+  /*
+   * =====================================================
+   * MESSAGING
+   * =====================================================
+   */
+
+  const [
+    messageComposerOpen,
+    setMessageComposerOpen,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    messageDraft,
+    setMessageDraft,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    messageError,
+    setMessageError,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    openingMessages,
+    setOpeningMessages,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    sendingMessage,
+    setSendingMessage,
+  ] =
+    useState(
+      false
     );
 
   /*
@@ -357,6 +439,379 @@ export default function Page() {
 
   /*
    * =====================================================
+   * OPEN EXISTING GENERAL CONVERSATION
+   * =====================================================
+   */
+
+  const handleMessageSeller =
+    async () => {
+      if (
+        !user
+      ) {
+        openAuth(
+          "login",
+          "client"
+        );
+
+        return;
+      }
+
+      if (
+        !storefront
+      ) {
+        return;
+      }
+
+      if (
+        user.id ===
+        storefront.sellerId
+      ) {
+        setMessageError(
+          "You cannot message your own storefront."
+        );
+
+        return;
+      }
+
+      const token =
+        localStorage.getItem(
+          "campusmart-token"
+        );
+
+      if (
+        !token
+      ) {
+        setMessageError(
+          "Your session is unavailable. Sign in again to message this seller."
+        );
+
+        return;
+      }
+
+      try {
+        setOpeningMessages(
+          true
+        );
+
+        setMessageError(
+          ""
+        );
+
+        /*
+         * Look for the existing canonical GENERAL thread.
+         *
+         * Clicking Message seller does not create an empty
+         * conversation.
+         */
+
+        const response =
+          await fetch(
+            `${API_URL}/api/messages/conversations`,
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+
+              cache:
+                "no-store",
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          throw new Error(
+            data.message ||
+              "Unable to open messaging."
+          );
+        }
+
+        const conversations:
+          ExistingConversation[] =
+          Array.isArray(
+            data.conversations
+          )
+            ? data.conversations
+            : [];
+
+        const existingConversation =
+          conversations.find(
+            (
+              conversation
+            ) =>
+              conversation.contextType ===
+                "general" &&
+              conversation.otherParty
+                ?.id ===
+                storefront.sellerId
+          );
+
+        if (
+          existingConversation
+        ) {
+          router.push(
+            `/messages/${existingConversation.id}`
+          );
+
+          return;
+        }
+
+        /*
+         * No thread yet.
+         *
+         * Ask for the first real message before creating
+         * the conversation.
+         */
+
+        setMessageComposerOpen(
+          true
+        );
+      } catch (
+        messagingError
+      ) {
+        console.error(
+          "Open storefront messaging error:",
+          messagingError
+        );
+
+        setMessageError(
+          messagingError instanceof
+            Error
+            ? messagingError.message
+            : "Unable to open messaging."
+        );
+      } finally {
+        setOpeningMessages(
+          false
+        );
+      }
+    };
+
+  /*
+   * =====================================================
+   * START GENERAL SELLER CONVERSATION
+   * =====================================================
+   */
+
+  const startSellerConversation =
+    async (
+      event:
+        FormEvent<HTMLFormElement>
+    ) => {
+      event.preventDefault();
+
+      if (
+        !user ||
+        !storefront ||
+        sendingMessage
+      ) {
+        return;
+      }
+
+      if (
+        user.id ===
+        storefront.sellerId
+      ) {
+        setMessageError(
+          "You cannot message your own storefront."
+        );
+
+        return;
+      }
+
+      const body =
+        messageDraft.trim();
+
+      if (
+        !body
+      ) {
+        setMessageError(
+          "Write a message to the seller first."
+        );
+
+        return;
+      }
+
+      if (
+        body.length >
+        MESSAGE_MAX_LENGTH
+      ) {
+        setMessageError(
+          `Messages can be up to ${MESSAGE_MAX_LENGTH} characters.`
+        );
+
+        return;
+      }
+
+      const token =
+        localStorage.getItem(
+          "campusmart-token"
+        );
+
+      if (
+        !token
+      ) {
+        setMessageError(
+          "Your session is unavailable. Sign in again to message this seller."
+        );
+
+        return;
+      }
+
+      try {
+        setSendingMessage(
+          true
+        );
+
+        setMessageError(
+          ""
+        );
+
+        const response =
+          await fetch(
+            `${API_URL}/api/messages/conversations`,
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+
+                Authorization:
+                  `Bearer ${token}`,
+              },
+
+              body:
+                JSON.stringify({
+                  contextType:
+                    "general",
+
+                  vendorId:
+                    storefront.sellerId,
+
+                  body,
+                }),
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          if (
+            data.code ===
+            "MESSAGING_TEMPORARILY_RESTRICTED"
+          ) {
+            throw new Error(
+              data.message ||
+                "Messaging is temporarily restricted. You can still read your existing conversations."
+            );
+          }
+
+          if (
+            data.code ===
+              "OFF_PLATFORM_ATTEMPT_BLOCKED" ||
+            data.moderation
+              ?.action ===
+              "blocked"
+          ) {
+            throw new Error(
+              data.message ||
+                "That message was not sent because it appears to move the conversation off CampusMart."
+            );
+          }
+
+          throw new Error(
+            data.message ||
+              "Unable to send your message."
+          );
+        }
+
+        const conversationId =
+          data.conversation
+            ?.id;
+
+        if (
+          !conversationId
+        ) {
+          throw new Error(
+            "The conversation was created, but CampusMart could not open it."
+          );
+        }
+
+        if (
+          data.moderation
+            ?.action ===
+          "redacted"
+        ) {
+          window.dispatchEvent(
+            new CustomEvent(
+              "campusmart-toast",
+              {
+                detail: {
+                  message:
+                    "Message sent. Contact details were hidden to keep the conversation on CampusMart.",
+                },
+              }
+            )
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent(
+              "campusmart-toast",
+              {
+                detail: {
+                  message:
+                    "Message sent",
+                },
+              }
+            )
+          );
+        }
+
+        setMessageDraft(
+          ""
+        );
+
+        setMessageComposerOpen(
+          false
+        );
+
+        router.push(
+          `/messages/${conversationId}`
+        );
+      } catch (
+        messagingError
+      ) {
+        console.error(
+          "Start storefront conversation error:",
+          messagingError
+        );
+
+        setMessageError(
+          messagingError instanceof
+            Error
+            ? messagingError.message
+            : "Unable to send your message."
+        );
+      } finally {
+        setSendingMessage(
+          false
+        );
+      }
+    };
+
+  /*
+   * =====================================================
    * LOADING
    * =====================================================
    */
@@ -411,8 +866,8 @@ export default function Page() {
         description="Browse trusted sellers on CampusMart."
       >
         <div className="site-card mx-auto max-w-xl p-8 text-center sm:p-10">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-2xl">
-            🏪
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-sm font-black text-slate-700">
+            CM
           </div>
 
           <h1 className="mt-5 text-2xl font-bold text-slate-950">
@@ -436,6 +891,12 @@ export default function Page() {
       </PageShell>
     );
   }
+
+  /*
+   * =====================================================
+   * PAGE DATA
+   * =====================================================
+   */
 
   const university =
     storefront.university;
@@ -470,6 +931,13 @@ export default function Page() {
       storefront.businessName
     );
 
+  const ownStorefront =
+    Boolean(
+      user &&
+      user.id ===
+        storefront.sellerId
+    );
+
   return (
     <PageShell
       title={
@@ -485,73 +953,107 @@ export default function Page() {
 
       <section className="site-card overflow-hidden">
         <div className="bg-slate-950 px-5 py-8 sm:px-8 sm:py-10">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-            <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-3xl border border-white/10 bg-white text-2xl font-black text-slate-950 shadow-xl">
-              {
-                initials
-              }
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-col gap-6 sm:flex-row sm:items-center">
+              <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-3xl border border-white/10 bg-white text-2xl font-black text-slate-950 shadow-xl">
+                {
+                  initials
+                }
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
+                    {
+                      storefront.businessName
+                    }
+                  </h1>
+
+                  {storefront.badges
+                    .vendorVerified ? (
+                    <span className="rounded-full border border-blue-400/30 bg-blue-400/10 px-3 py-1 text-xs font-bold text-blue-200">
+                      Verified vendor
+                    </span>
+                  ) : null}
+
+                  {storefront.badges
+                    .studentVerified ? (
+                    <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-200">
+                      Verified student
+                    </span>
+                  ) : null}
+                </div>
+
+                <p className="mt-2 text-sm text-slate-300">
+                  Run by{" "}
+                  <span className="font-semibold text-white">
+                    {
+                      storefront.ownerName
+                    }
+                  </span>
+                </p>
+
+                <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-slate-300">
+                  {universityLabel ? (
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                      University:{" "}
+                      {
+                        universityLabel
+                      }
+                    </span>
+                  ) : null}
+
+                  {locationLabel ? (
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                      {
+                        locationLabel
+                      }
+                    </span>
+                  ) : null}
+
+                  {memberSince ? (
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                      Member since{" "}
+                      {
+                        memberSince
+                      }
+                    </span>
+                  ) : null}
+                </div>
+              </div>
             </div>
 
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">
-                  {
-                    storefront.businessName
-                  }
-                </h1>
+            {/*
+             * =============================================
+             * MESSAGE SELLER
+             * =============================================
+             */}
 
-                {storefront.badges
-                  .vendorVerified ? (
-                  <span className="rounded-full border border-blue-400/30 bg-blue-400/10 px-3 py-1 text-xs font-bold text-blue-200">
-                    Verified vendor
-                  </span>
-                ) : null}
+            <div className="shrink-0">
+              <button
+                type="button"
+                disabled={
+                  openingMessages ||
+                  ownStorefront
+                }
+                onClick={() =>
+                  void handleMessageSeller()
+                }
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-[10px] bg-accent-400 px-6 py-3 text-sm font-black text-black transition hover:bg-accent-500 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-400 sm:w-auto"
+              >
+                {ownStorefront
+                  ? "Your storefront"
+                  : openingMessages
+                    ? "Opening messages..."
+                    : "Message seller"}
+              </button>
 
-                {storefront.badges
-                  .studentVerified ? (
-                  <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-200">
-                    Verified student
-                  </span>
-                ) : null}
-              </div>
-
-              <p className="mt-2 text-sm text-slate-300">
-                Run by{" "}
-                <span className="font-semibold text-white">
-                  {
-                    storefront.ownerName
-                  }
-                </span>
-              </p>
-
-              <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-slate-300">
-                {universityLabel ? (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                    🎓{" "}
-                    {
-                      universityLabel
-                    }
-                  </span>
-                ) : null}
-
-                {locationLabel ? (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                    📍{" "}
-                    {
-                      locationLabel
-                    }
-                  </span>
-                ) : null}
-
-                {memberSince ? (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                    Member since{" "}
-                    {
-                      memberSince
-                    }
-                  </span>
-                ) : null}
-              </div>
+              {!ownStorefront ? (
+                <p className="mt-2 max-w-52 text-xs leading-5 text-slate-400">
+                  Ask a general question
+                  about this shop.
+                </p>
+              ) : null}
             </div>
           </div>
         </div>
@@ -601,6 +1103,174 @@ export default function Page() {
           </div>
         </div>
       </section>
+
+      {/*
+       * =================================================
+       * GENERAL MESSAGE COMPOSER
+       * =================================================
+       */}
+
+      {messageComposerOpen &&
+      !ownStorefront ? (
+        <section className="site-card mt-5 p-5 sm:p-6">
+          <form
+            onSubmit={
+              startSellerConversation
+            }
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+                  New conversation
+                </p>
+
+                <h2 className="mt-2 text-xl font-black text-slate-950">
+                  Message{" "}
+                  {
+                    storefront.businessName
+                  }
+                </h2>
+
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                  Ask about the shop,
+                  availability, products
+                  or campus pickup. For a
+                  question about one
+                  specific product, you
+                  can also message from
+                  that listing.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={
+                  sendingMessage
+                }
+                onClick={() => {
+                  setMessageComposerOpen(
+                    false
+                  );
+
+                  setMessageError(
+                    ""
+                  );
+                }}
+                aria-label="Close message composer"
+                className="shrink-0 rounded-full px-2 py-1 text-lg font-bold text-slate-400 transition hover:bg-slate-100 hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                ×
+              </button>
+            </div>
+
+            <textarea
+              value={
+                messageDraft
+              }
+              onChange={(
+                event
+              ) => {
+                setMessageDraft(
+                  event.target.value
+                );
+
+                if (
+                  messageError
+                ) {
+                  setMessageError(
+                    ""
+                  );
+                }
+              }}
+              rows={
+                4
+              }
+              maxLength={
+                MESSAGE_MAX_LENGTH
+              }
+              disabled={
+                sendingMessage
+              }
+              placeholder={`Hi, I have a question about ${storefront.businessName}...`}
+              className="mt-5 w-full resize-y rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] text-slate-400">
+                {
+                  messageDraft.length
+                }
+                /
+                {
+                  MESSAGE_MAX_LENGTH
+                }
+              </p>
+
+              <p className="text-[11px] text-slate-400">
+                Contact details may be
+                hidden by CampusMart.
+              </p>
+            </div>
+
+            {messageError ? (
+              <div
+                role="alert"
+                className="mt-4 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold leading-5 text-red-700"
+              >
+                {
+                  messageError
+                }
+              </div>
+            ) : null}
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="submit"
+                disabled={
+                  sendingMessage ||
+                  !messageDraft.trim()
+                }
+                className="inline-flex items-center justify-center rounded-[10px] bg-slate-950 px-6 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {sendingMessage
+                  ? "Sending..."
+                  : "Send message"}
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  sendingMessage
+                }
+                onClick={() => {
+                  setMessageComposerOpen(
+                    false
+                  );
+
+                  setMessageError(
+                    ""
+                  );
+                }}
+                className="inline-flex items-center justify-center rounded-[10px] border border-slate-200 bg-white px-6 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
+      {messageError &&
+      !messageComposerOpen ? (
+        <div
+          role="alert"
+          className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
+        >
+          {
+            messageError
+          }
+        </div>
+      ) : null}
 
       {/*
        * =================================================

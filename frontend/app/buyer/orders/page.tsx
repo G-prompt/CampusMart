@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  FormEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -8,6 +9,10 @@ import {
 } from "react";
 
 import Link from "next/link";
+
+import {
+  useRouter,
+} from "next/navigation";
 
 import PageShell from "@/components/common/PageShell";
 
@@ -18,6 +23,9 @@ import {
 import {
   formatNaira,
 } from "@/lib/products";
+
+const MESSAGE_MAX_LENGTH =
+  2000;
 
 type OrderStatus =
   | "pending"
@@ -213,6 +221,26 @@ type FulfillmentLoadState = {
 
   portions:
     FulfillmentPortion[];
+};
+
+type ExistingConversation = {
+  id:
+    string;
+
+  contextType:
+    | "general"
+    | "listing"
+    | "order";
+
+  order:
+    | {
+        id: string;
+      }
+    | null;
+
+  otherParty: {
+    id: string;
+  };
 };
 
 function formatDate(
@@ -521,6 +549,9 @@ function StatusBadge({
 }
 
 export default function Page() {
+  const router =
+    useRouter();
+
   const {
     user,
     openAuth,
@@ -583,20 +614,81 @@ export default function Page() {
       >
     >({});
 
+  /*
+   * =====================================================
+   * ORDER MESSAGING
+   * =====================================================
+   */
+
+  const [
+    messageComposerKey,
+    setMessageComposerKey,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    );
+
+  const [
+    messageDrafts,
+    setMessageDrafts,
+  ] =
+    useState<
+      Record<
+        string,
+        string
+      >
+    >({});
+
+  const [
+    messageErrors,
+    setMessageErrors,
+  ] =
+    useState<
+      Record<
+        string,
+        string
+      >
+    >({});
+
+  const [
+    openingMessageKey,
+    setOpeningMessageKey,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    );
+
+  const [
+    sendingMessageKey,
+    setSendingMessageKey,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    );
+
   const apiUrl =
     process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:5000";
+
+  function getMessageKey(
+    orderId:
+      string,
+    vendorId:
+      string
+  ) {
+    return `${orderId}:${vendorId}`;
+  }
 
   /*
    * =====================================================
    * LOAD FULFILMENT CODES
    * =====================================================
-   *
-   * Codes are fetched separately from normal order
-   * history.
-   *
-   * This prevents secret fulfilment data from being
-   * included in ordinary order-list responses.
    */
 
   const loadFulfillmentCodes =
@@ -643,14 +735,6 @@ export default function Page() {
 
           return;
         }
-
-        /*
-         * Clear any previously displayed code before
-         * refreshing.
-         *
-         * We never want a stale code to remain visible if
-         * the order was completed in another session.
-         */
 
         setFulfillmentByOrder(
           (
@@ -939,7 +1023,7 @@ export default function Page() {
 
   /*
    * =====================================================
-   * LOAD CODES FOR INITIALLY EXPANDED ORDERS
+   * LOAD CODES FOR EXPANDED ORDERS
    * =====================================================
    */
 
@@ -982,12 +1066,6 @@ export default function Page() {
    * =====================================================
    * TOGGLE ORDER
    * =====================================================
-   *
-   * Reopening an order refreshes its secure fulfilment
-   * state.
-   *
-   * This matters if the seller confirmed/completed the
-   * order while this buyer page was already open.
    */
 
   const toggleOrder =
@@ -1068,6 +1146,451 @@ export default function Page() {
             )
         )
       );
+    };
+
+  /*
+   * =====================================================
+   * OPEN ORDER CONVERSATION
+   * =====================================================
+   */
+
+  const handleMessageSeller =
+    async (
+      order:
+        BuyerOrder,
+      group:
+        VendorOrderGroup
+    ) => {
+      if (
+        !user
+      ) {
+        openAuth(
+          "login",
+          "client"
+        );
+
+        return;
+      }
+
+      const key =
+        getMessageKey(
+          order.id,
+          group.vendorId
+        );
+
+      const token =
+        window.localStorage.getItem(
+          "campusmart-token"
+        );
+
+      if (
+        !token
+      ) {
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [key]:
+              "Your session is unavailable. Sign in again to message this seller.",
+          })
+        );
+
+        return;
+      }
+
+      try {
+        setOpeningMessageKey(
+          key
+        );
+
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [key]:
+              "",
+          })
+        );
+
+        /*
+         * Search for this exact canonical order thread:
+         *
+         * order + seller.
+         *
+         * This is important for multi-vendor orders.
+         */
+
+        const response =
+          await fetch(
+            `${apiUrl}/api/messages/conversations`,
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+
+              cache:
+                "no-store",
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          throw new Error(
+            data.message ||
+              "Unable to open messaging."
+          );
+        }
+
+        const conversations:
+          ExistingConversation[] =
+          Array.isArray(
+            data.conversations
+          )
+            ? data.conversations
+            : [];
+
+        const existingConversation =
+          conversations.find(
+            (
+              conversation
+            ) =>
+              conversation.contextType ===
+                "order" &&
+              conversation.order
+                ?.id ===
+                order.id &&
+              conversation.otherParty
+                ?.id ===
+                group.vendorId
+          );
+
+        if (
+          existingConversation
+        ) {
+          router.push(
+            `/messages/${existingConversation.id}`
+          );
+
+          return;
+        }
+
+        /*
+         * No thread exists yet.
+         *
+         * Opening the composer alone must not create an
+         * empty Conversation record.
+         */
+
+        setMessageComposerKey(
+          key
+        );
+      } catch (
+        messagingError
+      ) {
+        console.error(
+          "Open order conversation error:",
+          messagingError
+        );
+
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [key]:
+              messagingError instanceof
+                Error
+                ? messagingError.message
+                : "Unable to open messaging.",
+          })
+        );
+      } finally {
+        setOpeningMessageKey(
+          null
+        );
+      }
+    };
+
+  /*
+   * =====================================================
+   * START ORDER CONVERSATION
+   * =====================================================
+   */
+
+  const startOrderConversation =
+    async (
+      event:
+        FormEvent<HTMLFormElement>,
+      order:
+        BuyerOrder,
+      group:
+        VendorOrderGroup
+    ) => {
+      event.preventDefault();
+
+      if (
+        !user
+      ) {
+        return;
+      }
+
+      const key =
+        getMessageKey(
+          order.id,
+          group.vendorId
+        );
+
+      if (
+        sendingMessageKey
+      ) {
+        return;
+      }
+
+      const body =
+        (
+          messageDrafts[
+            key
+          ] ??
+          ""
+        ).trim();
+
+      if (
+        !body
+      ) {
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [key]:
+              "Write a message to the seller first.",
+          })
+        );
+
+        return;
+      }
+
+      if (
+        body.length >
+        MESSAGE_MAX_LENGTH
+      ) {
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [key]:
+              `Messages can be up to ${MESSAGE_MAX_LENGTH} characters.`,
+          })
+        );
+
+        return;
+      }
+
+      const token =
+        window.localStorage.getItem(
+          "campusmart-token"
+        );
+
+      if (
+        !token
+      ) {
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [key]:
+              "Your session is unavailable. Sign in again to message this seller.",
+          })
+        );
+
+        return;
+      }
+
+      try {
+        setSendingMessageKey(
+          key
+        );
+
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [key]:
+              "",
+          })
+        );
+
+        const response =
+          await fetch(
+            `${apiUrl}/api/messages/conversations`,
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+
+                Authorization:
+                  `Bearer ${token}`,
+              },
+
+              body:
+                JSON.stringify({
+                  contextType:
+                    "order",
+
+                  orderId:
+                    order.id,
+
+                  vendorId:
+                    group.vendorId,
+
+                  body,
+                }),
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          if (
+            data.code ===
+            "MESSAGING_TEMPORARILY_RESTRICTED"
+          ) {
+            throw new Error(
+              data.message ||
+                "Messaging is temporarily restricted. You can still read your existing conversations."
+            );
+          }
+
+          if (
+            data.code ===
+              "OFF_PLATFORM_ATTEMPT_BLOCKED" ||
+            data.moderation
+              ?.action ===
+              "blocked"
+          ) {
+            throw new Error(
+              data.message ||
+                "That message was not sent because it appears to move the conversation off CampusMart."
+            );
+          }
+
+          throw new Error(
+            data.message ||
+              "Unable to send your message."
+          );
+        }
+
+        const conversationId =
+          data.conversation
+            ?.id;
+
+        if (
+          !conversationId
+        ) {
+          throw new Error(
+            "The conversation was created, but CampusMart could not open it."
+          );
+        }
+
+        if (
+          data.moderation
+            ?.action ===
+          "redacted"
+        ) {
+          window.dispatchEvent(
+            new CustomEvent(
+              "campusmart-toast",
+              {
+                detail: {
+                  message:
+                    "Message sent. Contact details were hidden to keep the conversation on CampusMart.",
+                },
+              }
+            )
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent(
+              "campusmart-toast",
+              {
+                detail: {
+                  message:
+                    "Message sent",
+                },
+              }
+            )
+          );
+        }
+
+        setMessageDrafts(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [key]:
+              "",
+          })
+        );
+
+        setMessageComposerKey(
+          null
+        );
+
+        router.push(
+          `/messages/${conversationId}`
+        );
+      } catch (
+        messagingError
+      ) {
+        console.error(
+          "Start order conversation error:",
+          messagingError
+        );
+
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [key]:
+              messagingError instanceof
+                Error
+                ? messagingError.message
+                : "Unable to send your message.",
+          })
+        );
+      } finally {
+        setSendingMessageKey(
+          null
+        );
+      }
     };
 
   /*
@@ -1224,12 +1747,6 @@ export default function Page() {
       title="Your orders"
       description="Track purchases, sellers and fulfilment status."
     >
-      {/*
-       * =================================================
-       * HEADER
-       * =================================================
-       */}
-
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-sm text-slate-600">
           Signed in as{" "}
@@ -1256,12 +1773,6 @@ export default function Page() {
         </button>
       </div>
 
-      {/*
-       * =================================================
-       * ERROR
-       * =================================================
-       */}
-
       {error ? (
         <div
           role="alert"
@@ -1272,12 +1783,6 @@ export default function Page() {
           }
         </div>
       ) : null}
-
-      {/*
-       * =================================================
-       * EMPTY STATE
-       * =================================================
-       */}
 
       {orders.length ===
       0 ? (
@@ -1307,12 +1812,6 @@ export default function Page() {
         </section>
       ) : (
         <>
-          {/*
-           * ===============================================
-           * SUMMARY
-           * ===============================================
-           */}
-
           <section className="mt-6 grid gap-3 sm:grid-cols-3">
             <div className="site-card p-5">
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
@@ -1365,12 +1864,6 @@ export default function Page() {
             </div>
           </section>
 
-          {/*
-           * ===============================================
-           * ORDER LIST
-           * ===============================================
-           */}
-
           <section className="mt-8 space-y-5">
             {orders.map(
               (
@@ -1400,12 +1893,6 @@ export default function Page() {
                     }
                     className="site-card overflow-hidden"
                   >
-                    {/*
-                     * =====================================
-                     * ORDER HEADER
-                     * =====================================
-                     */}
-
                     <button
                       type="button"
                       onClick={() =>
@@ -1483,20 +1970,8 @@ export default function Page() {
                       </div>
                     </button>
 
-                    {/*
-                     * =====================================
-                     * EXPANDED ORDER
-                     * =====================================
-                     */}
-
                     {expanded ? (
                       <div className="border-t border-slate-200">
-                        {/*
-                         * =================================
-                         * ORDER DETAILS
-                         * =================================
-                         */}
-
                         <div className="grid gap-3 bg-slate-50 p-5 sm:grid-cols-2 lg:grid-cols-4">
                           <div>
                             <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
@@ -1545,12 +2020,6 @@ export default function Page() {
                           </div>
                         </div>
 
-                        {/*
-                         * =================================
-                         * SELLER PORTIONS
-                         * =================================
-                         */}
-
                         <div className="space-y-5 p-5">
                           {vendorGroups.map(
                             (
@@ -1572,6 +2041,36 @@ export default function Page() {
                                   ?.status ??
                                 group.status;
 
+                              const messageKey =
+                                getMessageKey(
+                                  order.id,
+                                  group.vendorId
+                                );
+
+                              const messageComposerOpen =
+                                messageComposerKey ===
+                                messageKey;
+
+                              const messageDraft =
+                                messageDrafts[
+                                  messageKey
+                                ] ??
+                                "";
+
+                              const messageError =
+                                messageErrors[
+                                  messageKey
+                                ] ??
+                                "";
+
+                              const openingMessage =
+                                openingMessageKey ===
+                                messageKey;
+
+                              const sendingMessage =
+                                sendingMessageKey ===
+                                messageKey;
+
                               return (
                                 <section
                                   key={
@@ -1579,13 +2078,7 @@ export default function Page() {
                                   }
                                   className="overflow-hidden rounded-xl border border-slate-200"
                                 >
-                                  {/*
-                                   * =======================
-                                   * SELLER HEADER
-                                   * =======================
-                                   */}
-
-                                  <div className="flex flex-col gap-3 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                                  <div className="flex flex-col gap-4 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
                                       <div className="flex flex-wrap items-center gap-2">
                                         <Link
@@ -1630,24 +2123,227 @@ export default function Page() {
                                       ) : null}
                                     </div>
 
-                                    <div className="sm:text-right">
-                                      <p className="text-xs font-semibold text-slate-500">
-                                        Seller subtotal
-                                      </p>
+                                    <div className="flex shrink-0 flex-col gap-3 sm:items-end">
+                                      <div className="sm:text-right">
+                                        <p className="text-xs font-semibold text-slate-500">
+                                          Seller subtotal
+                                        </p>
 
-                                      <p className="mt-1 font-black text-slate-950">
-                                        {formatNaira(
-                                          group.subtotal
-                                        )}
-                                      </p>
+                                        <p className="mt-1 font-black text-slate-950">
+                                          {formatNaira(
+                                            group.subtotal
+                                          )}
+                                        </p>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          openingMessage ||
+                                          sendingMessage
+                                        }
+                                        onClick={() =>
+                                          void handleMessageSeller(
+                                            order,
+                                            group
+                                          )
+                                        }
+                                        className="inline-flex min-h-10 items-center justify-center rounded-[10px] border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        {openingMessage
+                                          ? "Opening..."
+                                          : "Message seller"}
+                                      </button>
                                     </div>
                                   </div>
 
-                                  {/*
-                                   * =======================
-                                   * SECURE HANDOFF CODE
-                                   * =======================
-                                   */}
+                                  {messageComposerOpen ? (
+                                    <form
+                                      onSubmit={(
+                                        event
+                                      ) =>
+                                        void startOrderConversation(
+                                          event,
+                                          order,
+                                          group
+                                        )
+                                      }
+                                      className="border-t border-slate-200 bg-white p-4"
+                                    >
+                                      <div className="flex items-start justify-between gap-4">
+                                        <div>
+                                          <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                                            Order message
+                                          </p>
+
+                                          <h3 className="mt-1 text-sm font-black text-slate-950">
+                                            Message{" "}
+                                            {
+                                              group.businessName
+                                            }{" "}
+                                            about order #
+                                            {shortOrderId(
+                                              order.id
+                                            )}
+                                          </h3>
+                                        </div>
+
+                                        <button
+                                          type="button"
+                                          disabled={
+                                            sendingMessage
+                                          }
+                                          onClick={() => {
+                                            setMessageComposerKey(
+                                              null
+                                            );
+
+                                            setMessageErrors(
+                                              (
+                                                current
+                                              ) => ({
+                                                ...current,
+
+                                                [messageKey]:
+                                                  "",
+                                              })
+                                            );
+                                          }}
+                                          className="shrink-0 rounded-full px-2 py-1 text-lg font-bold text-slate-400 transition hover:bg-slate-100 hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                                          aria-label="Close message composer"
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+
+                                      <textarea
+                                        value={
+                                          messageDraft
+                                        }
+                                        onChange={(
+                                          event
+                                        ) => {
+                                          setMessageDrafts(
+                                            (
+                                              current
+                                            ) => ({
+                                              ...current,
+
+                                              [messageKey]:
+                                                event.target.value,
+                                            })
+                                          );
+
+                                          if (
+                                            messageError
+                                          ) {
+                                            setMessageErrors(
+                                              (
+                                                current
+                                              ) => ({
+                                                ...current,
+
+                                                [messageKey]:
+                                                  "",
+                                              })
+                                            );
+                                          }
+                                        }}
+                                        rows={
+                                          3
+                                        }
+                                        maxLength={
+                                          MESSAGE_MAX_LENGTH
+                                        }
+                                        disabled={
+                                          sendingMessage
+                                        }
+                                        placeholder="Hi, I have a question about this order..."
+                                        className="mt-4 w-full resize-y rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                      />
+
+                                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-[11px] text-slate-400">
+                                          {
+                                            messageDraft.length
+                                          }
+                                          /
+                                          {
+                                            MESSAGE_MAX_LENGTH
+                                          }
+                                        </p>
+
+                                        <p className="text-[11px] text-slate-400">
+                                          This conversation
+                                          is linked only to
+                                          this seller&apos;s
+                                          portion of the
+                                          order.
+                                        </p>
+                                      </div>
+
+                                      {messageError ? (
+                                        <div
+                                          role="alert"
+                                          className="mt-3 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-semibold leading-5 text-red-700"
+                                        >
+                                          {
+                                            messageError
+                                          }
+                                        </div>
+                                      ) : null}
+
+                                      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                                        <button
+                                          type="submit"
+                                          disabled={
+                                            sendingMessage ||
+                                            !messageDraft.trim()
+                                          }
+                                          className="inline-flex items-center justify-center rounded-[10px] bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                          {sendingMessage
+                                            ? "Sending..."
+                                            : "Send message"}
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          disabled={
+                                            sendingMessage
+                                          }
+                                          onClick={() => {
+                                            setMessageComposerKey(
+                                              null
+                                            );
+
+                                            setMessageErrors(
+                                              (
+                                                current
+                                              ) => ({
+                                                ...current,
+
+                                                [messageKey]:
+                                                  "",
+                                              })
+                                            );
+                                          }}
+                                          className="inline-flex items-center justify-center rounded-[10px] border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </form>
+                                  ) : messageError ? (
+                                    <div
+                                      role="alert"
+                                      className="border-t border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700"
+                                    >
+                                      {
+                                        messageError
+                                      }
+                                    </div>
+                                  ) : null}
 
                                   <div className="border-t border-slate-200 bg-slate-50 p-4">
                                     <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
@@ -1833,12 +2529,6 @@ export default function Page() {
                                     )}
                                   </div>
 
-                                  {/*
-                                   * =======================
-                                   * ITEMS
-                                   * =======================
-                                   */}
-
                                   <div className="divide-y divide-slate-100 border-t border-slate-200">
                                     {group.items.map(
                                       (
@@ -1925,12 +2615,6 @@ export default function Page() {
                             }
                           )}
                         </div>
-
-                        {/*
-                         * =================================
-                         * ORDER TOTAL
-                         * =================================
-                         */}
 
                         <div className="border-t border-slate-200 bg-slate-50 p-5">
                           <div className="ml-auto max-w-sm space-y-2 text-sm">

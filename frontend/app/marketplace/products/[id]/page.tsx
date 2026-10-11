@@ -1,12 +1,17 @@
 "use client";
 
 import {
+    FormEvent,
     useEffect,
     useState,
 } from "react";
 
 import Link from "next/link";
 import Image from "next/image";
+
+import {
+    useRouter,
+} from "next/navigation";
 
 import {
     useCart,
@@ -33,6 +38,9 @@ import {
     getReviews,
     type ProductReview,
 } from "@/lib/reviews";
+
+const MESSAGE_MAX_LENGTH =
+    2000;
 
 type ProductWithVendor =
     Product & {
@@ -85,6 +93,25 @@ type SellerStorefront = {
     listingCount: number;
 };
 
+type ExistingConversation = {
+    id: string;
+
+    contextType:
+        | "general"
+        | "listing"
+        | "order";
+
+    product:
+        | {
+              id: number;
+          }
+        | null;
+
+    otherParty: {
+        id: string;
+    };
+};
+
 export default function ProductPage({
     params,
 }: {
@@ -92,6 +119,9 @@ export default function ProductPage({
         id: string;
     };
 }) {
+    const router =
+        useRouter();
+
     const {
         addToCart,
     } =
@@ -197,6 +227,52 @@ export default function ProductPage({
     ] =
         useState(
             ""
+        );
+
+    /*
+     * =====================================================
+     * MESSAGING
+     * =====================================================
+     */
+
+    const [
+        messageComposerOpen,
+        setMessageComposerOpen,
+    ] =
+        useState(
+            false
+        );
+
+    const [
+        messageDraft,
+        setMessageDraft,
+    ] =
+        useState(
+            ""
+        );
+
+    const [
+        messageError,
+        setMessageError,
+    ] =
+        useState(
+            ""
+        );
+
+    const [
+        openingMessages,
+        setOpeningMessages,
+    ] =
+        useState(
+            false
+        );
+
+    const [
+        sendingMessage,
+        setSendingMessage,
+    ] =
+        useState(
+            false
         );
 
     const apiUrl =
@@ -487,6 +563,388 @@ export default function ProductPage({
 
     /*
      * =====================================================
+     * OPEN / START LISTING CONVERSATION
+     * =====================================================
+     */
+
+    const handleMessageSeller =
+        async () => {
+            if (
+                !user
+            ) {
+                openAuth(
+                    "login",
+                    "client"
+                );
+
+                return;
+            }
+
+            if (
+                !product?.vendorId
+            ) {
+                setMessageError(
+                    "Messaging is not available for this seller."
+                );
+
+                return;
+            }
+
+            if (
+                user.id ===
+                product.vendorId
+            ) {
+                setMessageError(
+                    "You cannot message your own listing."
+                );
+
+                return;
+            }
+
+            const token =
+                localStorage.getItem(
+                    "campusmart-token"
+                );
+
+            if (
+                !token
+            ) {
+                setMessageError(
+                    "Your session is unavailable. Sign in again to message the seller."
+                );
+
+                return;
+            }
+
+            try {
+                setOpeningMessages(
+                    true
+                );
+
+                setMessageError(
+                    ""
+                );
+
+                /*
+                 * Look for an existing canonical listing
+                 * conversation first.
+                 *
+                 * If one exists, open it without creating
+                 * another thread or sending an unwanted
+                 * message.
+                 */
+
+                const response =
+                    await fetch(
+                        `${apiUrl}/api/messages/conversations`,
+                        {
+                            headers: {
+                                Authorization:
+                                    `Bearer ${token}`,
+                            },
+
+                            cache:
+                                "no-store",
+                        }
+                    );
+
+                const data =
+                    await response.json();
+
+                if (
+                    !response.ok ||
+                    !data.success
+                ) {
+                    throw new Error(
+                        data.message ||
+                            "Unable to open messaging."
+                    );
+                }
+
+                const conversations:
+                    ExistingConversation[] =
+                    Array.isArray(
+                        data.conversations
+                    )
+                        ? data.conversations
+                        : [];
+
+                const existingConversation =
+                    conversations.find(
+                        (
+                            conversation
+                        ) =>
+                            conversation.contextType ===
+                                "listing" &&
+                            conversation.product
+                                ?.id ===
+                                product.id &&
+                            conversation.otherParty
+                                ?.id ===
+                                product.vendorId
+                    );
+
+                if (
+                    existingConversation
+                ) {
+                    router.push(
+                        `/messages/${existingConversation.id}`
+                    );
+
+                    return;
+                }
+
+                /*
+                 * No conversation exists yet.
+                 *
+                 * Show the composer. We deliberately do
+                 * not create empty message threads.
+                 */
+
+                setMessageComposerOpen(
+                    true
+                );
+            } catch (
+                messagingError
+            ) {
+                console.error(
+                    "Open seller messaging error:",
+                    messagingError
+                );
+
+                setMessageError(
+                    messagingError instanceof
+                        Error
+                        ? messagingError.message
+                        : "Unable to open messaging."
+                );
+            } finally {
+                setOpeningMessages(
+                    false
+                );
+            }
+        };
+
+    /*
+     * =====================================================
+     * SEND FIRST LISTING MESSAGE
+     * =====================================================
+     */
+
+    const startSellerConversation =
+        async (
+            event:
+                FormEvent<HTMLFormElement>
+        ) => {
+            event.preventDefault();
+
+            if (
+                !user ||
+                !product?.vendorId ||
+                sendingMessage
+            ) {
+                return;
+            }
+
+            if (
+                user.id ===
+                product.vendorId
+            ) {
+                setMessageError(
+                    "You cannot message your own listing."
+                );
+
+                return;
+            }
+
+            const body =
+                messageDraft.trim();
+
+            if (
+                !body
+            ) {
+                setMessageError(
+                    "Write a message to the seller first."
+                );
+
+                return;
+            }
+
+            if (
+                body.length >
+                MESSAGE_MAX_LENGTH
+            ) {
+                setMessageError(
+                    `Messages can be up to ${MESSAGE_MAX_LENGTH} characters.`
+                );
+
+                return;
+            }
+
+            const token =
+                localStorage.getItem(
+                    "campusmart-token"
+                );
+
+            if (
+                !token
+            ) {
+                setMessageError(
+                    "Your session is unavailable. Sign in again to message the seller."
+                );
+
+                return;
+            }
+
+            try {
+                setSendingMessage(
+                    true
+                );
+
+                setMessageError(
+                    ""
+                );
+
+                const response =
+                    await fetch(
+                        `${apiUrl}/api/messages/conversations`,
+                        {
+                            method:
+                                "POST",
+
+                            headers: {
+                                "Content-Type":
+                                    "application/json",
+
+                                Authorization:
+                                    `Bearer ${token}`,
+                            },
+
+                            body:
+                                JSON.stringify({
+                                    contextType:
+                                        "listing",
+
+                                    productId:
+                                        product.id,
+
+                                    body,
+                                }),
+                        }
+                    );
+
+                const data =
+                    await response.json();
+
+                if (
+                    !response.ok ||
+                    !data.success
+                ) {
+                    if (
+                        data.code ===
+                        "MESSAGING_TEMPORARILY_RESTRICTED"
+                    ) {
+                        throw new Error(
+                            data.message ||
+                                "Messaging is temporarily restricted. You can still read your existing conversations."
+                        );
+                    }
+
+                    if (
+                        data.code ===
+                            "OFF_PLATFORM_ATTEMPT_BLOCKED" ||
+                        data.moderation
+                            ?.action ===
+                            "blocked"
+                    ) {
+                        throw new Error(
+                            data.message ||
+                                "That message was not sent because it appears to move the conversation off CampusMart."
+                        );
+                    }
+
+                    throw new Error(
+                        data.message ||
+                            "Unable to send your message."
+                    );
+                }
+
+                const conversationId =
+                    data.conversation
+                        ?.id;
+
+                if (
+                    !conversationId
+                ) {
+                    throw new Error(
+                        "The conversation was created, but CampusMart could not open it."
+                    );
+                }
+
+                if (
+                    data.moderation
+                        ?.action ===
+                    "redacted"
+                ) {
+                    window.dispatchEvent(
+                        new CustomEvent(
+                            "campusmart-toast",
+                            {
+                                detail: {
+                                    message:
+                                        "Message sent. Contact details were hidden to keep the conversation on CampusMart.",
+                                },
+                            }
+                        )
+                    );
+                } else {
+                    window.dispatchEvent(
+                        new CustomEvent(
+                            "campusmart-toast",
+                            {
+                                detail: {
+                                    message:
+                                        "Message sent",
+                                },
+                            }
+                        )
+                    );
+                }
+
+                setMessageDraft(
+                    ""
+                );
+
+                setMessageComposerOpen(
+                    false
+                );
+
+                router.push(
+                    `/messages/${conversationId}`
+                );
+            } catch (
+                messagingError
+            ) {
+                console.error(
+                    "Start seller conversation error:",
+                    messagingError
+                );
+
+                setMessageError(
+                    messagingError instanceof
+                        Error
+                        ? messagingError.message
+                        : "Unable to send your message."
+                );
+            } finally {
+                setSendingMessage(
+                    false
+                );
+            }
+        };
+
+    /*
+     * =====================================================
      * LOADING
      * =====================================================
      */
@@ -620,6 +1078,14 @@ export default function ProductPage({
         getAverageRating(
             product.id,
             product.rating
+        );
+
+    const ownListing =
+        Boolean(
+            user &&
+                product.vendorId &&
+                user.id ===
+                    product.vendorId
         );
 
     return (
@@ -919,6 +1385,12 @@ export default function ProductPage({
                         }
                     </p>
 
+                    {/*
+                     * =================================================
+                     * PURCHASE ACTIONS
+                     * =================================================
+                     */}
+
                     <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                         <button
                             type="button"
@@ -939,6 +1411,206 @@ export default function ProductPage({
                             View cart
                         </Link>
                     </div>
+
+                    {/*
+                     * =================================================
+                     * MESSAGE SELLER
+                     * =================================================
+                     */}
+
+                    {product.vendorId ? (
+                        <div className="mt-3">
+                            <button
+                                type="button"
+                                disabled={
+                                    openingMessages ||
+                                    ownListing
+                                }
+                                onClick={() =>
+                                    void handleMessageSeller()
+                                }
+                                className="inline-flex w-full items-center justify-center rounded-[10px] border border-slate-900 bg-white px-6 py-3.5 text-base font-bold text-slate-950 transition hover:bg-slate-950 hover:text-white disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                                {ownListing
+                                    ? "This is your listing"
+                                    : openingMessages
+                                      ? "Opening messages..."
+                                      : "Message seller"}
+                            </button>
+
+                            {!ownListing ? (
+                                <p className="mt-2 text-center text-xs leading-5 text-slate-500">
+                                    Ask about
+                                    availability,
+                                    condition or
+                                    campus pickup
+                                    before ordering.
+                                </p>
+                            ) : null}
+                        </div>
+                    ) : null}
+
+                    {/*
+                     * =================================================
+                     * FIRST MESSAGE COMPOSER
+                     * =================================================
+                     */}
+
+                    {messageComposerOpen &&
+                    !ownListing ? (
+                        <form
+                            onSubmit={
+                                startSellerConversation
+                            }
+                            className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5"
+                        >
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+                                        Message seller
+                                    </p>
+
+                                    <h2 className="mt-1 text-lg font-black text-slate-950">
+                                        Ask about{" "}
+                                        {
+                                            product.title
+                                        }
+                                    </h2>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    disabled={
+                                        sendingMessage
+                                    }
+                                    onClick={() => {
+                                        setMessageComposerOpen(
+                                            false
+                                        );
+
+                                        setMessageError(
+                                            ""
+                                        );
+                                    }}
+                                    className="shrink-0 rounded-full px-2 py-1 text-lg font-bold text-slate-400 transition hover:bg-slate-200 hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                                    aria-label="Close message composer"
+                                >
+                                    ×
+                                </button>
+                            </div>
+
+                            <textarea
+                                value={
+                                    messageDraft
+                                }
+                                onChange={(
+                                    event
+                                ) => {
+                                    setMessageDraft(
+                                        event.target.value
+                                    );
+
+                                    if (
+                                        messageError
+                                    ) {
+                                        setMessageError(
+                                            ""
+                                        );
+                                    }
+                                }}
+                                rows={
+                                    4
+                                }
+                                maxLength={
+                                    MESSAGE_MAX_LENGTH
+                                }
+                                disabled={
+                                    sendingMessage
+                                }
+                                placeholder="Hi, is this still available?"
+                                className="mt-4 w-full resize-y rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            />
+
+                            <div className="mt-2 flex items-center justify-between gap-3">
+                                <p className="text-[11px] text-slate-400">
+                                    {
+                                        messageDraft.length
+                                    }
+                                    /
+                                    {
+                                        MESSAGE_MAX_LENGTH
+                                    }
+                                </p>
+
+                                <p className="text-[11px] text-slate-400">
+                                    Contact details may
+                                    be hidden.
+                                </p>
+                            </div>
+
+                            {messageError ? (
+                                <div
+                                    role="alert"
+                                    className="mt-3 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-semibold leading-5 text-red-700"
+                                >
+                                    {
+                                        messageError
+                                    }
+                                </div>
+                            ) : null}
+
+                            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                                <button
+                                    type="submit"
+                                    disabled={
+                                        sendingMessage ||
+                                        !messageDraft.trim()
+                                    }
+                                    className="inline-flex flex-1 items-center justify-center rounded-[10px] bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {sendingMessage
+                                        ? "Sending..."
+                                        : "Send message"}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    disabled={
+                                        sendingMessage
+                                    }
+                                    onClick={() => {
+                                        setMessageComposerOpen(
+                                            false
+                                        );
+
+                                        setMessageError(
+                                            ""
+                                        );
+                                    }}
+                                    className="inline-flex items-center justify-center rounded-[10px] border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    ) : null}
+
+                    {/*
+                     * Message errors may also happen while
+                     * checking for an existing thread.
+                     */}
+
+                    {messageError &&
+                    !messageComposerOpen ? (
+                        <div
+                            role="alert"
+                            className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
+                        >
+                            {
+                                messageError
+                            }
+                        </div>
+                    ) : null}
 
                     <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm leading-7 text-slate-600">
                         Complete your

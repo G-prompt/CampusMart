@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import {
   FormEvent,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -25,6 +26,10 @@ import {
   UserIcon,
 } from "./icons";
 
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5000";
+
 const navLinks = [
   {
     href: "/marketplace",
@@ -33,6 +38,10 @@ const navLinks = [
   {
     href: "/categories",
     label: "Categories",
+  },
+  {
+    href: "/messages",
+    label: "Messages",
   },
   {
     href: "/sell",
@@ -48,6 +57,36 @@ const navLinks = [
   },
 ];
 
+function MessageIcon({
+  className = "h-6 w-6",
+}: {
+  className?: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+      className={
+        className
+      }
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M5 5.75A2.75 2.75 0 0 1 7.75 3h8.5A2.75 2.75 0 0 1 19 5.75v7.5A2.75 2.75 0 0 1 16.25 16H10l-4.2 3.5a.5.5 0 0 1-.8-.39V16.5A2.75 2.75 0 0 1 3 13.85v-8.1A2.75 2.75 0 0 1 5.75 3"
+      />
+
+      <path
+        strokeLinecap="round"
+        d="M8 8h8M8 11.5h5"
+      />
+    </svg>
+  );
+}
+
 const mobileLinks = [
   {
     href: "/marketplace",
@@ -58,6 +97,11 @@ const mobileLinks = [
     href: "/marketplace/favourites",
     label: "Saved",
     Icon: NavHeartIcon,
+  },
+  {
+    href: "/messages",
+    label: "Messages",
+    Icon: MessageIcon,
   },
   {
     href: "/cart",
@@ -155,7 +199,10 @@ function CountBadge({
 }: {
   count: number;
 }) {
-  if (count <= 0) {
+  if (
+    count <=
+    0
+  ) {
     return null;
   }
 
@@ -163,6 +210,27 @@ function CountBadge({
     <span className="absolute -right-1 -top-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent-400 px-1 text-[10px] font-bold leading-none text-black shadow-sm">
       {count > 9
         ? "9+"
+        : count}
+    </span>
+  );
+}
+
+function SidebarUnreadBadge({
+  count,
+}: {
+  count: number;
+}) {
+  if (
+    count <=
+    0
+  ) {
+    return null;
+  }
+
+  return (
+    <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-accent-400 px-2 py-1 text-[10px] font-black leading-none text-black">
+      {count > 99
+        ? "99+"
         : count}
     </span>
   );
@@ -192,22 +260,43 @@ export default function Navbar() {
   const [
     sidebarOpen,
     setSidebarOpen,
-  ] = useState(false);
+  ] = useState(
+    false
+  );
 
   const [
     searchOpen,
     setSearchOpen,
-  ] = useState(false);
+  ] = useState(
+    false
+  );
 
   const [
     query,
     setQuery,
-  ] = useState("");
+  ] = useState(
+    ""
+  );
 
   const [
     searchFocused,
     setSearchFocused,
-  ] = useState(false);
+  ] = useState(
+    false
+  );
+
+  /*
+   * =====================================================
+   * MESSAGING UNREAD COUNT
+   * =====================================================
+   */
+
+  const [
+    messageUnreadCount,
+    setMessageUnreadCount,
+  ] = useState(
+    0
+  );
 
   const searchCloseRef =
     useRef<HTMLButtonElement>(
@@ -227,7 +316,9 @@ export default function Navbar() {
 
   const showHomeWelcome =
     pathname === "/" &&
-    Boolean(user);
+    Boolean(
+      user
+    );
 
   const searchSuggestions = [
     "Books",
@@ -246,6 +337,216 @@ export default function Navbar() {
         )
   );
 
+  /*
+   * =====================================================
+   * LOAD UNREAD MESSAGES
+   * =====================================================
+   */
+
+  const loadUnreadMessages =
+    useCallback(
+      async () => {
+        if (
+          !user
+        ) {
+          setMessageUnreadCount(
+            0
+          );
+
+          return;
+        }
+
+        const token =
+          window.localStorage.getItem(
+            "campusmart-token"
+          );
+
+        if (
+          !token
+        ) {
+          setMessageUnreadCount(
+            0
+          );
+
+          return;
+        }
+
+        try {
+          const response =
+            await fetch(
+              `${API_URL}/api/messages/unread-count`,
+              {
+                headers: {
+                  Authorization:
+                    `Bearer ${token}`,
+                },
+
+                cache:
+                  "no-store",
+              }
+            );
+
+          const data =
+            await response.json();
+
+          if (
+            !response.ok ||
+            !data.success
+          ) {
+            /*
+             * Do not break global navigation merely
+             * because the unread-count request fails.
+             */
+
+            if (
+              response.status ===
+              401
+            ) {
+              setMessageUnreadCount(
+                0
+              );
+            }
+
+            return;
+          }
+
+          const nextCount =
+            Number(
+              data.unreadCount
+            );
+
+          setMessageUnreadCount(
+            Number.isFinite(
+              nextCount
+            ) &&
+            nextCount >
+              0
+              ? Math.floor(
+                  nextCount
+                )
+              : 0
+          );
+        } catch (
+          unreadError
+        ) {
+          console.warn(
+            "Unable to refresh unread messages:",
+            unreadError
+          );
+        }
+      },
+      [
+        user,
+      ]
+    );
+
+  /*
+   * Initial load + light polling.
+   *
+   * This is deliberately polling for V1.
+   * When realtime messaging is introduced later, this can
+   * be replaced by WebSocket/SSE events.
+   */
+
+  useEffect(() => {
+    if (
+      !user
+    ) {
+      setMessageUnreadCount(
+        0
+      );
+
+      return;
+    }
+
+    void loadUnreadMessages();
+
+    const interval =
+      window.setInterval(
+        () => {
+          if (
+            document.visibilityState ===
+            "visible"
+          ) {
+            void loadUnreadMessages();
+          }
+        },
+        15000
+      );
+
+    const refreshOnFocus =
+      () => {
+        void loadUnreadMessages();
+      };
+
+    const refreshOnVisibility =
+      () => {
+        if (
+          document.visibilityState ===
+          "visible"
+        ) {
+          void loadUnreadMessages();
+        }
+      };
+
+    window.addEventListener(
+      "focus",
+      refreshOnFocus
+    );
+
+    document.addEventListener(
+      "visibilitychange",
+      refreshOnVisibility
+    );
+
+    return () => {
+      window.clearInterval(
+        interval
+      );
+
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+
+      document.removeEventListener(
+        "visibilitychange",
+        refreshOnVisibility
+      );
+    };
+  }, [
+    user,
+    loadUnreadMessages,
+  ]);
+
+  /*
+   * Refresh when navigating.
+   *
+   * This makes the badge update immediately after opening
+   * or leaving a conversation instead of waiting for the
+   * next polling cycle.
+   */
+
+  useEffect(() => {
+    if (
+      !user
+    ) {
+      return;
+    }
+
+    void loadUnreadMessages();
+  }, [
+    pathname,
+    user,
+    loadUnreadMessages,
+  ]);
+
+  /*
+   * =====================================================
+   * SIDEBAR ESCAPE / BODY LOCK
+   * =====================================================
+   */
+
   useEffect(() => {
     if (
       !sidebarOpen
@@ -254,7 +555,8 @@ export default function Navbar() {
     }
 
     const closeOnEscape = (
-      event: KeyboardEvent
+      event:
+        KeyboardEvent
     ) => {
       if (
         event.key ===
@@ -289,6 +591,12 @@ export default function Navbar() {
     sidebarOpen,
   ]);
 
+  /*
+   * =====================================================
+   * SEARCH ESCAPE / BODY LOCK
+   * =====================================================
+   */
+
   useEffect(() => {
     if (
       !searchOpen
@@ -297,7 +605,8 @@ export default function Navbar() {
     }
 
     const closeOnEscape = (
-      event: KeyboardEvent
+      event:
+        KeyboardEvent
     ) => {
       if (
         event.key ===
@@ -332,8 +641,18 @@ export default function Navbar() {
     searchOpen,
   ]);
 
+  /*
+   * =====================================================
+   * AUTH ACTIONS
+   * =====================================================
+   */
+
   const handleLogout =
     () => {
+      setMessageUnreadCount(
+        0
+      );
+
       logout();
 
       setSidebarOpen(
@@ -345,83 +664,108 @@ export default function Navbar() {
       );
     };
 
-  const handleOpenAuth = (
-    mode:
-      | "login"
-      | "register"
-  ) => {
-    setSidebarOpen(
-      false
-    );
+  const handleOpenAuth =
+    (
+      mode:
+        | "login"
+        | "register"
+    ) => {
+      setSidebarOpen(
+        false
+      );
 
-    openAuth(
-      mode
-    );
-  };
+      openAuth(
+        mode
+      );
+    };
 
-  const handleSearch = (
-    event: FormEvent<HTMLFormElement>
-  ) => {
-    event.preventDefault();
+  /*
+   * =====================================================
+   * SEARCH
+   * =====================================================
+   */
 
-    const search =
-      query.trim();
+  const handleSearch =
+    (
+      event:
+        FormEvent<HTMLFormElement>
+    ) => {
+      event.preventDefault();
 
-    if (!search) {
-      return;
-    }
+      const search =
+        query.trim();
 
-    setSearchOpen(
-      false
-    );
+      if (
+        !search
+      ) {
+        return;
+      }
 
-    router.push(
-      `/marketplace/search?q=${encodeURIComponent(
-        search
-      )}`
-    );
-  };
+      setSearchOpen(
+        false
+      );
 
-  const isMobileLinkActive = (
-    href: string
-  ) => {
-    if (
-      href ===
-      "/marketplace"
-    ) {
+      router.push(
+        `/marketplace/search?q=${encodeURIComponent(
+          search
+        )}`
+      );
+    };
+
+  /*
+   * =====================================================
+   * MOBILE ACTIVE LINK
+   * =====================================================
+   */
+
+  const isMobileLinkActive =
+    (
+      href:
+        string
+    ) => {
+      if (
+        href ===
+        "/marketplace"
+      ) {
+        return (
+          pathname ===
+            "/marketplace" ||
+          pathname.startsWith(
+            "/marketplace/products/"
+          ) ||
+          pathname.startsWith(
+            "/marketplace/search"
+          )
+        );
+      }
+
+      if (
+        href ===
+        "/marketplace/favourites"
+      ) {
+        return (
+          pathname ===
+          "/marketplace/favourites"
+        );
+      }
+
       return (
         pathname ===
-          "/marketplace" ||
+          href ||
         pathname.startsWith(
-          "/marketplace/products/"
-        ) ||
-        pathname.startsWith(
-          "/marketplace/search"
+          `${href}/`
         )
       );
-    }
-
-    if (
-      href ===
-      "/marketplace/favourites"
-    ) {
-      return (
-        pathname ===
-        "/marketplace/favourites"
-      );
-    }
-
-    return (
-      pathname ===
-        href ||
-      pathname.startsWith(
-        `${href}/`
-      )
-    );
-  };
+    };
 
   return (
     <>
+      {/*
+       * =================================================
+       * TOP NAVBAR
+       * =================================================
+       */}
+
       <header className="sticky top-0 z-50 border-b border-[#E6D8CB] bg-[#FBF6ED]/95 backdrop-blur-md">
         <div className="relative flex min-h-[70px] items-center justify-between px-3 py-2 sm:min-h-[78px] sm:px-6 lg:px-8">
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none sm:gap-3">
@@ -482,6 +826,12 @@ export default function Navbar() {
           </Link>
 
           <div className="flex shrink-0 items-center gap-0 sm:ml-auto sm:gap-2 lg:gap-4">
+            {/*
+             * =============================================
+             * DESKTOP SEARCH
+             * =============================================
+             */}
+
             <form
               onSubmit={
                 handleSearch
@@ -575,6 +925,12 @@ export default function Navbar() {
               ) : null}
             </form>
 
+            {/*
+             * =============================================
+             * MOBILE/TABLET SEARCH BUTTON
+             * =============================================
+             */}
+
             <button
               type="button"
               onClick={() =>
@@ -587,6 +943,31 @@ export default function Navbar() {
             >
               <SearchIcon />
             </button>
+
+            {/*
+             * =============================================
+             * GLOBAL MESSAGES
+             * =============================================
+             */}
+
+            <Link
+              href="/messages"
+              className="relative hidden h-10 w-10 shrink-0 items-center justify-center text-[#4A1724] transition hover:text-[#7B293B] sm:inline-flex"
+              aria-label={`Messages${
+                messageUnreadCount >
+                0
+                  ? `, ${messageUnreadCount} unread`
+                  : ""
+              }`}
+            >
+              <MessageIcon />
+
+              <CountBadge
+                count={
+                  messageUnreadCount
+                }
+              />
+            </Link>
 
             <Link
               href="/marketplace/favourites"
@@ -629,7 +1010,12 @@ export default function Navbar() {
         </div>
       </header>
 
-      {/* MOBILE SEARCH */}
+      {/*
+       * =================================================
+       * MOBILE SEARCH
+       * =================================================
+       */}
+
       <div
         className={`fixed inset-0 z-[60] transition md:hidden ${
           searchOpen
@@ -738,7 +1124,12 @@ export default function Navbar() {
         </section>
       </div>
 
-      {/* SIDEBAR */}
+      {/*
+       * =================================================
+       * SIDEBAR
+       * =================================================
+       */}
+
       <div
         className={`fixed inset-0 z-50 transition ${
           sidebarOpen
@@ -870,9 +1261,15 @@ export default function Navbar() {
                 item
               ) => {
                 const active =
+                  pathname ===
+                    item.href ||
                   pathname.startsWith(
-                    item.href
+                    `${item.href}/`
                   );
+
+                const isMessages =
+                  item.href ===
+                  "/messages";
 
                 return (
                   <Link
@@ -892,15 +1289,25 @@ export default function Navbar() {
                         ? "page"
                         : undefined
                     }
-                    className={`rounded-lg border-l-2 px-4 py-3.5 text-lg font-bold transition ${
+                    className={`flex items-center justify-between gap-3 rounded-lg border-l-2 px-4 py-3.5 text-lg font-bold transition ${
                       active
                         ? "border-[#8A3D48] bg-[#F0E2D6] text-[#4A1724]"
                         : "border-transparent text-[#4A1724] hover:bg-[#F0E2D6]"
                     }`}
                   >
-                    {
-                      item.label
-                    }
+                    <span>
+                      {
+                        item.label
+                      }
+                    </span>
+
+                    {isMessages ? (
+                      <SidebarUnreadBadge
+                        count={
+                          messageUnreadCount
+                        }
+                      />
+                    ) : null}
                   </Link>
                 );
               }
@@ -916,9 +1323,14 @@ export default function Navbar() {
         </aside>
       </div>
 
-      {/* MOBILE BOTTOM NAV */}
+      {/*
+       * =================================================
+       * MOBILE BOTTOM NAV
+       * =================================================
+       */}
+
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-[#E4D8CC] bg-[#FBF6ED]/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(74,23,36,0.08)] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-[#E4D8CC] bg-[#FBF6ED]/95 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(74,23,36,0.08)] backdrop-blur md:hidden"
         aria-label="Mobile navigation"
       >
         {mobileLinks.map(
@@ -937,7 +1349,10 @@ export default function Navbar() {
                 : item.href ===
                     "/cart"
                   ? itemCount
-                  : 0;
+                  : item.href ===
+                      "/messages"
+                    ? messageUnreadCount
+                    : 0;
 
             return (
               <Link
@@ -952,7 +1367,7 @@ export default function Navbar() {
                     ? "page"
                     : undefined
                 }
-                className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg text-[11px] font-bold transition ${
+                className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 text-[10px] font-bold transition ${
                   active
                     ? "text-[#4A1724]"
                     : "text-[#8A7070]"
@@ -974,9 +1389,11 @@ export default function Navbar() {
                   />
                 </span>
 
-                {
-                  item.label
-                }
+                <span className="max-w-full truncate">
+                  {
+                    item.label
+                  }
+                </span>
               </Link>
             );
           }

@@ -129,6 +129,45 @@ enum PaymentStatus {
   refunded
 }
 
+/**
+ * Why a buyer and seller are talking.
+ */
+enum ConversationContextType {
+  general
+  listing
+  order
+}
+
+/**
+ * Categories recorded when CampusMart detects an
+ * off-platform/contact-sharing attempt.
+ * The sensitive value itself is NOT stored here.
+ */
+enum MessagingModerationCategory {
+  phone_number
+  email
+  external_username
+  external_link
+  bank_details
+  off_platform_payment
+  circumvention
+}
+
+/**
+ * Only suspicious attempts are recorded.
+ * Allowed messages do not need moderation-event rows.
+ */
+enum MessagingModerationAction {
+  redacted
+  blocked
+}
+
+enum MessagingModerationSeverity {
+  low
+  medium
+  high
+}
+
 model University {
   id String @id @default(uuid())
 
@@ -229,6 +268,23 @@ model User {
   fallbackState          String?
   fallbackCity           String?
 
+  /**
+   * Messaging-only restriction.
+   * This is deliberately independent from seller access.
+   * Repeated off-platform/contact circumvention can
+   * temporarily disable sending messages without
+   * automatically disabling the user's marketplace
+   * account or seller shop.
+   */
+  messagingRestrictedUntil DateTime?
+
+  /**
+   * Internal reason/code only.
+   * Do not store copied phone numbers, emails, bank
+   * details or message content here.
+   */
+  messagingRestrictionReason String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -242,19 +298,22 @@ model User {
 
   vendorOrderItems OrderItem[] @relation("VendorOrderItems")
 
-  /**
-   * Seller-specific fulfilment records.
-   *
-   * One record represents this seller's portion of one
-   * buyer order.
-   */
   vendorFulfillments OrderVendorFulfillment[] @relation("VendorFulfillments")
+
+  buyerConversations Conversation[] @relation("BuyerConversations")
+
+  vendorConversations Conversation[] @relation("VendorConversations")
+
+  sentMessages Message[] @relation("SentMessages")
+
+  messagingModerationEvents MessagingModerationEvent[] @relation("MessagingModerationActor")
 
   @@unique([universityId, matricNumber])
   @@index([universityId])
   @@index([fallbackState])
   @@index([studentVerificationStatus])
   @@index([studentVerificationSource])
+  @@index([messagingRestrictedUntil])
 }
 
 model Admin {
@@ -270,10 +329,6 @@ model Admin {
 
   active Boolean @default(true)
 
-  /**
-   * Super Admin can eventually create other Admin
-   * accounts.
-   */
   createdByAdminId String?
 
   createdByAdmin Admin? @relation("AdminCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
@@ -307,10 +362,6 @@ model VendorProfile {
    */
   verified Boolean @default(false)
 
-  /**
-   * Seller access and seller identity verification
-   * remain separate trust decisions.
-   */
   accessStatus VendorAccessStatus @default(active)
 
   vendorVerificationStatus VendorVerificationStatus @default(not_started)
@@ -341,9 +392,6 @@ model VerificationAppeal {
 
   status VerificationAppealStatus @default(draft)
 
-  /**
-   * Snapshot of the identity details being reviewed.
-   */
   submittedName String
 
   submittedMatricNumber String?
@@ -386,9 +434,6 @@ model VerificationAppealEvidence {
 
   type VerificationEvidenceType
 
-  /**
-   * Private Supabase Storage reference.
-   */
   storageKey String
 
   originalFileName String?
@@ -403,70 +448,32 @@ model VerificationAppealEvidence {
   @@index([type])
 }
 
-/**
- * =======================================================
- * UNIVERSITY ROSTER IMPORT
- * =======================================================
- * One import represents one university-supplied student
- * roster.
- * CampusMart keeps import metadata so freshness and
- * source authority can later be enforced.
- */
 model UniversityRosterImport {
   id String @id @default(uuid())
 
   universityId String
   university   University @relation(fields: [universityId], references: [id], onDelete: Restrict)
 
-  /**
-   * Admin who imported the roster.
-   */
   importedByAdminId String?
 
   importedByAdmin Admin? @relation("UniversityRosterImportedBy", fields: [importedByAdminId], references: [id], onDelete: SetNull)
 
-  /**
-   * Human-readable academic period.
-   * Example:
-   * 2025/2026
-   */
   academicSession String
 
-  /**
-   * University registry, ICT unit, authorised officer,
-   * or another approved issuer.
-   */
   sourceIssuer String
 
-  /**
-   * Optional university-supplied source reference.
-   */
   sourceReference String?
 
-  /**
-   * Original filename for audit/debugging.
-   * This is not a public media URL.
-   */
   originalFileName String
 
-  /**
-   * Optional SHA-256 file digest for future duplicate-file
-   * detection.
-   */
   fileSha256 String?
 
   status UniversityRosterImportStatus @default(processing)
 
-  /**
-   * Optional validity period provided by the institution.
-   */
   validFrom DateTime?
 
   expiresAt DateTime?
 
-  /**
-   * Import processing statistics.
-   */
   recordCount Int @default(0)
 
   activeRecordCount Int @default(0)
@@ -475,10 +482,6 @@ model UniversityRosterImport {
 
   rejectedRowCount Int @default(0)
 
-  /**
-   * Processing failure summary.
-   * Do not store raw student information here.
-   */
   failureReason String?
 
   importedAt DateTime @default(now())
@@ -501,61 +504,26 @@ model UniversityRosterImport {
   @@index([importedAt])
 }
 
-/**
- * =======================================================
- * UNIVERSITY ROSTER RECORD
- * =======================================================
- * Minimal student identity information used for
- * automated university roster verification.
- */
 model UniversityRosterRecord {
   id String @id @default(uuid())
 
   rosterImportId String
   rosterImport   UniversityRosterImport @relation(fields: [rosterImportId], references: [id], onDelete: Cascade)
 
-  /**
-   * Original matric/student number supplied by the
-   * university.
-   */
   matricNumber String
 
-  /**
-   * CampusMart-generated normalized representation used
-   * for matching.
-   */
   normalizedMatricNumber String
 
-  /**
-   * Original university-provided full name.
-   */
   fullName String
 
-  /**
-   * CampusMart-generated normalized name used by the
-   * future matching engine.
-   */
   normalizedFullName String
 
-  /**
-   * Original university status value.
-   */
   studentStatus String
 
-  /**
-   * CampusMart's normalized interpretation of whether
-   * this record represents a currently eligible student.
-   */
   isActiveStudent Boolean
 
-  /**
-   * Optional minimal secondary identifier.
-   */
   institutionalEmail String?
 
-  /**
-   * Original CSV row number for operational debugging.
-   */
   sourceRowNumber Int?
 
   createdAt DateTime @default(now())
@@ -590,26 +558,13 @@ model Product {
   vendorId String
   vendor   User   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
-  /**
-   * Marketplace publication state.
-   *
-   * false = currently published
-   * true  = archived / removed from public sale
-   *
-   * Archived products remain in the database so
-   * historical orders, moderation and future disputes
-   * retain their listing relationship.
-   */
   isArchived Boolean @default(false)
 
-  /**
-   * Timestamp for when the product was archived.
-   *
-   * null means the listing is currently published.
-   */
   archivedAt DateTime?
 
   orderItems OrderItem[]
+
+  conversations Conversation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -640,21 +595,9 @@ model Order {
 
   items OrderItem[]
 
-  /**
-   * One fulfilment record per seller represented in this
-   * order.
-   *
-   * Example:
-   *
-   * order contains:
-   * - two products from Seller A
-   * - one product from Seller B
-   *
-   * this relation contains:
-   * - one Seller A fulfilment
-   * - one Seller B fulfilment
-   */
   vendorFulfillments OrderVendorFulfillment[]
+
+  conversations Conversation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -680,12 +623,6 @@ model OrderItem {
 
   lineTotal Int
 
-  /**
-   * Current fulfilment state for this item.
-   *
-   * All items belonging to one seller are currently
-   * advanced together by the seller-order workflow.
-   */
   status OrderStatus @default(pending)
 
   createdAt DateTime @default(now())
@@ -695,35 +632,6 @@ model OrderItem {
   @@index([productId])
 }
 
-/**
- * =======================================================
- * ORDER VENDOR FULFILMENT
- * =======================================================
- *
- * Represents ONE SELLER'S portion of ONE ORDER.
- *
- * This exists separately from OrderItem because a seller
- * may have several items in the same buyer order but
- * should receive only one fulfilment challenge/code.
- *
- * Example:
- *
- * Buyer order:
- *
- * Seller A
- * - Laptop
- * - Mouse
- *
- * Seller B
- * - Textbook
- *
- * Fulfilment records:
- *
- * Order + Seller A -> one private code
- * Order + Seller B -> another private code
- *
- * The raw 4-digit code must never be stored directly.
- */
 model OrderVendorFulfillment {
   id String @id @default(uuid())
 
@@ -733,73 +641,219 @@ model OrderVendorFulfillment {
   vendorId String
   vendor   User   @relation("VendorFulfillments", fields: [vendorId], references: [id], onDelete: Restrict)
 
-  /**
-   * Secure hash of the buyer's fulfilment code.
-   *
-   * The seller-submitted code is hashed and compared
-   * against this value.
-   *
-   * The raw code must not be recoverable from this field.
-   */
   codeHash String
 
-  /**
-   * Encrypted representation of the same fulfilment code.
-   *
-   * This allows the BUYER endpoint to decrypt and display
-   * the code after the seller confirms the order.
-   *
-   * Seller-facing endpoints must never expose this value.
-   */
   codeCiphertext String
 
-  /**
-   * When this fulfilment code became active.
-   */
   codeCreatedAt DateTime @default(now())
 
-  /**
-   * Set when the seller successfully supplies the correct
-   * fulfilment code.
-   *
-   * Successful validation will later cause all eligible
-   * OrderItems for this order/vendor pair to become
-   * completed.
-   */
   verifiedAt DateTime?
 
-  /**
-   * Count incorrect fulfilment-code attempts.
-   *
-   * A 4-digit code only has 10,000 combinations, so the
-   * backend must never permit unlimited guesses.
-   */
   failedAttemptCount Int @default(0)
 
-  /**
-   * Most recent incorrect code attempt.
-   */
   lastFailedAttemptAt DateTime?
 
-  /**
-   * Temporary lock used after too many failed attempts.
-   *
-   * While this is in the future, fulfilment-code
-   * verification must be rejected.
-   */
   lockedUntil DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /**
-   * One seller can have only one fulfilment challenge for
-   * one buyer order.
-   */
   @@unique([orderId, vendorId])
-
   @@index([orderId])
   @@index([vendorId])
   @@index([vendorId, verifiedAt])
   @@index([lockedUntil])
+}
+
+/**
+ * =======================================================
+ * CONVERSATION
+ * =======================================================
+ */
+model Conversation {
+  id String @id @default(uuid())
+
+  buyerId String
+  buyer   User   @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Restrict)
+
+  vendorId String
+  vendor   User   @relation("VendorConversations", fields: [vendorId], references: [id], onDelete: Restrict)
+
+  contextType ConversationContextType @default(general)
+
+  /**
+   * Examples:
+   * general
+   * listing:42
+   * order:<uuid>
+   */
+  contextKey String
+
+  productId Int?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  buyerLastReadAt DateTime?
+
+  vendorLastReadAt DateTime?
+
+  lastMessageAt DateTime @default(now())
+
+  messages Message[]
+
+  moderationEvents MessagingModerationEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([buyerId, vendorId, contextKey])
+  @@index([buyerId, lastMessageAt])
+  @@index([vendorId, lastMessageAt])
+  @@index([productId])
+  @@index([orderId])
+  @@index([contextType])
+}
+
+/**
+ * =======================================================
+ * MESSAGE
+ * =======================================================
+ */
+model Message {
+  id String @id @default(uuid())
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation("SentMessages", fields: [senderId], references: [id], onDelete: Restrict)
+
+  /**
+   * Only the allowed or sanitized message reaches this
+   * field.
+   * Sensitive original text must never be persisted here
+   * after moderation redaction.
+   */
+  body String
+
+  editedAt DateTime?
+
+  deletedAt DateTime?
+
+  /**
+   * At most one moderation event belongs to the message
+   * attempt that produced this stored message.
+   * Blocked attempts have no Message row at all.
+   */
+  moderationEvent MessagingModerationEvent?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+}
+
+/**
+ * =======================================================
+ * MESSAGING MODERATION EVENT
+ * =======================================================
+ * One row represents one suspicious SEND ATTEMPT.
+ * Examples:
+ * - A message containing a phone number was redacted.
+ * - A message attempting to move chat to WhatsApp was
+ * blocked.
+ * - Later, a protected-payment bypass attempt was
+ * blocked.
+ * The original sensitive text is deliberately NOT stored.
+ * Multiple categories can belong to one attempt:
+ * [
+ * phone_number,
+ * external_username,
+ * circumvention
+ * ]
+ * That avoids counting one message as three different
+ * strikes merely because it triggered three detectors.
+ */
+model MessagingModerationEvent {
+  id String @id @default(uuid())
+
+  /**
+   * User who attempted to send the suspicious message.
+   */
+  userId String
+  user   User   @relation("MessagingModerationActor", fields: [userId], references: [id], onDelete: Cascade)
+
+  /**
+   * Existing conversation when available.
+   * This can be null when the very first message of a new
+   * thread is blocked before a Conversation is created.
+   */
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  /**
+   * Stored sanitized message when the action was
+   * `redacted`.
+   * Null for blocked attempts because no Message row is
+   * created.
+   */
+  messageId String?  @unique
+  message   Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  /**
+   * Useful when a blocked first-message attempt happened
+   * before a conversation existed.
+   */
+  contextType ConversationContextType?
+
+  /**
+   * Categories only.
+   * Never put actual detected phone/email/account values
+   * into this array or another moderation field.
+   */
+  categories MessagingModerationCategory[]
+
+  action MessagingModerationAction
+
+  severity MessagingModerationSeverity @default(low)
+
+  /**
+   * Used by the future strike calculation.
+   * Example policy:
+   * redacted contact sharing = 1
+   * explicit circumvention   = 2
+   * serious payment bypass   = 3
+   */
+  strikeWeight Int @default(1)
+
+  /**
+   * Safe frontend/controller warning identifier.
+   * Examples:
+   * CONTACT_DETAILS_REDACTED
+   * OFF_PLATFORM_ATTEMPT_BLOCKED
+   */
+  warningCode String?
+
+  /**
+   * Allows repeated/high-risk behaviour to enter the
+   * future Admin moderation queue.
+   */
+  requiresReview Boolean @default(false)
+
+  /**
+   * If this event caused a temporary messaging
+   * restriction, preserve the resulting expiry for audit.
+   */
+  restrictionAppliedUntil DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([conversationId, createdAt])
+  @@index([action, createdAt])
+  @@index([severity, createdAt])
+  @@index([requiresReview, createdAt])
 }

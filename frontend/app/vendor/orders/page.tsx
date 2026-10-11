@@ -3,11 +3,16 @@
 import Link from "next/link";
 
 import {
+  FormEvent,
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
+
+import {
+  useRouter,
+} from "next/navigation";
 
 import PageShell from "@/components/common/PageShell";
 
@@ -22,6 +27,9 @@ import {
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000";
+
+const MESSAGE_MAX_LENGTH =
+  2000;
 
 type OrderStatus =
   | "pending"
@@ -140,6 +148,12 @@ type VendorOrder = {
     phone:
       | string
       | null;
+
+    phoneUnlocked:
+      boolean;
+
+    phoneAvailable:
+      boolean;
   };
 
   items:
@@ -168,6 +182,25 @@ type FulfillmentFeedback = {
 
   attemptsRemaining?:
     number;
+};
+
+type ExistingConversation = {
+  id: string;
+
+  contextType:
+    | "general"
+    | "listing"
+    | "order";
+
+  order:
+    | {
+        id: string;
+      }
+    | null;
+
+  otherParty: {
+    id: string;
+  };
 };
 
 function statusLabel(
@@ -429,6 +462,9 @@ function StatusBadge({
 }
 
 export default function Page() {
+  const router =
+    useRouter();
+
   const {
     user,
     openAuth,
@@ -535,10 +571,11 @@ export default function Page() {
     >({});
 
   /*
-   * Seller-entered fulfilment codes.
-   *
-   * These are never populated from an API response.
+   * =====================================================
+   * FULFILMENT
+   * =====================================================
    */
+
   const [
     fulfillmentCodes,
     setFulfillmentCodes,
@@ -560,6 +597,64 @@ export default function Page() {
         FulfillmentFeedback
       >
     >({});
+
+  /*
+   * =====================================================
+   * ORDER MESSAGING
+   * =====================================================
+   */
+
+  const [
+    messageComposerOrderId,
+    setMessageComposerOrderId,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    );
+
+  const [
+    messageDrafts,
+    setMessageDrafts,
+  ] =
+    useState<
+      Record<
+        string,
+        string
+      >
+    >({});
+
+  const [
+    messageErrors,
+    setMessageErrors,
+  ] =
+    useState<
+      Record<
+        string,
+        string
+      >
+    >({});
+
+  const [
+    openingMessageOrderId,
+    setOpeningMessageOrderId,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    );
+
+  const [
+    sendingMessageOrderId,
+    setSendingMessageOrderId,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    );
 
   /*
    * =====================================================
@@ -1059,12 +1154,431 @@ export default function Page() {
 
   /*
    * =====================================================
+   * OPEN ORDER CONVERSATION
+   * =====================================================
+   */
+
+  const handleMessageBuyer =
+    async (
+      order:
+        VendorOrder
+    ) => {
+      if (
+        user?.role !==
+        "vendor"
+      ) {
+        return;
+      }
+
+      const token =
+        localStorage.getItem(
+          "campusmart-token"
+        );
+
+      if (
+        !token
+      ) {
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [order.id]:
+              "Your session is unavailable. Sign in again to message the buyer.",
+          })
+        );
+
+        return;
+      }
+
+      try {
+        setOpeningMessageOrderId(
+          order.id
+        );
+
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [order.id]:
+              "",
+          })
+        );
+
+        /*
+         * Find the exact existing order thread.
+         *
+         * On the seller side, otherParty is the buyer.
+         */
+
+        const response =
+          await fetch(
+            `${API_URL}/api/messages/conversations`,
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+
+              cache:
+                "no-store",
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          throw new Error(
+            data.message ||
+              "Unable to open messaging."
+          );
+        }
+
+        const conversations:
+          ExistingConversation[] =
+          Array.isArray(
+            data.conversations
+          )
+            ? data.conversations
+            : [];
+
+        const existingConversation =
+          conversations.find(
+            (
+              conversation
+            ) =>
+              conversation.contextType ===
+                "order" &&
+              conversation.order
+                ?.id ===
+                order.id &&
+              conversation.otherParty
+                ?.id ===
+                order.buyer.id
+          );
+
+        if (
+          existingConversation
+        ) {
+          router.push(
+            `/messages/${existingConversation.id}`
+          );
+
+          return;
+        }
+
+        /*
+         * No conversation exists yet.
+         *
+         * Do not create an empty thread.
+         */
+
+        setMessageComposerOrderId(
+          order.id
+        );
+      } catch (
+        messagingError
+      ) {
+        console.error(
+          "Open buyer conversation error:",
+          messagingError
+        );
+
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [order.id]:
+              messagingError instanceof
+                Error
+                ? messagingError.message
+                : "Unable to open messaging.",
+          })
+        );
+      } finally {
+        setOpeningMessageOrderId(
+          null
+        );
+      }
+    };
+
+  /*
+   * =====================================================
+   * START ORDER CONVERSATION AS SELLER
+   * =====================================================
+   */
+
+  const startBuyerConversation =
+    async (
+      event:
+        FormEvent<HTMLFormElement>,
+      order:
+        VendorOrder
+    ) => {
+      event.preventDefault();
+
+      if (
+        user?.role !==
+          "vendor" ||
+        sendingMessageOrderId
+      ) {
+        return;
+      }
+
+      const body =
+        (
+          messageDrafts[
+            order.id
+          ] ??
+          ""
+        ).trim();
+
+      if (
+        !body
+      ) {
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [order.id]:
+              "Write a message to the buyer first.",
+          })
+        );
+
+        return;
+      }
+
+      if (
+        body.length >
+        MESSAGE_MAX_LENGTH
+      ) {
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [order.id]:
+              `Messages can be up to ${MESSAGE_MAX_LENGTH} characters.`,
+          })
+        );
+
+        return;
+      }
+
+      const token =
+        localStorage.getItem(
+          "campusmart-token"
+        );
+
+      if (
+        !token
+      ) {
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [order.id]:
+              "Your session is unavailable. Sign in again to message the buyer.",
+          })
+        );
+
+        return;
+      }
+
+      try {
+        setSendingMessageOrderId(
+          order.id
+        );
+
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [order.id]:
+              "",
+          })
+        );
+
+        const response =
+          await fetch(
+            `${API_URL}/api/messages/conversations`,
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+
+                Authorization:
+                  `Bearer ${token}`,
+              },
+
+              body:
+                JSON.stringify({
+                  contextType:
+                    "order",
+
+                  orderId:
+                    order.id,
+
+                  /*
+                   * The vendor is explicitly supplied so
+                   * the backend resolves this seller's
+                   * portion of a multi-vendor order.
+                   */
+                  vendorId:
+                    user.id,
+
+                  body,
+                }),
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          if (
+            data.code ===
+            "MESSAGING_TEMPORARILY_RESTRICTED"
+          ) {
+            throw new Error(
+              data.message ||
+                "Messaging is temporarily restricted. You can still read your existing conversations."
+            );
+          }
+
+          if (
+            data.code ===
+              "OFF_PLATFORM_ATTEMPT_BLOCKED" ||
+            data.moderation
+              ?.action ===
+              "blocked"
+          ) {
+            throw new Error(
+              data.message ||
+                "That message was not sent because it appears to move the conversation off CampusMart."
+            );
+          }
+
+          throw new Error(
+            data.message ||
+              "Unable to send your message."
+          );
+        }
+
+        const conversationId =
+          data.conversation
+            ?.id;
+
+        if (
+          !conversationId
+        ) {
+          throw new Error(
+            "The conversation was created, but CampusMart could not open it."
+          );
+        }
+
+        if (
+          data.moderation
+            ?.action ===
+          "redacted"
+        ) {
+          window.dispatchEvent(
+            new CustomEvent(
+              "campusmart-toast",
+              {
+                detail: {
+                  message:
+                    "Message sent. Contact details were hidden to keep the conversation on CampusMart.",
+                },
+              }
+            )
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent(
+              "campusmart-toast",
+              {
+                detail: {
+                  message:
+                    "Message sent",
+                },
+              }
+            )
+          );
+        }
+
+        setMessageDrafts(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [order.id]:
+              "",
+          })
+        );
+
+        setMessageComposerOrderId(
+          null
+        );
+
+        router.push(
+          `/messages/${conversationId}`
+        );
+      } catch (
+        messagingError
+      ) {
+        console.error(
+          "Start buyer conversation error:",
+          messagingError
+        );
+
+        setMessageErrors(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [order.id]:
+              messagingError instanceof
+                Error
+                ? messagingError.message
+                : "Unable to send your message.",
+          })
+        );
+      } finally {
+        setSendingMessageOrderId(
+          null
+        );
+      }
+    };
+
+  /*
+   * =====================================================
    * UPDATE ORDER STATUS
    * =====================================================
-   *
-   * Direct completion no longer happens here.
-   *
-   * Completion requires the buyer's private handoff code.
    */
 
   const updateStatus =
@@ -1393,11 +1907,6 @@ export default function Page() {
           return;
         }
 
-        /*
-         * Remove the seller-entered code immediately after
-         * successful completion.
-         */
-
         setFulfillmentCodes(
           (
             current
@@ -1538,12 +2047,6 @@ export default function Page() {
       title="Seller orders"
       description="Manage incoming orders and complete secure buyer handoffs."
     >
-      {/*
-       * =================================================
-       * SELLER ACCESS BANNERS
-       * =================================================
-       */}
-
       {pendingReview ? (
         <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1630,12 +2133,6 @@ export default function Page() {
         </section>
       ) : null}
 
-      {/*
-       * =================================================
-       * HEADER
-       * =================================================
-       */}
-
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-sm text-slate-600">
           Signed in as{" "}
@@ -1661,12 +2158,6 @@ export default function Page() {
             : "Refresh orders"}
         </button>
       </div>
-
-      {/*
-       * =================================================
-       * SUMMARY
-       * =================================================
-       */}
 
       <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="site-card p-5">
@@ -1797,12 +2288,6 @@ export default function Page() {
       orders.length >
         0 ? (
         <>
-          {/*
-           * =================================================
-           * FILTERS
-           * =================================================
-           */}
-
           <div className="mt-8 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <div className="flex min-w-max gap-2">
               {(
@@ -1899,12 +2384,6 @@ export default function Page() {
             </section>
           ) : null}
 
-          {/*
-           * =================================================
-           * ORDERS
-           * =================================================
-           */}
-
           <section className="mt-5 space-y-5">
             {filteredOrders.map(
               (
@@ -1958,6 +2437,44 @@ export default function Page() {
                     order.id
                   ];
 
+                const buyerPhoneUnlocked =
+                  order.buyer
+                    .phoneUnlocked ===
+                  true;
+
+                const buyerPhoneAvailable =
+                  buyerPhoneUnlocked &&
+                  order.buyer
+                    .phoneAvailable ===
+                    true &&
+                  Boolean(
+                    order.buyer.phone
+                  );
+
+                const messageComposerOpen =
+                  messageComposerOrderId ===
+                  order.id;
+
+                const messageDraft =
+                  messageDrafts[
+                    order.id
+                  ] ??
+                  "";
+
+                const messageError =
+                  messageErrors[
+                    order.id
+                  ] ??
+                  "";
+
+                const openingMessage =
+                  openingMessageOrderId ===
+                  order.id;
+
+                const sendingMessage =
+                  sendingMessageOrderId ===
+                  order.id;
+
                 return (
                   <article
                     key={
@@ -1965,12 +2482,6 @@ export default function Page() {
                     }
                     className="site-card overflow-hidden"
                   >
-                    {/*
-                     * =====================================
-                     * ORDER HEADER
-                     * =====================================
-                     */}
-
                     <button
                       type="button"
                       onClick={() =>
@@ -2063,12 +2574,6 @@ export default function Page() {
 
                     {expanded ? (
                       <div className="border-t border-slate-200">
-                        {/*
-                         * =================================
-                         * BUYER / ORDER INFO
-                         * =================================
-                         */}
-
                         <div className="grid gap-5 bg-slate-50 p-5 sm:grid-cols-2 lg:grid-cols-4">
                           <div>
                             <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
@@ -2124,6 +2629,308 @@ export default function Page() {
                               )}
                             </p>
                           </div>
+                        </div>
+
+                        {/*
+                         * =================================
+                         * BUYER COMMUNICATION
+                         * =================================
+                         */}
+
+                        <div className="border-t border-slate-200 bg-white px-5 py-5">
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                                Buyer communication
+                              </p>
+
+                              <p className="mt-2 text-sm font-bold text-slate-950">
+                                Message{" "}
+                                {
+                                  order.buyer.name
+                                }
+                              </p>
+
+                              <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">
+                                Use the order
+                                conversation for
+                                questions, updates
+                                and handoff
+                                coordination.
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              disabled={
+                                openingMessage ||
+                                sendingMessage
+                              }
+                              onClick={() =>
+                                void handleMessageBuyer(
+                                  order
+                                )
+                              }
+                              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-[10px] bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {openingMessage
+                                ? "Opening..."
+                                : "Message buyer"}
+                            </button>
+                          </div>
+
+                          {messageComposerOpen ? (
+                            <form
+                              onSubmit={(
+                                event
+                              ) =>
+                                void startBuyerConversation(
+                                  event,
+                                  order
+                                )
+                              }
+                              className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4"
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                                    Order message
+                                  </p>
+
+                                  <h3 className="mt-1 text-sm font-black text-slate-950">
+                                    Message{" "}
+                                    {
+                                      order.buyer.name
+                                    }{" "}
+                                    about order #
+                                    {shortOrderId(
+                                      order.id
+                                    )}
+                                  </h3>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  disabled={
+                                    sendingMessage
+                                  }
+                                  onClick={() => {
+                                    setMessageComposerOrderId(
+                                      null
+                                    );
+
+                                    setMessageErrors(
+                                      (
+                                        current
+                                      ) => ({
+                                        ...current,
+
+                                        [order.id]:
+                                          "",
+                                      })
+                                    );
+                                  }}
+                                  className="shrink-0 rounded-full px-2 py-1 text-lg font-bold text-slate-400 transition hover:bg-slate-200 hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+                                  aria-label="Close message composer"
+                                >
+                                  ×
+                                </button>
+                              </div>
+
+                              <textarea
+                                value={
+                                  messageDraft
+                                }
+                                onChange={(
+                                  event
+                                ) => {
+                                  setMessageDrafts(
+                                    (
+                                      current
+                                    ) => ({
+                                      ...current,
+
+                                      [order.id]:
+                                        event.target.value,
+                                    })
+                                  );
+
+                                  if (
+                                    messageError
+                                  ) {
+                                    setMessageErrors(
+                                      (
+                                        current
+                                      ) => ({
+                                        ...current,
+
+                                        [order.id]:
+                                          "",
+                                      })
+                                    );
+                                  }
+                                }}
+                                rows={
+                                  3
+                                }
+                                maxLength={
+                                  MESSAGE_MAX_LENGTH
+                                }
+                                disabled={
+                                  sendingMessage
+                                }
+                                placeholder="Hi, I have an update about your order..."
+                                className="mt-4 w-full resize-y rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              />
+
+                              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-[11px] text-slate-400">
+                                  {
+                                    messageDraft.length
+                                  }
+                                  /
+                                  {
+                                    MESSAGE_MAX_LENGTH
+                                  }
+                                </p>
+
+                                <p className="text-[11px] text-slate-400">
+                                  Contact details may
+                                  be hidden by
+                                  CampusMart.
+                                </p>
+                              </div>
+
+                              {messageError ? (
+                                <div
+                                  role="alert"
+                                  className="mt-3 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-semibold leading-5 text-red-700"
+                                >
+                                  {
+                                    messageError
+                                  }
+                                </div>
+                              ) : null}
+
+                              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                                <button
+                                  type="submit"
+                                  disabled={
+                                    sendingMessage ||
+                                    !messageDraft.trim()
+                                  }
+                                  className="inline-flex items-center justify-center rounded-[10px] bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {sendingMessage
+                                    ? "Sending..."
+                                    : "Send message"}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={
+                                    sendingMessage
+                                  }
+                                  onClick={() => {
+                                    setMessageComposerOrderId(
+                                      null
+                                    );
+
+                                    setMessageErrors(
+                                      (
+                                        current
+                                      ) => ({
+                                        ...current,
+
+                                        [order.id]:
+                                          "",
+                                      })
+                                    );
+                                  }}
+                                  className="inline-flex items-center justify-center rounded-[10px] border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </form>
+                          ) : messageError ? (
+                            <div
+                              role="alert"
+                              className="mt-4 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-semibold leading-5 text-red-700"
+                            >
+                              {
+                                messageError
+                              }
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {/*
+                         * =================================
+                         * BUYER PHONE
+                         * =================================
+                         */}
+
+                        <div className="border-t border-slate-200 bg-white px-5 py-4">
+                          {buyerPhoneAvailable ? (
+                            <div className="flex flex-col gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
+                                  Buyer contact unlocked
+                                </p>
+
+                                <p className="mt-2 text-lg font-black text-emerald-950">
+                                  {
+                                    order.buyer.phone
+                                  }
+                                </p>
+
+                                <p className="mt-1 max-w-xl text-xs leading-5 text-emerald-800">
+                                  This number is available
+                                  during the active handoff
+                                  window so you can contact
+                                  the buyer if they are not
+                                  responding in CampusMart.
+                                </p>
+                              </div>
+
+                              <a
+                                href={`tel:${order.buyer.phone}`}
+                                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-[10px] bg-emerald-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-emerald-800"
+                              >
+                                Call buyer
+                              </a>
+                            </div>
+                          ) : buyerPhoneUnlocked ? (
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                              <p className="text-sm font-bold text-slate-900">
+                                Buyer contact unavailable
+                              </p>
+
+                              <p className="mt-1 text-xs leading-5 text-slate-600">
+                                Contact access is unlocked
+                                for this order, but the
+                                buyer does not currently
+                                have a phone number
+                                available.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                              <p className="text-sm font-bold text-slate-900">
+                                Buyer phone is protected
+                              </p>
+
+                              <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600">
+                                Use CampusMart messaging
+                                while the phone number is
+                                protected. Buyer phone
+                                becomes available only
+                                during an active paid and
+                                confirmed handoff.
+                              </p>
+                            </div>
+                          )}
                         </div>
 
                         {/*
@@ -2252,12 +3059,6 @@ export default function Page() {
                             </span>
                           </div>
 
-                          {/*
-                           * ===============================
-                           * ACCESS BLOCKED
-                           * ===============================
-                           */}
-
                           {!canFulfilExistingOrders &&
                           order.vendorStatus !==
                             "completed" &&
@@ -2270,20 +3071,16 @@ export default function Page() {
 
                               <p className="mt-1 text-xs leading-5 text-slate-500">
                                 You can still
-                                view this order,
-                                but your current
-                                seller access does
-                                not allow status
-                                changes.
+                                view this order
+                                and its message
+                                history, but your
+                                current seller
+                                access does not
+                                allow fulfilment
+                                status changes.
                               </p>
                             </div>
                           ) : null}
-
-                          {/*
-                           * ===============================
-                           * PENDING
-                           * ===============================
-                           */}
 
                           {order.vendorStatus ===
                             "pending" &&
@@ -2297,11 +3094,12 @@ export default function Page() {
                               <p className="mt-1 text-xs leading-5 text-amber-800">
                                 Confirm the order
                                 if you can fulfil
-                                it. The buyer&apos;s
-                                private handoff
-                                code will become
-                                available only
-                                after confirmation.
+                                it. Buyer contact
+                                stays protected
+                                until CampusMart
+                                has a paid order
+                                and your portion
+                                is confirmed.
                               </p>
 
                               <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -2341,12 +3139,6 @@ export default function Page() {
                               </div>
                             </div>
                           ) : null}
-
-                          {/*
-                           * ===============================
-                           * CONFIRMED — SECURE HANDOFF
-                           * ===============================
-                           */}
 
                           {order.vendorStatus ===
                             "confirmed" &&
@@ -2522,12 +3314,6 @@ export default function Page() {
                             </div>
                           ) : null}
 
-                          {/*
-                           * ===============================
-                           * COMPLETED
-                           * ===============================
-                           */}
-
                           {order.vendorStatus ===
                           "completed" ? (
                             <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
@@ -2542,16 +3328,12 @@ export default function Page() {
                                 verified and your
                                 seller portion of
                                 this order is
-                                complete.
+                                complete. Buyer
+                                phone access has
+                                been closed again.
                               </p>
                             </div>
                           ) : null}
-
-                          {/*
-                           * ===============================
-                           * CANCELLED
-                           * ===============================
-                           */}
 
                           {order.vendorStatus ===
                           "cancelled" ? (
@@ -2564,7 +3346,9 @@ export default function Page() {
                                 Your seller
                                 portion of this
                                 order has been
-                                cancelled.
+                                cancelled. Buyer
+                                phone access is
+                                not available.
                               </p>
                             </div>
                           ) : null}

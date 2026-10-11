@@ -33,11 +33,24 @@ type RequestedOrderItem = {
   quantity: number;
 };
 
+type BuyerContactRecord = {
+  id: string;
+  name: string;
+  campus: string | null;
+  phone: string | null;
+};
+
 const MAX_FULFILLMENT_ATTEMPTS =
   5;
 
 const FULFILLMENT_LOCK_MINUTES =
   15;
+
+/*
+ * =======================================================
+ * INPUT HELPERS
+ * =======================================================
+ */
 
 function cleanOptionalText(
   value: unknown
@@ -154,6 +167,12 @@ function normalizeOrderItems(
   );
 }
 
+/*
+ * =======================================================
+ * ORDER CALCULATIONS
+ * =======================================================
+ */
+
 function calculateFee(
   subtotal: number
 ) {
@@ -242,6 +261,78 @@ function calculateVendorStatus(
   return calculateOverallOrderStatus(
     statuses
   );
+}
+
+/*
+ * =======================================================
+ * BUYER PHONE PRIVACY
+ * =======================================================
+ *
+ * A seller may receive the buyer's phone number only
+ * during an active paid + confirmed fulfilment window.
+ *
+ * Requirements:
+ *
+ * - the checkout payment is PAID
+ * - THIS seller's portion is CONFIRMED
+ *
+ * The number remains hidden while:
+ *
+ * - pending
+ * - payment is pending
+ * - payment is refunded
+ * - seller portion is completed
+ * - seller portion is cancelled
+ *
+ * This function is deliberately seller-facing only.
+ *
+ * Buyers may still see their own account/order data.
+ */
+
+function buildVendorBuyerContact(
+  buyer: BuyerContactRecord,
+  paymentStatus: PaymentStatus,
+  vendorStatus: OrderStatus
+) {
+  const phoneUnlocked =
+    paymentStatus ===
+      PaymentStatus.paid &&
+    vendorStatus ===
+      OrderStatus.confirmed;
+
+  return {
+    id:
+      buyer.id,
+
+    name:
+      buyer.name,
+
+    campus:
+      buyer.campus,
+
+    phone:
+      phoneUnlocked
+        ? buyer.phone
+        : null,
+
+    /*
+     * Lets the frontend distinguish:
+     *
+     * "privacy locked"
+     *
+     * from:
+     *
+     * "contact stage unlocked, but buyer has no phone
+     * stored".
+     */
+    phoneUnlocked,
+
+    phoneAvailable:
+      phoneUnlocked &&
+      Boolean(
+        buyer.phone
+      ),
+  };
 }
 
 /*
@@ -584,10 +675,6 @@ export const createOrder =
               subtotal +
               fee;
 
-            /*
-             * First create the order and its item snapshots.
-             */
-
             const createdOrder =
               await tx.order.create({
                 data: {
@@ -608,6 +695,10 @@ export const createOrder =
                   status:
                     OrderStatus.pending,
 
+                  /*
+                   * Real payment integration is still a
+                   * later CampusMart phase.
+                   */
                   paymentStatus:
                     PaymentStatus.pending,
 
@@ -624,7 +715,8 @@ export const createOrder =
               });
 
             /*
-             * One challenge per DISTINCT seller.
+             * One fulfilment challenge per DISTINCT
+             * seller.
              */
 
             const vendorIds =
@@ -1032,11 +1124,6 @@ export const getBuyerFulfillmentCodes =
               string | null =
               null;
 
-            /*
-             * The buyer only gets the live code after
-             * seller confirmation.
-             */
-
             if (
               vendorStatus ===
                 OrderStatus.confirmed &&
@@ -1113,6 +1200,11 @@ export const getBuyerFulfillmentCodes =
  * =======================================================
  * SELLER ORDER HISTORY
  * =======================================================
+ *
+ * Buyer phone privacy is enforced here.
+ *
+ * Each seller is evaluated using ONLY that seller's own
+ * items inside the order.
  */
 
 export const getVendorOrders =
@@ -1200,10 +1292,8 @@ export const getVendorOrders =
         orders.map(
           (
             order
-          ) => ({
-            ...order,
-
-            vendorStatus:
+          ) => {
+            const vendorStatus =
               calculateVendorStatus(
                 order.items.map(
                   (
@@ -1211,8 +1301,27 @@ export const getVendorOrders =
                   ) =>
                     item.status
                 )
-              ),
-          })
+              );
+
+            const {
+              buyer,
+              ...orderWithoutBuyer
+            } =
+              order;
+
+            return {
+              ...orderWithoutBuyer,
+
+              buyer:
+                buildVendorBuyerContact(
+                  buyer,
+                  order.paymentStatus,
+                  vendorStatus
+                ),
+
+              vendorStatus,
+            };
+          }
         );
 
       const orderCount =
@@ -1330,18 +1439,20 @@ export const getVendorOrders =
  * UPDATE SELLER ORDER STATUS
  * =======================================================
  *
- * This endpoint now supports:
+ * Supports:
  *
  * pending -> confirmed
  * pending -> cancelled
  * confirmed -> cancelled
  *
- * It deliberately DOES NOT support:
+ * DOES NOT support:
  *
  * confirmed -> completed
  *
- * Completion requires the buyer's fulfilment code through
- * verifyVendorFulfillmentCode.
+ * Completion requires the buyer's fulfilment code.
+ *
+ * Buyer phone is sanitized in the response using the
+ * resulting seller-specific status.
  */
 
 export const updateVendorOrderStatus =
@@ -1393,10 +1504,6 @@ export const updateVendorOrderStatus =
               "Invalid order ID.",
           });
       }
-
-      /*
-       * Completion is no longer seller-declared.
-       */
 
       if (
         requestedStatus ===
@@ -1554,9 +1661,6 @@ export const updateVendorOrderStatus =
             /*
              * Compatibility for orders created before the
              * fulfilment-code feature.
-             *
-             * If an older pending order is now confirmed,
-             * create its missing seller challenge.
              */
 
             if (
@@ -1681,18 +1785,33 @@ export const updateVendorOrderStatus =
                 },
               });
 
-            return {
-              ...updatedOrder,
+            const vendorStatus =
+              calculateVendorStatus(
+                updatedOrder.items.map(
+                  (
+                    item
+                  ) =>
+                    item.status
+                )
+              );
 
-              vendorStatus:
-                calculateVendorStatus(
-                  updatedOrder.items.map(
-                    (
-                      item
-                    ) =>
-                      item.status
-                  )
+            const {
+              buyer,
+              ...orderWithoutBuyer
+            } =
+              updatedOrder;
+
+            return {
+              ...orderWithoutBuyer,
+
+              buyer:
+                buildVendorBuyerContact(
+                  buyer,
+                  updatedOrder.paymentStatus,
+                  vendorStatus
                 ),
+
+              vendorStatus,
             };
           }
         );
@@ -1978,11 +2097,6 @@ export const verifyVendorFulfillmentCode =
             if (
               !correct
             ) {
-              /*
-               * If a previous lock has already expired,
-               * begin a fresh attempt window.
-               */
-
               const previousAttempts =
                 fulfillment.lockedUntil &&
                 fulfillment.lockedUntil <=
@@ -2276,6 +2390,14 @@ export const verifyVendorFulfillmentCode =
  * =======================================================
  * GET INDIVIDUAL ORDER
  * =======================================================
+ *
+ * Buyer:
+ * receives their complete order.
+ *
+ * Seller:
+ * receives only their seller portion.
+ *
+ * Buyer phone privacy is enforced for seller access.
  */
 
 export const getOrderById =
@@ -2363,7 +2485,10 @@ export const getOrderById =
       }
 
       /*
-       * Buyer may view the complete order.
+       * Buyer may view their complete order.
+       *
+       * Returning their own stored phone value here is
+       * fine because this response belongs to the buyer.
        */
 
       if (
@@ -2381,7 +2506,7 @@ export const getOrderById =
       }
 
       /*
-       * Seller sees only their own portion.
+       * Seller receives only their portion.
        */
 
       if (
@@ -2412,6 +2537,16 @@ export const getOrderById =
               0
             );
 
+          const vendorStatus =
+            calculateVendorStatus(
+              vendorItems.map(
+                (
+                  item
+                ) =>
+                  item.status
+              )
+            );
+
           return res
             .status(200)
             .json({
@@ -2425,15 +2560,7 @@ export const getOrderById =
                 status:
                   order.status,
 
-                vendorStatus:
-                  calculateVendorStatus(
-                    vendorItems.map(
-                      (
-                        item
-                      ) =>
-                        item.status
-                    )
-                  ),
+                vendorStatus,
 
                 paymentStatus:
                   order.paymentStatus,
@@ -2451,7 +2578,11 @@ export const getOrderById =
                   order.updatedAt,
 
                 buyer:
-                  order.buyer,
+                  buildVendorBuyerContact(
+                    order.buyer,
+                    order.paymentStatus,
+                    vendorStatus
+                  ),
 
                 items:
                   vendorItems,

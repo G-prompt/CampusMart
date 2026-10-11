@@ -13,6 +13,7 @@ import orderRoutes from "./routes/order.routes";
 import universityRoutes from "./routes/university.routes";
 import verificationRoutes from "./routes/verification.routes";
 import vendorRoutes from "./routes/vendor.routes";
+import messageRoutes from "./routes/message.routes";
 
 import adminAuthRoutes from "./routes/adminAuth.routes";
 import adminVerificationRoutes from "./routes/adminVerification.routes";
@@ -90,6 +91,11 @@ app.use(
 app.use(
   "/api/vendor",
   vendorRoutes
+);
+
+app.use(
+  "/api/messages",
+  messageRoutes
 );
 
 /*
