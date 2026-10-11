@@ -349,6 +349,14 @@ export default function AccountPanel({
     >(null);
 
   const [
+    latestRejectedAppeal,
+    setLatestRejectedAppeal,
+  ] =
+    useState<
+      VerificationAppeal | null
+    >(null);
+
+  const [
     accountLoading,
     setAccountLoading,
   ] =
@@ -481,6 +489,10 @@ export default function AccountPanel({
         null
       );
 
+      setLatestRejectedAppeal(
+        null
+      );
+
       setAccountLoading(
         false
       );
@@ -518,6 +530,7 @@ export default function AccountPanel({
           const [
             accountResponse,
             appealResponse,
+            historyResponse,
           ] =
             await Promise.all([
               fetch(
@@ -545,6 +558,19 @@ export default function AccountPanel({
                     "no-store",
                 }
               ),
+
+              fetch(
+                `${API_URL}/api/verification/appeals`,
+                {
+                  headers: {
+                    Authorization:
+                      `Bearer ${token}`,
+                  },
+
+                  cache:
+                    "no-store",
+                }
+              ),
             ]);
 
           const accountData =
@@ -552,6 +578,9 @@ export default function AccountPanel({
 
           const appealData =
             await appealResponse.json();
+
+          const historyData =
+            await historyResponse.json();
 
           if (
             !accountResponse.ok ||
@@ -581,6 +610,34 @@ export default function AccountPanel({
             );
           } else {
             setCurrentAppeal(
+              null
+            );
+          }
+
+          if (
+            historyResponse.ok &&
+            historyData.success &&
+            Array.isArray(
+              historyData.appeals
+            )
+          ) {
+            const rejectedAppeal =
+              (
+                historyData.appeals as VerificationAppeal[]
+              ).find(
+                (
+                  appeal
+                ) =>
+                  appeal.status ===
+                  "rejected"
+              ) ??
+              null;
+
+            setLatestRejectedAppeal(
+              rejectedAppeal
+            );
+          } else {
+            setLatestRejectedAppeal(
               null
             );
           }
@@ -692,7 +749,8 @@ export default function AccountPanel({
         JSON.parse(
           localStorage.getItem(
             PREFS_KEY
-          ) ?? "{}"
+          ) ??
+            "{}"
         ) as {
           emailUpdates?:
             boolean;
@@ -907,16 +965,6 @@ export default function AccountPanel({
     user.studentVerificationStatus ??
     "not_started";
 
-  /*
-   * The User verification status tells us
-   * the overall identity state.
-   *
-   * When an appeal exists, its more specific
-   * lifecycle status should control what the
-   * student sees in the verification badge.
-   *
-   * Once the User is verified, verified wins.
-   */
   const verificationDisplayStatus:
     | StudentVerificationStatus
     | VerificationAppealStatus =
@@ -958,6 +1006,12 @@ export default function AccountPanel({
         ?.submittedAt
     );
 
+  const rejectionDate =
+    formatDate(
+      latestRejectedAppeal
+        ?.updatedAt
+    );
+
   const studentDetailsMissing =
     !backendUser
       ?.universityId &&
@@ -978,11 +1032,20 @@ export default function AccountPanel({
     );
 
   const appealBeingReviewed =
-    currentAppeal !== null &&
+    currentAppeal !==
+      null &&
     currentAppeal.status !==
       "draft" &&
     currentAppeal.status !==
       "more_information_required";
+
+  const showRejectionFeedback =
+    !accountLoading &&
+    !currentAppeal &&
+    studentVerificationStatus ===
+      "failed" &&
+    latestRejectedAppeal !==
+      null;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
@@ -1078,15 +1141,10 @@ export default function AccountPanel({
             </p>
 
             <p className="mt-1 text-sm leading-6 text-amber-800">
-              You can continue
-              using CampusMart as
-              a buyer while your
-              student identity is
-              reviewed. Seller
-              features will remain
-              unavailable until
-              your access is
-              approved.
+              {studentVerificationStatus ===
+              "failed"
+                ? "Seller features remain unavailable because your student identity has not yet been verified. You can continue using CampusMart as a buyer and submit a new verification request."
+                : "You can continue using CampusMart as a buyer while your student identity is reviewed. Seller features will remain unavailable until your access is approved."}
             </p>
           </div>
         ) : null}
@@ -1225,6 +1283,65 @@ export default function AccountPanel({
                   )}
                 </p>
               ) : null}
+            </div>
+          ) : null}
+
+          {showRejectionFeedback &&
+          latestRejectedAppeal ? (
+            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-bold text-red-950">
+                    Student verification
+                    was not approved
+                  </p>
+
+                  <p className="mt-1 text-sm leading-6 text-red-800">
+                    CampusMart could
+                    not confirm your
+                    student identity
+                    from your latest
+                    verification
+                    request.
+                  </p>
+                </div>
+
+                <span className="rounded-full border border-red-200 bg-white px-2.5 py-1 text-xs font-bold text-red-700">
+                  Rejected
+                </span>
+              </div>
+
+              {latestRejectedAppeal
+                .decisionReason ? (
+                <div className="mt-4 rounded-xl border border-red-200 bg-white p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-red-600">
+                    Reviewer feedback
+                  </p>
+
+                  <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-red-950">
+                    {
+                      latestRejectedAppeal
+                        .decisionReason
+                    }
+                  </p>
+                </div>
+              ) : null}
+
+              {rejectionDate ? (
+                <p className="mt-3 text-xs font-semibold text-red-700">
+                  Decision updated{" "}
+                  {rejectionDate}
+                </p>
+              ) : null}
+
+              <p className="mt-4 text-sm leading-6 text-red-800">
+                You can submit a new
+                verification request
+                with updated or clearer
+                evidence. Review the
+                feedback above before
+                trying again.
+              </p>
             </div>
           ) : null}
 

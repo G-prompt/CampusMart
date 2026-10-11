@@ -5,6 +5,16 @@ import { ChevronRightIcon } from "@/components/common/icons";
 
 import type { Product } from "@/lib/products";
 
+/*
+ * The homepage loads live marketplace
+ * listings from the CampusMart backend.
+ *
+ * Do not statically generate this route
+ * during `next build`.
+ */
+export const dynamic =
+  "force-dynamic";
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000";
@@ -63,8 +73,9 @@ async function getLatestListings(): Promise<Product[]> {
     }
 
     /*
-     * Homepage carousel can now
-     * carry up to 30 real products.
+     * Homepage carousel can carry
+     * up to 30 real marketplace
+     * products.
      */
     return data.products.slice(
       0,

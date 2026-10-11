@@ -16,6 +16,7 @@ import vendorRoutes from "./routes/vendor.routes";
 
 import adminAuthRoutes from "./routes/adminAuth.routes";
 import adminVerificationRoutes from "./routes/adminVerification.routes";
+import adminUniversityRoutes from "./routes/adminUniversity.routes";
 
 const app =
   express();
@@ -105,6 +106,11 @@ app.use(
 app.use(
   "/api/admin/verification",
   adminVerificationRoutes
+);
+
+app.use(
+  "/api/admin/universities",
+  adminUniversityRoutes
 );
 
 /*

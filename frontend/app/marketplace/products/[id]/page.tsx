@@ -1,13 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+    useEffect,
+    useState,
+} from "react";
+
 import Link from "next/link";
 import Image from "next/image";
 
-import { useCart } from "@/components/common/CartContext";
-import { ChevronRightIcon } from "@/components/common/icons";
+import {
+    useCart,
+} from "@/components/common/CartContext";
+
+import {
+    ChevronRightIcon,
+} from "@/components/common/icons";
+
 import ProductCard from "@/components/common/ProductCard";
-import { useAuth } from "@/components/common/AuthContext";
+
+import {
+    useAuth,
+} from "@/components/common/AuthContext";
 
 import {
     formatNaira,
@@ -21,141 +34,379 @@ import {
     type ProductReview,
 } from "@/lib/reviews";
 
+type ProductWithVendor =
+    Product & {
+        vendorId?: string;
+    };
+
+type SellerStorefront = {
+    sellerId: string;
+
+    ownerName: string;
+
+    businessName: string;
+
+    description: string;
+
+    university:
+        | {
+              id:
+                  | string
+                  | null;
+
+              name: string;
+
+              shortName:
+                  | string
+                  | null;
+
+              state:
+                  | string
+                  | null;
+
+              city:
+                  | string
+                  | null;
+
+              managed: boolean;
+          }
+        | null;
+
+    badges: {
+        studentVerified:
+            boolean;
+
+        vendorVerified:
+            boolean;
+    };
+
+    memberSince: string;
+
+    listingCount: number;
+};
+
 export default function ProductPage({
     params,
 }: {
-    params: { id: string };
+    params: {
+        id: string;
+    };
 }) {
-    const { addToCart } = useCart();
-    const { user, openAuth } = useAuth();
+    const {
+        addToCart,
+    } =
+        useCart();
 
-    const [product, setProduct] =
-        useState<Product | null>(null);
+    const {
+        user,
+        openAuth,
+    } =
+        useAuth();
 
-    const [allProducts, setAllProducts] =
-        useState<Product[]>([]);
+    const [
+        product,
+        setProduct,
+    ] =
+        useState<ProductWithVendor | null>(
+            null
+        );
 
-    const [recentProducts, setRecentProducts] =
-        useState<Product[]>([]);
+    const [
+        allProducts,
+        setAllProducts,
+    ] =
+        useState<Product[]>(
+            []
+        );
 
-    const [loading, setLoading] =
-        useState(true);
+    const [
+        recentProducts,
+        setRecentProducts,
+    ] =
+        useState<Product[]>(
+            []
+        );
 
-    const [error, setError] =
-        useState("");
+    const [
+        sellerStorefront,
+        setSellerStorefront,
+    ] =
+        useState<SellerStorefront | null>(
+            null
+        );
 
-    const [activeImage, setActiveImage] =
-        useState(0);
+    const [
+        loading,
+        setLoading,
+    ] =
+        useState(
+            true
+        );
 
-    const [added, setAdded] =
-        useState(false);
+    const [
+        error,
+        setError,
+    ] =
+        useState(
+            ""
+        );
 
-    const [reviews, setReviews] =
-        useState<ProductReview[]>([]);
+    const [
+        activeImage,
+        setActiveImage,
+    ] =
+        useState(
+            0
+        );
 
-    const [reviewRating, setReviewRating] =
-        useState(5);
+    const [
+        added,
+        setAdded,
+    ] =
+        useState(
+            false
+        );
 
-    const [reviewComment, setReviewComment] =
-        useState("");
+    const [
+        reviews,
+        setReviews,
+    ] =
+        useState<ProductReview[]>(
+            []
+        );
 
-    const [reviewError, setReviewError] =
-        useState("");
+    const [
+        reviewRating,
+        setReviewRating,
+    ] =
+        useState(
+            5
+        );
+
+    const [
+        reviewComment,
+        setReviewComment,
+    ] =
+        useState(
+            ""
+        );
+
+    const [
+        reviewError,
+        setReviewError,
+    ] =
+        useState(
+            ""
+        );
 
     const apiUrl =
         process.env.NEXT_PUBLIC_API_URL ||
         "http://localhost:5000";
 
+    /*
+     * =====================================================
+     * LOAD PRODUCT + PUBLIC MARKETPLACE PRODUCTS
+     * =====================================================
+     */
+
     useEffect(() => {
-        let active = true;
+        let active =
+            true;
 
-        const loadProduct = async () => {
-            try {
-                setLoading(true);
-                setError("");
-
-                const productResponse =
-                    await fetch(
-                        `${apiUrl}/api/products/${params.id}`
+        const loadProduct =
+            async () => {
+                try {
+                    setLoading(
+                        true
                     );
 
-                const productData =
-                    await productResponse.json();
-
-                if (
-                    !productResponse.ok ||
-                    !productData.success
-                ) {
-                    throw new Error(
-                        productData.message ||
-                            "Product not found."
-                    );
-                }
-
-                if (!active) return;
-
-                setProduct(
-                    productData.product
-                );
-
-                const productsResponse =
-                    await fetch(
-                        `${apiUrl}/api/products`
-                    );
-
-                const productsData =
-                    await productsResponse.json();
-
-                if (
-                    productsResponse.ok &&
-                    productsData.success &&
-                    active
-                ) {
-                    setAllProducts(
-                        productsData.products
-                    );
-                }
-            } catch (err) {
-                console.error(
-                    "Product page error:",
-                    err
-                );
-
-                if (active) {
                     setError(
-                        "Unable to load this listing."
+                        ""
                     );
-                }
-            } finally {
-                if (active) {
-                    setLoading(false);
-                }
-            }
-        };
 
-        loadProduct();
+                    setSellerStorefront(
+                        null
+                    );
+
+                    const productResponse =
+                        await fetch(
+                            `${apiUrl}/api/products/${params.id}`,
+                            {
+                                cache:
+                                    "no-store",
+                            }
+                        );
+
+                    const productData =
+                        await productResponse.json();
+
+                    if (
+                        !productResponse.ok ||
+                        !productData.success
+                    ) {
+                        throw new Error(
+                            productData.message ||
+                                "Product not found."
+                        );
+                    }
+
+                    if (
+                        !active
+                    ) {
+                        return;
+                    }
+
+                    const loadedProduct =
+                        productData.product as
+                            ProductWithVendor;
+
+                    setProduct(
+                        loadedProduct
+                    );
+
+                    /*
+                     * Load the seller storefront independently.
+                     *
+                     * A storefront failure must not break the
+                     * product page.
+                     */
+
+                    if (
+                        loadedProduct.vendorId
+                    ) {
+                        try {
+                            const storefrontResponse =
+                                await fetch(
+                                    `${apiUrl}/api/vendor/storefront/${encodeURIComponent(
+                                        loadedProduct.vendorId
+                                    )}`,
+                                    {
+                                        cache:
+                                            "no-store",
+                                    }
+                                );
+
+                            const storefrontData =
+                                await storefrontResponse.json();
+
+                            if (
+                                storefrontResponse.ok &&
+                                storefrontData.success &&
+                                storefrontData.storefront &&
+                                active
+                            ) {
+                                setSellerStorefront(
+                                    storefrontData.storefront
+                                );
+                            }
+                        } catch (
+                            storefrontError
+                        ) {
+                            console.error(
+                                "Seller storefront lookup error:",
+                                storefrontError
+                            );
+                        }
+                    }
+
+                    const productsResponse =
+                        await fetch(
+                            `${apiUrl}/api/products`,
+                            {
+                                cache:
+                                    "no-store",
+                            }
+                        );
+
+                    const productsData =
+                        await productsResponse.json();
+
+                    if (
+                        productsResponse.ok &&
+                        productsData.success &&
+                        active
+                    ) {
+                        setAllProducts(
+                            Array.isArray(
+                                productsData.products
+                            )
+                                ? productsData.products
+                                : []
+                        );
+                    }
+                } catch (
+                    err
+                ) {
+                    console.error(
+                        "Product page error:",
+                        err
+                    );
+
+                    if (
+                        active
+                    ) {
+                        setError(
+                            "Unable to load this listing."
+                        );
+                    }
+                } finally {
+                    if (
+                        active
+                    ) {
+                        setLoading(
+                            false
+                        );
+                    }
+                }
+            };
+
+        void loadProduct();
 
         return () => {
-            active = false;
+            active =
+                false;
         };
-    }, [apiUrl, params.id]);
+    }, [
+        apiUrl,
+        params.id,
+    ]);
+
+    /*
+     * =====================================================
+     * RECENTLY VIEWED
+     * =====================================================
+     */
 
     useEffect(() => {
-        if (!product) return;
+        if (
+            !product
+        ) {
+            return;
+        }
 
-        const recent = JSON.parse(
-            localStorage.getItem(
-                "campusmart-recent-products"
-            ) ?? "[]"
-        ) as number[];
+        const recent =
+            JSON.parse(
+                localStorage.getItem(
+                    "campusmart-recent-products"
+                ) ??
+                    "[]"
+            ) as number[];
 
-        const nextRecent = [
-            product.id,
-            ...recent.filter(
-                (id) =>
-                    id !== product.id
-            ),
-        ].slice(0, 6);
+        const nextRecent =
+            [
+                product.id,
+
+                ...recent.filter(
+                    (
+                        id
+                    ) =>
+                        id !==
+                        product.id
+                ),
+            ].slice(
+                0,
+                6
+            );
 
         localStorage.setItem(
             "campusmart-recent-products",
@@ -166,30 +417,56 @@ export default function ProductPage({
 
         const resolved =
             nextRecent
-                .map((id) =>
-                    allProducts.find(
-                        (item) =>
-                            item.id === id
-                    )
+                .map(
+                    (
+                        id
+                    ) =>
+                        allProducts.find(
+                            (
+                                item
+                            ) =>
+                                item.id ===
+                                id
+                        )
                 )
                 .filter(
                     (
                         item
                     ): item is Product =>
-                        Boolean(item)
+                        Boolean(
+                            item
+                        )
                 );
 
-        setRecentProducts(resolved);
-    }, [product, allProducts]);
+        setRecentProducts(
+            resolved
+        );
+    }, [
+        product,
+        allProducts,
+    ]);
+
+    /*
+     * =====================================================
+     * REVIEWS
+     * =====================================================
+     */
 
     useEffect(() => {
-        if (!product) return;
+        if (
+            !product
+        ) {
+            return;
+        }
 
-        const loadReviews = () => {
-            setReviews(
-                getReviews(product.id)
-            );
-        };
+        const loadReviews =
+            () => {
+                setReviews(
+                    getReviews(
+                        product.id
+                    )
+                );
+            };
 
         loadReviews();
 
@@ -204,9 +481,19 @@ export default function ProductPage({
                 loadReviews
             );
         };
-    }, [product]);
+    }, [
+        product,
+    ]);
 
-    if (loading) {
+    /*
+     * =====================================================
+     * LOADING
+     * =====================================================
+     */
+
+    if (
+        loading
+    ) {
         return (
             <main className="main-container py-16 text-center">
                 <p className="text-sm text-slate-600">
@@ -216,7 +503,16 @@ export default function ProductPage({
         );
     }
 
-    if (error || !product) {
+    /*
+     * =====================================================
+     * PRODUCT UNAVAILABLE
+     * =====================================================
+     */
+
+    if (
+        error ||
+        !product
+    ) {
         return (
             <main className="main-container py-16 text-center">
                 <h1 className="text-2xl font-bold text-black">
@@ -225,8 +521,9 @@ export default function ProductPage({
 
                 <p className="mt-3 text-sm text-slate-600">
                     This listing may
-                    have been removed
-                    or is unavailable.
+                    have been archived
+                    or is currently
+                    unavailable.
                 </p>
 
                 <Link
@@ -239,16 +536,30 @@ export default function ProductPage({
         );
     }
 
-    const handleAddToCart = () => {
-        addToCart(product);
+    /*
+     * =====================================================
+     * PAGE DATA
+     * =====================================================
+     */
 
-        setAdded(true);
+    const handleAddToCart =
+        () => {
+            addToCart(
+                product
+            );
 
-        window.setTimeout(
-            () => setAdded(false),
-            1800
-        );
-    };
+            setAdded(
+                true
+            );
+
+            window.setTimeout(
+                () =>
+                    setAdded(
+                        false
+                    ),
+                1800
+            );
+        };
 
     const currentImage =
         product.images[
@@ -258,16 +569,67 @@ export default function ProductPage({
     const relatedProducts =
         allProducts
             .filter(
-                (item) =>
+                (
+                    item
+                ) =>
                     item.id !==
                         product.id &&
                     item.category ===
                         product.category
             )
-            .slice(0, 4);
+            .slice(
+                0,
+                4
+            );
+
+    const sellerName =
+        sellerStorefront
+            ?.businessName ||
+        product.seller;
+
+    const sellerUniversity =
+        sellerStorefront
+            ?.university;
+
+    const sellerUniversityLabel =
+        sellerUniversity
+            ? sellerUniversity.shortName ||
+              sellerUniversity.name
+            : "";
+
+    const sellerLocation =
+        sellerUniversity
+            ? [
+                  sellerUniversity.city,
+                  sellerUniversity.state,
+              ]
+                  .filter(
+                      Boolean
+                  )
+                  .join(
+                      ", "
+                  )
+            : "";
+
+    const sellerHref =
+        product.vendorId
+            ? `/seller/${product.vendorId}`
+            : null;
+
+    const averageRating =
+        getAverageRating(
+            product.id,
+            product.rating
+        );
 
     return (
         <main className="main-container py-10 sm:py-12 lg:py-14">
+            {/*
+             * =================================================
+             * BREADCRUMB
+             * =================================================
+             */}
+
             <nav
                 className="flex items-center gap-1 text-sm font-semibold text-slate-500"
                 aria-label="Breadcrumb"
@@ -282,11 +644,23 @@ export default function ProductPage({
                 <ChevronRightIcon className="h-3.5 w-3.5" />
 
                 <span className="text-black">
-                    {product.category}
+                    {
+                        product.category
+                    }
                 </span>
             </nav>
 
+            {/*
+             * =================================================
+             * PRODUCT
+             * =================================================
+             */}
+
             <div className="mt-6 grid gap-10 lg:grid-cols-2">
+                {/*
+                 * IMAGE GALLERY
+                 */}
+
                 <div>
                     <div className="relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                         {currentImage ? (
@@ -354,6 +728,10 @@ export default function ProductPage({
                     ) : null}
                 </div>
 
+                {/*
+                 * PRODUCT INFORMATION
+                 */}
+
                 <div>
                     <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
                         {
@@ -362,10 +740,12 @@ export default function ProductPage({
                     </p>
 
                     <h1 className="mt-2 text-3xl font-bold tracking-tight text-black">
-                        {product.title}
+                        {
+                            product.title
+                        }
                     </h1>
 
-                    <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-600">
                         <span className="inline-flex items-center gap-1 font-semibold text-black">
                             <svg
                                 viewBox="0 0 24 24"
@@ -376,39 +756,134 @@ export default function ProductPage({
                                 <path d="M12 2.5l2.9 6.16 6.6.72-4.9 4.6 1.28 6.52L12 17.3l-5.88 3.2 1.28-6.52-4.9-4.6 6.6-.72L12 2.5Z" />
                             </svg>
 
-                            {getAverageRating(
-                                product.id,
-                                product.rating
-                            ).toFixed(1)}
+                            {averageRating.toFixed(
+                                1
+                            )}
                         </span>
 
-                        <span>·</span>
+                        <span>
+                            ·
+                        </span>
 
                         <span>
                             Sold by{" "}
-                            {
-                                product.seller
-                            }
+                            {sellerHref ? (
+                                <Link
+                                    href={
+                                        sellerHref
+                                    }
+                                    className="font-bold text-black underline decoration-slate-300 underline-offset-4 transition hover:decoration-black"
+                                >
+                                    {
+                                        sellerName
+                                    }
+                                </Link>
+                            ) : (
+                                <span className="font-bold text-black">
+                                    {
+                                        sellerName
+                                    }
+                                </span>
+                            )}
                         </span>
                     </div>
 
+                    {/*
+                     * SELLER + EXCHANGE CARDS
+                     */}
+
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                                Seller
-                                status
-                            </p>
+                        {sellerHref ? (
+                            <Link
+                                href={
+                                    sellerHref
+                                }
+                                className="group rounded-xl border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-400 hover:bg-white"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                                            Seller
+                                        </p>
 
-                            <p className="mt-2 font-bold text-emerald-700">
-                                Verified
-                                campus seller
-                            </p>
+                                        <p className="mt-2 font-bold text-slate-950">
+                                            {
+                                                sellerName
+                                            }
+                                        </p>
+                                    </div>
 
-                            <p className="mt-1 text-sm text-slate-600">
-                                Trusted by
-                                nearby buyers.
-                            </p>
-                        </div>
+                                    <span className="text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-black">
+                                        →
+                                    </span>
+                                </div>
+
+                                {sellerStorefront ? (
+                                    <>
+                                        <div className="mt-3 flex flex-wrap gap-1.5">
+                                            {sellerStorefront
+                                                .badges
+                                                .studentVerified ? (
+                                                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                                                    Verified
+                                                    student
+                                                </span>
+                                            ) : null}
+
+                                            {sellerStorefront
+                                                .badges
+                                                .vendorVerified ? (
+                                                <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700">
+                                                    Verified
+                                                    vendor
+                                                </span>
+                                            ) : null}
+                                        </div>
+
+                                        {sellerUniversityLabel ? (
+                                            <p className="mt-3 text-sm text-slate-600">
+                                                {
+                                                    sellerUniversityLabel
+                                                }
+                                                {sellerLocation
+                                                    ? ` · ${sellerLocation}`
+                                                    : ""}
+                                            </p>
+                                        ) : null}
+
+                                        <p className="mt-2 text-xs font-semibold text-slate-500">
+                                            {
+                                                sellerStorefront.listingCount
+                                            }{" "}
+                                            active{" "}
+                                            {sellerStorefront.listingCount ===
+                                            1
+                                                ? "listing"
+                                                : "listings"}
+                                        </p>
+                                    </>
+                                ) : (
+                                    <p className="mt-2 text-sm text-slate-600">
+                                        View seller
+                                        storefront
+                                        and other
+                                        listings.
+                                    </p>
+                                )}
+                            </Link>
+                        ) : (
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                                    Seller
+                                </p>
+
+                                <p className="mt-2 font-bold text-slate-950">
+                                    {
+                                        sellerName
+                                    }
+                                </p>
+                            </div>
+                        )}
 
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                             <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
@@ -420,10 +895,14 @@ export default function ProductPage({
                                 pickup
                             </p>
 
-                            <p className="mt-1 text-sm text-slate-600">
-                                Arrange a
-                                safe nearby
-                                handoff.
+                            <p className="mt-1 text-sm leading-6 text-slate-600">
+                                Arrange
+                                pickup
+                                details
+                                through
+                                your
+                                CampusMart
+                                order.
                             </p>
                         </div>
                     </div>
@@ -462,22 +941,32 @@ export default function ProductPage({
                     </div>
 
                     <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm leading-7 text-slate-600">
-                        Protected by
-                        CampusMart escrow
-                        — funds are only
-                        released to the
-                        seller once you
-                        confirm pickup or
-                        delivery.
+                        Complete your
+                        order through
+                        CampusMart so
+                        the purchase,
+                        seller
+                        fulfilment and
+                        order history
+                        remain recorded
+                        on the
+                        platform.
                     </div>
                 </div>
             </div>
+
+            {/*
+             * =================================================
+             * REVIEWS
+             * =================================================
+             */}
 
             <section className="mt-16 border-t border-slate-200 pt-10">
                 <div className="flex flex-wrap items-end justify-between gap-4">
                     <div>
                         <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
-                            Customer reviews
+                            Customer
+                            reviews
                         </p>
 
                         <h2 className="mt-2 text-2xl font-bold text-black">
@@ -505,11 +994,14 @@ export default function ProductPage({
                         ) => {
                             event.preventDefault();
 
-                            if (!user) {
+                            if (
+                                !user
+                            ) {
                                 openAuth(
                                     "login",
                                     "client"
                                 );
+
                                 return;
                             }
 
@@ -520,6 +1012,7 @@ export default function ProductPage({
                                 setReviewError(
                                     "Only client accounts can leave product reviews."
                                 );
+
                                 return;
                             }
 
@@ -529,16 +1022,20 @@ export default function ProductPage({
                                 setReviewError(
                                     "Write a short comment before submitting."
                                 );
+
                                 return;
                             }
 
                             addReview({
                                 productId:
                                     product.id,
+
                                 author:
                                     user.name,
+
                                 rating:
                                     reviewRating,
+
                                 comment:
                                     reviewComment.trim(),
                             });
@@ -546,9 +1043,11 @@ export default function ProductPage({
                             setReviewComment(
                                 ""
                             );
+
                             setReviewRating(
                                 5
                             );
+
                             setReviewError(
                                 ""
                             );
@@ -584,19 +1083,26 @@ export default function ProductPage({
                                     5 -
                                     Excellent
                                 </option>
+
                                 <option value="4">
-                                    4 - Good
+                                    4 -
+                                    Good
                                 </option>
+
                                 <option value="3">
                                     3 -
                                     Average
                                 </option>
+
                                 <option value="2">
-                                    2 - Below
+                                    2 -
+                                    Below
                                     average
                                 </option>
+
                                 <option value="1">
-                                    1 - Poor
+                                    1 -
+                                    Poor
                                 </option>
                             </select>
                         </label>
@@ -667,6 +1173,7 @@ export default function ProductPage({
                                                 {"★".repeat(
                                                     review.rating
                                                 )}
+
                                                 {"☆".repeat(
                                                     5 -
                                                         review.rating
@@ -696,6 +1203,12 @@ export default function ProductPage({
                 </div>
             </section>
 
+            {/*
+             * =================================================
+             * RELATED PRODUCTS
+             * =================================================
+             */}
+
             {relatedProducts.length >
             0 ? (
                 <section className="mt-16 border-t border-slate-200 pt-10">
@@ -710,7 +1223,9 @@ export default function ProductPage({
 
                     <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                         {relatedProducts.map(
-                            (item) => (
+                            (
+                                item
+                            ) => (
                                 <ProductCard
                                     key={
                                         item.id
@@ -725,11 +1240,20 @@ export default function ProductPage({
                 </section>
             ) : null}
 
+            {/*
+             * =================================================
+             * RECENTLY VIEWED
+             * =================================================
+             */}
+
             {recentProducts.filter(
-                (item) =>
+                (
+                    item
+                ) =>
                     item.id !==
                     product.id
-            ).length > 0 ? (
+            ).length >
+            0 ? (
                 <section className="mt-16 border-t border-slate-200 pt-10">
                     <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
                         Your trail
@@ -748,7 +1272,10 @@ export default function ProductPage({
                                     item.id !==
                                     product.id
                             )
-                            .slice(0, 4)
+                            .slice(
+                                0,
+                                4
+                            )
                             .map(
                                 (
                                     item

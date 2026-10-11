@@ -36,6 +36,7 @@ enum StudentVerificationSource {
   none
   university_database
   university_api
+  university_roster_import
   manual_document_review
   university_manual_confirmation
 }
@@ -54,11 +55,38 @@ enum VendorAccessStatus {
   suspended
 }
 
+/**
+ * Temporary legacy configuration.
+ * Keep this until the application has fully migrated
+ * away from the old single verification-method model.
+ */
 enum UniversityVerificationMethod {
   none
   manual
   database
   api
+}
+
+/**
+ * Automated verification sources.
+ * Manual review deliberately remains a separate
+ * exception path.
+ */
+enum UniversityVerificationSourceType {
+  none
+  university_api
+  roster_import
+  university_database
+}
+
+/**
+ * Lifecycle of an imported university roster.
+ */
+enum UniversityRosterImportStatus {
+  processing
+  active
+  archived
+  failed
 }
 
 enum VerificationAppealStatus {
@@ -118,14 +146,41 @@ model University {
 
   studentVerificationEnabled Boolean @default(false)
 
+  /**
+   * Legacy compatibility field.
+   */
   verificationMethod UniversityVerificationMethod @default(none)
 
-  matricValidationEnabled Boolean @default(false)
-  matricPattern           String?
-  matricFormatHint        String?
+  /**
+   * Source-aware verification architecture.
+   */
+  primaryVerificationSource UniversityVerificationSourceType @default(none)
 
-  users               User[]
+  fallbackVerificationSource UniversityVerificationSourceType @default(none)
+
+  manualReviewEnabled Boolean @default(false)
+
+  /**
+   * Matric-number format validation is only an
+   * input-quality check.
+   */
+  matricValidationEnabled Boolean @default(false)
+
+  /**
+   * Private Admin/backend configuration.
+   */
+  matricPattern String?
+
+  /**
+   * Safe student-facing format hint.
+   */
+  matricFormatHint String?
+
+  users User[]
+
   verificationAppeals VerificationAppeal[]
+
+  rosterImports UniversityRosterImport[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -133,6 +188,8 @@ model University {
   @@index([active])
   @@index([state])
   @@index([city])
+  @@index([primaryVerificationSource])
+  @@index([fallbackVerificationSource])
 }
 
 model User {
@@ -145,13 +202,17 @@ model User {
   phone String?
   bio   String?
 
-  // Temporary legacy compatibility field.
+  /**
+   * Temporary legacy compatibility field.
+   */
   campus String?
 
   universityId String?
   university   University? @relation(fields: [universityId], references: [id], onDelete: SetNull)
 
-  // Stored in normalized/canonical form.
+  /**
+   * Stored in normalized/canonical form.
+   */
   matricNumber String?
 
   studentVerificationStatus StudentVerificationStatus @default(not_started)
@@ -160,7 +221,10 @@ model User {
 
   studentVerifiedAt DateTime?
 
-  // Used when the university is not currently listed.
+  /**
+   * Used where the student's university is not currently
+   * represented by a managed CampusMart University row.
+   */
   fallbackUniversityName String?
   fallbackState          String?
   fallbackCity           String?
@@ -174,8 +238,17 @@ model User {
 
   verificationAppeals VerificationAppeal[]
 
-  buyerOrders      Order[]     @relation("BuyerOrders")
+  buyerOrders Order[] @relation("BuyerOrders")
+
   vendorOrderItems OrderItem[] @relation("VendorOrderItems")
+
+  /**
+   * Seller-specific fulfilment records.
+   *
+   * One record represents this seller's portion of one
+   * buyer order.
+   */
+  vendorFulfillments OrderVendorFulfillment[] @relation("VendorFulfillments")
 
   @@unique([universityId, matricNumber])
   @@index([universityId])
@@ -198,15 +271,18 @@ model Admin {
   active Boolean @default(true)
 
   /**
-   * Super Admin can eventually create
-   * other Admin accounts.
+   * Super Admin can eventually create other Admin
+   * accounts.
    */
   createdByAdminId String?
 
-  createdByAdmin Admin?  @relation("AdminCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
-  createdAdmins  Admin[] @relation("AdminCreatedBy")
+  createdByAdmin Admin? @relation("AdminCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  createdAdmins Admin[] @relation("AdminCreatedBy")
 
   reviewedVerificationAppeals VerificationAppeal[] @relation("VerificationAppealReviewer")
+
+  importedUniversityRosters UniversityRosterImport[] @relation("UniversityRosterImportedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -226,15 +302,22 @@ model VendorProfile {
   businessDescription String
   pickupLocation      String
 
-  // Temporary legacy compatibility field.
+  /**
+   * Temporary legacy compatibility field.
+   */
   verified Boolean @default(false)
 
+  /**
+   * Seller access and seller identity verification
+   * remain separate trust decisions.
+   */
   accessStatus VendorAccessStatus @default(active)
 
   vendorVerificationStatus VendorVerificationStatus @default(not_started)
 
   verificationSubmittedAt DateTime?
-  vendorVerifiedAt        DateTime?
+
+  vendorVerifiedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -259,26 +342,26 @@ model VerificationAppeal {
   status VerificationAppealStatus @default(draft)
 
   /**
-   * Snapshot of the identity details
-   * being appealed.
+   * Snapshot of the identity details being reviewed.
    */
-  submittedName           String
-  submittedMatricNumber   String?
+  submittedName String
+
+  submittedMatricNumber String?
+
   submittedUniversityName String
-  submittedState          String?
-  submittedCity           String?
+
+  submittedState String?
+
+  submittedCity String?
 
   decisionReason String?
 
-  /**
-   * The administrator who handled
-   * the manual verification review.
-   */
   reviewedByAdminId String?
 
   reviewedByAdmin Admin? @relation("VerificationAppealReviewer", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
 
-  createdAt   DateTime  @default(now())
+  createdAt DateTime @default(now())
+
   submittedAt DateTime?
 
   reviewedAt DateTime?
@@ -304,14 +387,15 @@ model VerificationAppealEvidence {
   type VerificationEvidenceType
 
   /**
-   * Private storage reference.
-   * Never expose directly to normal clients.
+   * Private Supabase Storage reference.
    */
   storageKey String
 
   originalFileName String?
-  mimeType         String?
-  fileSizeBytes    Int?
+
+  mimeType String?
+
+  fileSizeBytes Int?
 
   createdAt DateTime @default(now())
 
@@ -319,23 +403,219 @@ model VerificationAppealEvidence {
   @@index([type])
 }
 
+/**
+ * =======================================================
+ * UNIVERSITY ROSTER IMPORT
+ * =======================================================
+ * One import represents one university-supplied student
+ * roster.
+ * CampusMart keeps import metadata so freshness and
+ * source authority can later be enforced.
+ */
+model UniversityRosterImport {
+  id String @id @default(uuid())
+
+  universityId String
+  university   University @relation(fields: [universityId], references: [id], onDelete: Restrict)
+
+  /**
+   * Admin who imported the roster.
+   */
+  importedByAdminId String?
+
+  importedByAdmin Admin? @relation("UniversityRosterImportedBy", fields: [importedByAdminId], references: [id], onDelete: SetNull)
+
+  /**
+   * Human-readable academic period.
+   * Example:
+   * 2025/2026
+   */
+  academicSession String
+
+  /**
+   * University registry, ICT unit, authorised officer,
+   * or another approved issuer.
+   */
+  sourceIssuer String
+
+  /**
+   * Optional university-supplied source reference.
+   */
+  sourceReference String?
+
+  /**
+   * Original filename for audit/debugging.
+   * This is not a public media URL.
+   */
+  originalFileName String
+
+  /**
+   * Optional SHA-256 file digest for future duplicate-file
+   * detection.
+   */
+  fileSha256 String?
+
+  status UniversityRosterImportStatus @default(processing)
+
+  /**
+   * Optional validity period provided by the institution.
+   */
+  validFrom DateTime?
+
+  expiresAt DateTime?
+
+  /**
+   * Import processing statistics.
+   */
+  recordCount Int @default(0)
+
+  activeRecordCount Int @default(0)
+
+  inactiveRecordCount Int @default(0)
+
+  rejectedRowCount Int @default(0)
+
+  /**
+   * Processing failure summary.
+   * Do not store raw student information here.
+   */
+  failureReason String?
+
+  importedAt DateTime @default(now())
+
+  activatedAt DateTime?
+
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  records UniversityRosterRecord[]
+
+  @@index([universityId])
+  @@index([universityId, status])
+  @@index([universityId, expiresAt])
+  @@index([importedByAdminId])
+  @@index([status])
+  @@index([importedAt])
+}
+
+/**
+ * =======================================================
+ * UNIVERSITY ROSTER RECORD
+ * =======================================================
+ * Minimal student identity information used for
+ * automated university roster verification.
+ */
+model UniversityRosterRecord {
+  id String @id @default(uuid())
+
+  rosterImportId String
+  rosterImport   UniversityRosterImport @relation(fields: [rosterImportId], references: [id], onDelete: Cascade)
+
+  /**
+   * Original matric/student number supplied by the
+   * university.
+   */
+  matricNumber String
+
+  /**
+   * CampusMart-generated normalized representation used
+   * for matching.
+   */
+  normalizedMatricNumber String
+
+  /**
+   * Original university-provided full name.
+   */
+  fullName String
+
+  /**
+   * CampusMart-generated normalized name used by the
+   * future matching engine.
+   */
+  normalizedFullName String
+
+  /**
+   * Original university status value.
+   */
+  studentStatus String
+
+  /**
+   * CampusMart's normalized interpretation of whether
+   * this record represents a currently eligible student.
+   */
+  isActiveStudent Boolean
+
+  /**
+   * Optional minimal secondary identifier.
+   */
+  institutionalEmail String?
+
+  /**
+   * Original CSV row number for operational debugging.
+   */
+  sourceRowNumber Int?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([rosterImportId, normalizedMatricNumber])
+  @@index([rosterImportId])
+  @@index([normalizedMatricNumber])
+  @@index([normalizedFullName])
+  @@index([isActiveStudent])
+  @@index([institutionalEmail])
+}
+
 model Product {
-  id          Int      @id @default(autoincrement())
-  slug        String   @unique
-  title       String
-  category    String
-  price       Int
-  rating      Float    @default(0)
+  id Int @id @default(autoincrement())
+
+  slug String @unique
+
+  title String
+
+  category String
+
+  price Int
+
+  rating Float @default(0)
+
   description String
-  images      String[]
+
+  images String[]
 
   vendorId String
   vendor   User   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  /**
+   * Marketplace publication state.
+   *
+   * false = currently published
+   * true  = archived / removed from public sale
+   *
+   * Archived products remain in the database so
+   * historical orders, moderation and future disputes
+   * retain their listing relationship.
+   */
+  isArchived Boolean @default(false)
+
+  /**
+   * Timestamp for when the product was archived.
+   *
+   * null means the listing is currently published.
+   */
+  archivedAt DateTime?
 
   orderItems OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([isArchived, createdAt])
+  @@index([vendorId, isArchived])
 }
 
 model Order {
@@ -344,17 +624,37 @@ model Order {
   buyerId String
   buyer   User   @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
 
-  status        OrderStatus   @default(pending)
+  status OrderStatus @default(pending)
+
   paymentStatus PaymentStatus @default(pending)
 
   subtotal Int
-  fee      Int @default(0)
-  total    Int
+
+  fee Int @default(0)
+
+  total Int
 
   pickupLocation String?
-  preferredSlot  String?
+
+  preferredSlot String?
 
   items OrderItem[]
+
+  /**
+   * One fulfilment record per seller represented in this
+   * order.
+   *
+   * Example:
+   *
+   * order contains:
+   * - two products from Seller A
+   * - one product from Seller B
+   *
+   * this relation contains:
+   * - one Seller A fulfilment
+   * - one Seller B fulfilment
+   */
+  vendorFulfillments OrderVendorFulfillment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -373,10 +673,19 @@ model OrderItem {
   vendor   User   @relation("VendorOrderItems", fields: [vendorId], references: [id], onDelete: Restrict)
 
   productTitle String
-  unitPrice    Int
-  quantity     Int
-  lineTotal    Int
 
+  unitPrice Int
+
+  quantity Int
+
+  lineTotal Int
+
+  /**
+   * Current fulfilment state for this item.
+   *
+   * All items belonging to one seller are currently
+   * advanced together by the seller-order workflow.
+   */
   status OrderStatus @default(pending)
 
   createdAt DateTime @default(now())
@@ -384,4 +693,113 @@ model OrderItem {
   @@index([orderId])
   @@index([vendorId])
   @@index([productId])
+}
+
+/**
+ * =======================================================
+ * ORDER VENDOR FULFILMENT
+ * =======================================================
+ *
+ * Represents ONE SELLER'S portion of ONE ORDER.
+ *
+ * This exists separately from OrderItem because a seller
+ * may have several items in the same buyer order but
+ * should receive only one fulfilment challenge/code.
+ *
+ * Example:
+ *
+ * Buyer order:
+ *
+ * Seller A
+ * - Laptop
+ * - Mouse
+ *
+ * Seller B
+ * - Textbook
+ *
+ * Fulfilment records:
+ *
+ * Order + Seller A -> one private code
+ * Order + Seller B -> another private code
+ *
+ * The raw 4-digit code must never be stored directly.
+ */
+model OrderVendorFulfillment {
+  id String @id @default(uuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  vendorId String
+  vendor   User   @relation("VendorFulfillments", fields: [vendorId], references: [id], onDelete: Restrict)
+
+  /**
+   * Secure hash of the buyer's fulfilment code.
+   *
+   * The seller-submitted code is hashed and compared
+   * against this value.
+   *
+   * The raw code must not be recoverable from this field.
+   */
+  codeHash String
+
+  /**
+   * Encrypted representation of the same fulfilment code.
+   *
+   * This allows the BUYER endpoint to decrypt and display
+   * the code after the seller confirms the order.
+   *
+   * Seller-facing endpoints must never expose this value.
+   */
+  codeCiphertext String
+
+  /**
+   * When this fulfilment code became active.
+   */
+  codeCreatedAt DateTime @default(now())
+
+  /**
+   * Set when the seller successfully supplies the correct
+   * fulfilment code.
+   *
+   * Successful validation will later cause all eligible
+   * OrderItems for this order/vendor pair to become
+   * completed.
+   */
+  verifiedAt DateTime?
+
+  /**
+   * Count incorrect fulfilment-code attempts.
+   *
+   * A 4-digit code only has 10,000 combinations, so the
+   * backend must never permit unlimited guesses.
+   */
+  failedAttemptCount Int @default(0)
+
+  /**
+   * Most recent incorrect code attempt.
+   */
+  lastFailedAttemptAt DateTime?
+
+  /**
+   * Temporary lock used after too many failed attempts.
+   *
+   * While this is in the future, fulfilment-code
+   * verification must be rejected.
+   */
+  lockedUntil DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /**
+   * One seller can have only one fulfilment challenge for
+   * one buyer order.
+   */
+  @@unique([orderId, vendorId])
+
+  @@index([orderId])
+  @@index([vendorId])
+  @@index([vendorId, verifiedAt])
+  @@index([lockedUntil])
 }

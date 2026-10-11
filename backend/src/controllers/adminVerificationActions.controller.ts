@@ -108,10 +108,6 @@ export const startVerificationAppealReview =
         });
       }
 
-      /*
-       * Repeating Start Review from the
-       * same reviewer is harmless.
-       */
       if (
         currentAppeal.status ===
           VerificationAppealStatus.under_review &&
@@ -137,10 +133,6 @@ export const startVerificationAppealReview =
         });
       }
 
-      /*
-       * Do not silently allow another
-       * Admin to take over a claimed case.
-       */
       if (
         currentAppeal.status ===
           VerificationAppealStatus.under_review &&
@@ -174,12 +166,6 @@ export const startVerificationAppealReview =
         });
       }
 
-      /*
-       * Atomic claim.
-       *
-       * Only one reviewer can turn this
-       * pending appeal into under_review.
-       */
       const claimed =
         await prisma.verificationAppeal.updateMany({
           where: {
@@ -370,11 +356,6 @@ export const requestMoreVerificationInformation =
           req.body.decisionReason
         );
 
-      /*
-       * This message is shown to the
-       * student, so require a meaningful
-       * explanation.
-       */
       if (
         decisionReason.length <
         10
@@ -440,10 +421,6 @@ export const requestMoreVerificationInformation =
         });
       }
 
-      /*
-       * Only the Admin who claimed the
-       * case can request more information.
-       */
       if (
         currentAppeal.status ===
           VerificationAppealStatus.under_review &&
@@ -685,13 +662,6 @@ export const approveVerificationAppeal =
         });
       }
 
-      /*
-       * A completed approval may be called
-       * twice due to a browser retry.
-       *
-       * Treat that as harmless if the user
-       * is already verified.
-       */
       if (
         currentAppeal.status ===
           VerificationAppealStatus.approved &&
@@ -715,10 +685,6 @@ export const approveVerificationAppeal =
         });
       }
 
-      /*
-       * Only the reviewer who claimed the
-       * case may approve it.
-       */
       if (
         currentAppeal.status ===
           VerificationAppealStatus.under_review &&
@@ -751,11 +717,6 @@ export const approveVerificationAppeal =
         });
       }
 
-      /*
-       * Keep the evidence requirements
-       * enforced at the final approval
-       * boundary too.
-       */
       if (
         currentAppeal.evidence.length <
         2
@@ -824,13 +785,6 @@ export const approveVerificationAppeal =
           async (
             transaction
           ) => {
-            /*
-             * Atomic final transition.
-             *
-             * This prevents two decision
-             * requests from completing the
-             * same review.
-             */
             const approved =
               await transaction.verificationAppeal.updateMany({
                 where: {
@@ -868,11 +822,6 @@ export const approveVerificationAppeal =
               );
             }
 
-            /*
-             * The student verification
-             * record is updated in the same
-             * transaction as the appeal.
-             */
             await transaction.user.update({
               where: {
                 id:
@@ -891,15 +840,6 @@ export const approveVerificationAppeal =
               },
             });
 
-            /*
-             * A seller waiting only on
-             * student verification becomes
-             * active after approval.
-             *
-             * restricted and suspended
-             * accounts are intentionally not
-             * changed here.
-             */
             await transaction.vendorProfile.updateMany({
               where: {
                 userId:
@@ -1030,6 +970,391 @@ export const approveVerificationAppeal =
 
         message:
           "Unable to approve this verification appeal.",
+      });
+    }
+  };
+
+export const rejectVerificationAppeal =
+  async (
+    req: AuthenticatedAdminRequest,
+    res: Response
+  ) => {
+    try {
+      if (!req.admin) {
+        return res.status(401).json({
+          success: false,
+
+          message:
+            "Admin authentication required.",
+        });
+      }
+
+      const appealId =
+        String(
+          req.params.appealId ||
+            ""
+        ).trim();
+
+      if (!appealId) {
+        return res.status(400).json({
+          success: false,
+
+          code:
+            "APPEAL_ID_REQUIRED",
+
+          message:
+            "Verification appeal ID is required.",
+        });
+      }
+
+      const decisionReason =
+        cleanDecisionReason(
+          req.body?.decisionReason
+        );
+
+      /*
+       * Unlike approval, a rejection
+       * must always explain why.
+       *
+       * This message may be shown to the
+       * student and should be actionable.
+       */
+      if (
+        decisionReason.length <
+        10
+      ) {
+        return res.status(400).json({
+          success: false,
+
+          code:
+            "REJECTION_REASON_REQUIRED",
+
+          message:
+            "Explain why this student verification appeal is being rejected.",
+        });
+      }
+
+      if (
+        decisionReason.length >
+        1000
+      ) {
+        return res.status(400).json({
+          success: false,
+
+          code:
+            "DECISION_REASON_TOO_LONG",
+
+          message:
+            "The rejection reason must be 1000 characters or fewer.",
+        });
+      }
+
+      const currentAppeal =
+        await prisma.verificationAppeal.findUnique({
+          where: {
+            id:
+              appealId,
+          },
+
+          select: {
+            id: true,
+
+            userId:
+              true,
+
+            status:
+              true,
+
+            reviewedByAdminId:
+              true,
+
+            user: {
+              select: {
+                id: true,
+
+                studentVerificationStatus:
+                  true,
+
+                vendorProfile: {
+                  select: {
+                    accessStatus:
+                      true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+      if (!currentAppeal) {
+        return res.status(404).json({
+          success: false,
+
+          code:
+            "VERIFICATION_APPEAL_NOT_FOUND",
+
+          message:
+            "Verification appeal not found.",
+        });
+      }
+
+      /*
+       * Browser retries after a completed
+       * rejection are harmless.
+       */
+      if (
+        currentAppeal.status ===
+          VerificationAppealStatus.rejected &&
+        currentAppeal.user
+          .studentVerificationStatus ===
+          StudentVerificationStatus.failed
+      ) {
+        return res.status(200).json({
+          success: true,
+
+          message:
+            "This verification appeal has already been rejected.",
+
+          appeal: {
+            id:
+              currentAppeal.id,
+
+            status:
+              currentAppeal.status,
+          },
+        });
+      }
+
+      /*
+       * Only the Admin who owns the case
+       * may make the final rejection.
+       */
+      if (
+        currentAppeal.status ===
+          VerificationAppealStatus.under_review &&
+        currentAppeal.reviewedByAdminId !==
+          req.admin.id
+      ) {
+        return res.status(409).json({
+          success: false,
+
+          code:
+            "APPEAL_REVIEWER_MISMATCH",
+
+          message:
+            "This verification appeal is being handled by another Admin.",
+        });
+      }
+
+      if (
+        currentAppeal.status !==
+        VerificationAppealStatus.under_review
+      ) {
+        return res.status(409).json({
+          success: false,
+
+          code:
+            "APPEAL_NOT_UNDER_REVIEW",
+
+          message:
+            "Only an appeal currently under review can be rejected.",
+        });
+      }
+
+      const reviewedAt =
+        new Date();
+
+      const result =
+        await prisma.$transaction(
+          async (
+            transaction
+          ) => {
+            const rejected =
+              await transaction.verificationAppeal.updateMany({
+                where: {
+                  id:
+                    currentAppeal.id,
+
+                  userId:
+                    currentAppeal.userId,
+
+                  status:
+                    VerificationAppealStatus.under_review,
+
+                  reviewedByAdminId:
+                    req.admin!.id,
+                },
+
+                data: {
+                  status:
+                    VerificationAppealStatus.rejected,
+
+                  reviewedAt,
+
+                  decisionReason,
+                },
+              });
+
+            if (
+              rejected.count !==
+              1
+            ) {
+              throw new Error(
+                "APPEAL_REJECTION_CONFLICT"
+              );
+            }
+
+            /*
+             * Rejection means this review
+             * did not establish student
+             * identity.
+             *
+             * It does not permanently ban
+             * the user from trying again
+             * later with a new appeal.
+             */
+            await transaction.user.update({
+              where: {
+                id:
+                  currentAppeal.userId,
+              },
+
+              data: {
+                studentVerificationStatus:
+                  StudentVerificationStatus.failed,
+
+                studentVerificationSource:
+                  StudentVerificationSource.none,
+
+                studentVerifiedAt:
+                  null,
+              },
+            });
+
+            /*
+             * Seller access must not be
+             * activated after a failed
+             * student verification.
+             *
+             * pending_review, restricted
+             * and suspended states remain
+             * untouched.
+             */
+            return transaction.verificationAppeal.findUnique({
+              where: {
+                id:
+                  currentAppeal.id,
+              },
+
+              select: {
+                id: true,
+
+                status: true,
+
+                decisionReason:
+                  true,
+
+                submittedName:
+                  true,
+
+                submittedMatricNumber:
+                  true,
+
+                submittedUniversityName:
+                  true,
+
+                submittedAt:
+                  true,
+
+                reviewedAt:
+                  true,
+
+                reviewedByAdmin: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true,
+                  },
+                },
+
+                user: {
+                  select: {
+                    id: true,
+
+                    name: true,
+
+                    role: true,
+
+                    studentVerificationStatus:
+                      true,
+
+                    studentVerificationSource:
+                      true,
+
+                    studentVerifiedAt:
+                      true,
+
+                    vendorProfile: {
+                      select: {
+                        accessStatus:
+                          true,
+
+                        vendorVerificationStatus:
+                          true,
+                      },
+                    },
+                  },
+                },
+
+                _count: {
+                  select: {
+                    evidence:
+                      true,
+                  },
+                },
+              },
+            });
+          }
+        );
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Student verification appeal rejected.",
+
+        appeal:
+          result,
+      });
+    } catch (error) {
+      if (
+        error instanceof
+          Error &&
+        error.message ===
+          "APPEAL_REJECTION_CONFLICT"
+      ) {
+        return res.status(409).json({
+          success: false,
+
+          code:
+            "APPEAL_REJECTION_CONFLICT",
+
+          message:
+            "This verification appeal changed before the rejection could be completed. Refresh the case and try again.",
+        });
+      }
+
+      console.error(
+        "Reject verification appeal error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          "Unable to reject this verification appeal.",
       });
     }
   };

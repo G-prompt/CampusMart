@@ -1,17 +1,23 @@
 import "@/styles/globals.css";
 
-import Navbar from "@/components/common/Navbar";
-import Footer from "@/components/common/Footer";
-import GlobalLoader from "@/components/common/GlobalLoader";
-import AuthModal from "@/components/common/AuthModal";
-import ToastHost from "@/components/common/ToastHost";
+import RouteShell from "@/components/common/RouteShell";
 
-import { AuthProvider } from "@/components/common/AuthContext";
-import { CartProvider } from "@/components/common/CartContext";
-import { SavedProvider } from "@/components/common/SavedContext";
+import {
+  AuthProvider,
+} from "@/components/common/AuthContext";
+
+import {
+  CartProvider,
+} from "@/components/common/CartContext";
+
+import {
+  SavedProvider,
+} from "@/components/common/SavedContext";
 
 export const metadata = {
-  title: "CampusMart",
+  title:
+    "CampusMart",
+
   description:
     "A responsive marketplace for buyers, vendors, and administrators built with a modern design system.",
 };
@@ -19,7 +25,8 @@ export const metadata = {
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
 }) {
   return (
     <html lang="en">
@@ -27,21 +34,9 @@ export default function RootLayout({
         <AuthProvider>
           <CartProvider>
             <SavedProvider>
-              <div className="flex min-h-screen flex-col bg-white">
-                <GlobalLoader />
-
-                <Navbar />
-
-                <div className="flex-1 bg-white pb-20 md:pb-0">
-                  {children}
-                </div>
-
-                <Footer />
-              </div>
-
-              <AuthModal />
-
-              <ToastHost />
+              <RouteShell>
+                {children}
+              </RouteShell>
             </SavedProvider>
           </CartProvider>
         </AuthProvider>

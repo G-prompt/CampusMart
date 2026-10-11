@@ -2,78 +2,125 @@
 
 import Link from "next/link";
 import Image from "next/image";
+
 import {
   useState,
   type MouseEvent,
 } from "react";
 
-import type { Product } from "@/lib/products";
-import { formatNaira } from "@/lib/products";
+import type {
+  Product,
+} from "@/lib/products";
 
-import { useSaved } from "./SavedContext";
+import {
+  formatNaira,
+} from "@/lib/products";
+
+import {
+  useSaved,
+} from "./SavedContext";
+
+type ProductWithVendor =
+  Product & {
+    vendorId?:
+      string;
+  };
 
 export default function ProductCard({
   product,
 }: {
-  product: Product;
+  product:
+    ProductWithVendor;
 }) {
   const {
     isSaved,
     toggleSaved,
-  } = useSaved();
+  } =
+    useSaved();
 
   const [
     imageFailed,
     setImageFailed,
-  ] = useState(false);
+  ] =
+    useState(
+      false
+    );
 
   const saved =
-    isSaved(product.id);
-
-  const handleToggleSaved = (
-    event: MouseEvent<HTMLButtonElement>
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const nowSaved =
-      toggleSaved(
-        product.id
-      );
-
-    window.dispatchEvent(
-      new CustomEvent(
-        "campusmart-toast",
-        {
-          detail: {
-            message:
-              nowSaved
-                ? "Saved to your wishlist"
-                : "Removed from saved listings",
-          },
-        }
-      )
+    isSaved(
+      product.id
     );
-  };
+
+  const primaryImage =
+    product.images?.[0];
+
+  const sellerHref =
+    product.vendorId
+      ? `/seller/${product.vendorId}`
+      : null;
+
+  const hasRating =
+    typeof product.rating ===
+      "number" &&
+    product.rating >
+      0;
+
+  const handleToggleSaved =
+    (
+      event:
+        MouseEvent<HTMLButtonElement>
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const nowSaved =
+        toggleSaved(
+          product.id
+        );
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "campusmart-toast",
+          {
+            detail: {
+              message:
+                nowSaved
+                  ? "Saved to your wishlist"
+                  : "Removed from saved listings",
+            },
+          }
+        )
+      );
+    };
 
   return (
     <article className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+      {/*
+       * =====================================================
+       * PRODUCT IMAGE
+       * =====================================================
+       */}
+
       <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
         <Link
           href={`/marketplace/products/${product.id}`}
           aria-label={`View ${product.title}`}
           className="relative block h-full"
         >
-          {imageFailed ? (
+          {imageFailed ||
+          !primaryImage ? (
             <div className="flex h-full items-center justify-center bg-slate-900 p-6 text-center text-sm font-bold text-white">
-              CampusMart listing image
+              CampusMart
+              listing image
             </div>
           ) : (
             <Image
               src={
-                product.images[0]
+                primaryImage
               }
-              alt={product.title}
+              alt={
+                product.title
+              }
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
               onError={() =>
@@ -85,6 +132,10 @@ export default function ProductCard({
             />
           )}
         </Link>
+
+        {/*
+         * SAVE BUTTON
+         */}
 
         <button
           type="button"
@@ -131,58 +182,130 @@ export default function ProductCard({
         </button>
       </div>
 
-      <Link
-        href={`/marketplace/products/${product.id}`}
-        className="block p-4"
-      >
-        <p className="text-sm font-semibold text-slate-500">
-          {
-            product.category
-          }
-        </p>
+      {/*
+       * =====================================================
+       * PRODUCT INFORMATION
+       * =====================================================
+       */}
 
-        <h3 className="mt-2 min-h-12 text-lg font-bold leading-6 text-black">
-          {
-            product.title
-          }
-        </h3>
-
-        <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-500">
-          <span className="truncate">
+      <div className="p-4">
+        <Link
+          href={`/marketplace/products/${product.id}`}
+          className="block"
+        >
+          <p className="text-sm font-semibold text-slate-500">
             {
-              product.seller
+              product.category
             }
-          </span>
+          </p>
 
-          <span className="shrink-0 font-semibold text-slate-700">
-            ★{" "}
+          <h3 className="mt-2 min-h-12 text-lg font-bold leading-6 text-black transition group-hover:text-slate-700">
             {
-              product.rating
+              product.title
             }
-          </span>
+          </h3>
+        </Link>
+
+        {/*
+         * ===================================================
+         * SELLER + RATING
+         * ===================================================
+         */}
+
+        <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+          <div className="min-w-0">
+            {sellerHref ? (
+              <Link
+                href={
+                  sellerHref
+                }
+                className="block truncate font-semibold text-slate-600 transition hover:text-black hover:underline hover:underline-offset-4"
+                title={`Visit ${product.seller}`}
+              >
+                Sold by{" "}
+                <span className="font-bold text-slate-800">
+                  {
+                    product.seller
+                  }
+                </span>
+              </Link>
+            ) : (
+              <p className="truncate text-slate-500">
+                Sold by{" "}
+                <span className="font-semibold text-slate-700">
+                  {
+                    product.seller
+                  }
+                </span>
+              </p>
+            )}
+          </div>
+
+          <div className="shrink-0 font-semibold text-slate-700">
+            {hasRating ? (
+              <span className="inline-flex items-center gap-1">
+                <span className="text-accent-500">
+                  ★
+                </span>
+
+                {product.rating.toFixed(
+                  1
+                )}
+              </span>
+            ) : (
+              <span className="text-slate-500">
+                No reviews yet
+              </span>
+            )}
+          </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-500">
-          <span className="inline-flex items-center gap-1">
+        {/*
+         * ===================================================
+         * MARKETPLACE / SHOP ACTION
+         * ===================================================
+         */}
+
+        <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-[11px] font-semibold">
+          <span className="inline-flex items-center gap-1.5 text-slate-500">
             <span
               className="h-1.5 w-1.5 rounded-full bg-emerald-500"
               aria-hidden="true"
             />
 
-            Campus pickup
+            Available on
+            CampusMart
           </span>
 
-          <span className="text-emerald-700">
-            Verified seller
-          </span>
+          {sellerHref ? (
+            <Link
+              href={
+                sellerHref
+              }
+              className="shrink-0 font-bold text-slate-700 transition hover:text-black"
+            >
+              View shop →
+            </Link>
+          ) : null}
         </div>
 
-        <p className="mt-3 text-xl font-bold text-black">
-          {formatNaira(
-            product.price
-          )}
-        </p>
-      </Link>
+        {/*
+         * ===================================================
+         * PRICE
+         * ===================================================
+         */}
+
+        <Link
+          href={`/marketplace/products/${product.id}`}
+          className="mt-3 block"
+        >
+          <p className="text-xl font-bold text-black">
+            {formatNaira(
+              product.price
+            )}
+          </p>
+        </Link>
+      </div>
     </article>
   );
 }

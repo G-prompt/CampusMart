@@ -10,6 +10,7 @@ import {
 
 import {
   approveVerificationAppeal,
+  rejectVerificationAppeal,
   requestMoreVerificationInformation,
   startVerificationAppealReview,
 } from "../controllers/adminVerificationActions.controller";
@@ -69,6 +70,15 @@ router.post(
     AdminRole.verification_officer
   ),
   approveVerificationAppeal
+);
+
+router.post(
+  "/appeals/:appealId/reject",
+  requireAdmin,
+  requireAdminRole(
+    AdminRole.verification_officer
+  ),
+  rejectVerificationAppeal
 );
 
 router.post(
