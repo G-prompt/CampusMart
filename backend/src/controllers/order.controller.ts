@@ -265,28 +265,50 @@ function calculateVendorStatus(
 
 /*
  * =======================================================
- * BUYER PHONE PRIVACY
+ * SELLER PRIVATE ORDER DATA
  * =======================================================
  *
- * A seller may receive the buyer's phone number only
- * during an active paid + confirmed fulfilment window.
+ * Seller access to private fulfilment details is allowed
+ * only during that seller's active paid + confirmed
+ * fulfilment window.
  *
  * Requirements:
  *
  * - the checkout payment is PAID
  * - THIS seller's portion is CONFIRMED
  *
- * The number remains hidden while:
+ * Private data remains hidden while:
  *
- * - pending
+ * - seller portion is pending
  * - payment is pending
  * - payment is refunded
  * - seller portion is completed
  * - seller portion is cancelled
  *
- * This function is deliberately seller-facing only.
- *
- * Buyers may still see their own account/order data.
+ * Because the caller supplies the seller-specific
+ * vendorStatus, one seller can never unlock another
+ * seller's private fulfilment information in a
+ * multi-vendor order.
+ */
+
+function isVendorFulfillmentWindowOpen(
+  paymentStatus:
+    PaymentStatus,
+  vendorStatus:
+    OrderStatus
+) {
+  return (
+    paymentStatus ===
+      PaymentStatus.paid &&
+    vendorStatus ===
+      OrderStatus.confirmed
+  );
+}
+
+/*
+ * =======================================================
+ * BUYER PHONE PRIVACY
+ * =======================================================
  */
 
 function buildVendorBuyerContact(
@@ -295,10 +317,10 @@ function buildVendorBuyerContact(
   vendorStatus: OrderStatus
 ) {
   const phoneUnlocked =
-    paymentStatus ===
-      PaymentStatus.paid &&
-    vendorStatus ===
-      OrderStatus.confirmed;
+    isVendorFulfillmentWindowOpen(
+      paymentStatus,
+      vendorStatus
+    );
 
   return {
     id:
@@ -331,6 +353,61 @@ function buildVendorBuyerContact(
       phoneUnlocked &&
       Boolean(
         buyer.phone
+      ),
+  };
+}
+
+/*
+ * =======================================================
+ * PICKUP-LOCATION PRIVACY
+ * =======================================================
+ *
+ * The buyer-selected order pickup location follows the
+ * same privacy window as the buyer phone.
+ *
+ * Seller sees:
+ *
+ * pending / unpaid:
+ *   pickupLocation = null
+ *
+ * paid + THIS seller confirmed:
+ *   pickupLocation = actual location
+ *
+ * completed / cancelled / refunded:
+ *   pickupLocation = null
+ *
+ * This concerns Order.pickupLocation.
+ *
+ * It is separate from a seller's own vendor-profile
+ * pickup configuration.
+ */
+
+function buildVendorPickupDetails(
+  pickupLocation:
+    string | null,
+  paymentStatus:
+    PaymentStatus,
+  vendorStatus:
+    OrderStatus
+) {
+  const pickupLocationUnlocked =
+    isVendorFulfillmentWindowOpen(
+      paymentStatus,
+      vendorStatus
+    );
+
+  return {
+    pickupLocation:
+      pickupLocationUnlocked
+        ? pickupLocation
+        : null,
+
+    pickupLocationUnlocked,
+
+    pickupLocationAvailable:
+      pickupLocationUnlocked &&
+      Boolean(
+        pickupLocation
       ),
   };
 }
@@ -1201,7 +1278,8 @@ export const getBuyerFulfillmentCodes =
  * SELLER ORDER HISTORY
  * =======================================================
  *
- * Buyer phone privacy is enforced here.
+ * Buyer phone and order pickup-location privacy are
+ * enforced here.
  *
  * Each seller is evaluated using ONLY that seller's own
  * items inside the order.
@@ -1303,14 +1381,29 @@ export const getVendorOrders =
                 )
               );
 
+            /*
+             * Never spread the raw buyer-selected pickup
+             * location into a seller response.
+             */
+
             const {
               buyer,
-              ...orderWithoutBuyer
+              pickupLocation,
+              ...orderWithoutPrivateData
             } =
               order;
 
+            const pickupDetails =
+              buildVendorPickupDetails(
+                pickupLocation,
+                order.paymentStatus,
+                vendorStatus
+              );
+
             return {
-              ...orderWithoutBuyer,
+              ...orderWithoutPrivateData,
+
+              ...pickupDetails,
 
               buyer:
                 buildVendorBuyerContact(
@@ -1451,8 +1544,9 @@ export const getVendorOrders =
  *
  * Completion requires the buyer's fulfilment code.
  *
- * Buyer phone is sanitized in the response using the
- * resulting seller-specific status.
+ * Buyer phone and order pickup location are sanitized in
+ * the response using the resulting seller-specific
+ * status.
  */
 
 export const updateVendorOrderStatus =
@@ -1795,14 +1889,29 @@ export const updateVendorOrderStatus =
                 )
               );
 
+            /*
+             * Never spread the raw pickup location into
+             * the seller response.
+             */
+
             const {
               buyer,
-              ...orderWithoutBuyer
+              pickupLocation,
+              ...orderWithoutPrivateData
             } =
               updatedOrder;
 
+            const pickupDetails =
+              buildVendorPickupDetails(
+                pickupLocation,
+                updatedOrder.paymentStatus,
+                vendorStatus
+              );
+
             return {
-              ...orderWithoutBuyer,
+              ...orderWithoutPrivateData,
+
+              ...pickupDetails,
 
               buyer:
                 buildVendorBuyerContact(
@@ -2397,7 +2506,8 @@ export const verifyVendorFulfillmentCode =
  * Seller:
  * receives only their seller portion.
  *
- * Buyer phone privacy is enforced for seller access.
+ * Buyer phone and buyer-selected order pickup location
+ * are privacy-gated for seller access.
  */
 
 export const getOrderById =
@@ -2487,8 +2597,9 @@ export const getOrderById =
       /*
        * Buyer may view their complete order.
        *
-       * Returning their own stored phone value here is
-       * fine because this response belongs to the buyer.
+       * Returning their own stored phone value and their
+       * own chosen pickup location is fine because this
+       * response belongs to the buyer.
        */
 
       if (
@@ -2547,6 +2658,13 @@ export const getOrderById =
               )
             );
 
+          const pickupDetails =
+            buildVendorPickupDetails(
+              order.pickupLocation,
+              order.paymentStatus,
+              vendorStatus
+            );
+
           return res
             .status(200)
             .json({
@@ -2565,8 +2683,7 @@ export const getOrderById =
                 paymentStatus:
                   order.paymentStatus,
 
-                pickupLocation:
-                  order.pickupLocation,
+                ...pickupDetails,
 
                 preferredSlot:
                   order.preferredSlot,

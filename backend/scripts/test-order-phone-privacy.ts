@@ -7,7 +7,9 @@ import app from "../src/app";
 import {
   OrderStatus,
   PaymentStatus,
+  StudentVerificationStatus,
   UserRole,
+  VendorAccessStatus,
 } from "../src/generated/prisma/client";
 
 import {
@@ -16,24 +18,44 @@ import {
 
 /*
  * =======================================================
- * CAMPUSMART BUYER PHONE PRIVACY TEST
+ * CAMPUSMART ORDER PRIVACY TEST
  * =======================================================
  *
- * Proves:
+ * Proves seller-specific privacy for:
  *
- * 1. Pending seller cannot see buyer phone.
- * 2. Another pending seller cannot see buyer phone.
- * 3. Confirmation alone does not unlock phone if unpaid.
- * 4. Paid + confirmed unlocks phone for that seller.
- * 5. Another seller in the same order remains locked.
- * 6. Individual order endpoint follows same rule.
- * 7. Seller B remains locked while pending.
- * 8. Seller B unlocks independently after confirmation.
- * 9. Completed seller loses phone access again.
- * 10. Seller B remains unlocked while still confirmed.
- * 11. Cancelled seller loses phone access.
- * 12. Buyer can still see their own phone on their order.
- * 13. Seller individual order contains only their items.
+ * - buyer phone
+ * - buyer-selected order pickup location
+ *
+ * Privacy window:
+ *
+ * UNPAID + PENDING
+ *   phone  -> hidden
+ *   pickup -> hidden
+ *
+ * UNPAID + CONFIRMED
+ *   phone  -> hidden
+ *   pickup -> hidden
+ *
+ * PAID + PENDING
+ *   phone  -> hidden
+ *   pickup -> hidden
+ *
+ * PAID + CONFIRMED
+ *   phone  -> visible
+ *   pickup -> visible
+ *
+ * COMPLETED / CANCELLED
+ *   phone  -> hidden again
+ *   pickup -> hidden again
+ *
+ * Also proves:
+ *
+ * - multi-vendor isolation
+ * - seller list endpoint privacy
+ * - seller individual-order privacy
+ * - seller status-update response privacy
+ * - buyer still sees their own private order data
+ * - seller individual order contains only that seller's items
  */
 
 /*
@@ -102,12 +124,24 @@ if (
  */
 
 const suffix =
-  Date.now().toString(
+  `${Date.now().toString(
     36
-  );
+  )}-${Math.random()
+    .toString(36)
+    .slice(
+      2,
+      8
+    )}`;
 
 const buyerPhone =
   "08123456789";
+
+const buyerPickupLocation =
+  "Private Buyer Pickup - Campus Library Gate";
+
+let universityId:
+  string | null =
+    null;
 
 let buyerId:
   string | null =
@@ -154,19 +188,63 @@ function createToken(
  * =======================================================
  */
 
+type ApiResult = {
+  status: number;
+  body: any;
+};
+
 async function apiRequest(
   baseUrl: string,
   path: string,
-  token: string
-) {
+  options: {
+    token: string;
+
+    method?:
+      | "GET"
+      | "POST"
+      | "PATCH"
+      | "PUT"
+      | "DELETE";
+
+    body?: unknown;
+  }
+): Promise<ApiResult> {
+  const headers:
+    Record<
+      string,
+      string
+    > = {
+      Authorization:
+        `Bearer ${options.token}`,
+    };
+
+  if (
+    options.body !==
+    undefined
+  ) {
+    headers[
+      "Content-Type"
+    ] =
+      "application/json";
+  }
+
   const response =
     await fetch(
       `${baseUrl}${path}`,
       {
-        headers: {
-          Authorization:
-            `Bearer ${token}`,
-        },
+        method:
+          options.method ??
+          "GET",
+
+        headers,
+
+        body:
+          options.body !==
+          undefined
+            ? JSON.stringify(
+                options.body
+              )
+            : undefined,
       }
     );
 
@@ -220,6 +298,72 @@ function findOrder(
     );
 }
 
+function privateSellerDataIsLocked(
+  order: any
+) {
+  return (
+    order
+      ?.buyer
+      ?.phone ===
+      null &&
+    order
+      ?.buyer
+      ?.phoneUnlocked ===
+      false &&
+    order
+      ?.buyer
+      ?.phoneAvailable ===
+      false &&
+    order
+      ?.pickupLocation ===
+      null &&
+    order
+      ?.pickupLocationUnlocked ===
+      false &&
+    order
+      ?.pickupLocationAvailable ===
+      false
+  );
+}
+
+function privateSellerDataIsUnlocked(
+  order: any
+) {
+  return (
+    order
+      ?.buyer
+      ?.phone ===
+      buyerPhone &&
+    order
+      ?.buyer
+      ?.phoneUnlocked ===
+      true &&
+    order
+      ?.buyer
+      ?.phoneAvailable ===
+      true &&
+    order
+      ?.pickupLocation ===
+      buyerPickupLocation &&
+    order
+      ?.pickupLocationUnlocked ===
+      true &&
+    order
+      ?.pickupLocationAvailable ===
+      true
+  );
+}
+
+function containsBuyerPickupLocation(
+  value: unknown
+) {
+  return JSON.stringify(
+    value
+  ).includes(
+    buyerPickupLocation
+  );
+}
+
 /*
  * =======================================================
  * CLEANUP
@@ -265,6 +409,17 @@ async function cleanup() {
       },
     });
   }
+
+  if (
+    universityId
+  ) {
+    await prisma.university.deleteMany({
+      where: {
+        id:
+          universityId,
+      },
+    });
+  }
 }
 
 /*
@@ -275,29 +430,71 @@ async function cleanup() {
 
 async function main() {
   console.log(
-    "\nCampusMart buyer phone privacy integration test\n"
+    "\nCampusMart order privacy integration test\n"
   );
 
   /*
-   * ---------------------------------------------------
+   * =====================================================
+   * UNIVERSITY
+   * =====================================================
+   *
+   * Sellers are created as fully valid CampusMart
+   * sellers so seller-status endpoints are exercised
+   * under normal seller eligibility.
+   */
+
+  const university =
+    await prisma.university.create({
+      data: {
+        name:
+          `Order Privacy University ${suffix}`,
+
+        shortName:
+          "OPU",
+
+        slug:
+          `order-privacy-university-${suffix}`,
+
+        country:
+          "Nigeria",
+
+        state:
+          "Rivers",
+
+        city:
+          "Port Harcourt",
+
+        active:
+          true,
+      },
+    });
+
+  universityId =
+    university.id;
+
+  /*
+   * =====================================================
    * USERS
-   * ---------------------------------------------------
+   * =====================================================
    */
 
   const buyer =
     await prisma.user.create({
       data: {
         name:
-          "Phone Privacy Buyer",
+          "Order Privacy Buyer",
 
         email:
-          `phone-privacy-buyer-${suffix}@example.com`,
+          `order-privacy-buyer-${suffix}@example.com`,
 
         passwordHash:
           "test-password-hash",
 
         role:
           UserRole.client,
+
+        universityId:
+          university.id,
 
         phone:
           buyerPhone,
@@ -311,16 +508,44 @@ async function main() {
     await prisma.user.create({
       data: {
         name:
-          "Phone Privacy Seller A",
+          "Order Privacy Seller A",
 
         email:
-          `phone-privacy-a-${suffix}@example.com`,
+          `order-privacy-a-${suffix}@example.com`,
 
         passwordHash:
           "test-password-hash",
 
         role:
           UserRole.vendor,
+
+        universityId:
+          university.id,
+
+        matricNumber:
+          `OPA-${suffix}`,
+
+        studentVerificationStatus:
+          StudentVerificationStatus.verified,
+
+        studentVerifiedAt:
+          new Date(),
+
+        vendorProfile: {
+          create: {
+            businessName:
+              "Order Privacy Store A",
+
+            businessDescription:
+              "Seller A privacy-test store.",
+
+            pickupLocation:
+              "Seller A Public Store Pickup",
+
+            accessStatus:
+              VendorAccessStatus.active,
+          },
+        },
       },
     });
 
@@ -331,16 +556,44 @@ async function main() {
     await prisma.user.create({
       data: {
         name:
-          "Phone Privacy Seller B",
+          "Order Privacy Seller B",
 
         email:
-          `phone-privacy-b-${suffix}@example.com`,
+          `order-privacy-b-${suffix}@example.com`,
 
         passwordHash:
           "test-password-hash",
 
         role:
           UserRole.vendor,
+
+        universityId:
+          university.id,
+
+        matricNumber:
+          `OPB-${suffix}`,
+
+        studentVerificationStatus:
+          StudentVerificationStatus.verified,
+
+        studentVerifiedAt:
+          new Date(),
+
+        vendorProfile: {
+          create: {
+            businessName:
+              "Order Privacy Store B",
+
+            businessDescription:
+              "Seller B privacy-test store.",
+
+            pickupLocation:
+              "Seller B Public Store Pickup",
+
+            accessStatus:
+              VendorAccessStatus.active,
+          },
+        },
       },
     });
 
@@ -348,16 +601,20 @@ async function main() {
     vendorB.id;
 
   /*
-   * ---------------------------------------------------
+   * =====================================================
    * MULTI-VENDOR ORDER
-   * ---------------------------------------------------
+   * =====================================================
    *
-   * We create this directly because payment integration
-   * does not exist yet.
+   * Payment integration is not live yet, so this order
+   * is intentionally created directly.
    *
-   * This lets us explicitly simulate:
+   * This allows the test to move precisely through:
    *
-   * pending -> paid
+   * pending
+   * confirmed
+   * paid
+   * completed
+   * cancelled
    */
 
   const order =
@@ -382,7 +639,7 @@ async function main() {
           30050,
 
         pickupLocation:
-          "Campus Library Gate",
+          buyerPickupLocation,
 
         preferredSlot:
           "4:30 PM",
@@ -437,9 +694,9 @@ async function main() {
     order.id;
 
   /*
-   * ---------------------------------------------------
+   * =====================================================
    * TOKENS
-   * ---------------------------------------------------
+   * =====================================================
    */
 
   const buyerToken =
@@ -461,9 +718,9 @@ async function main() {
     );
 
   /*
-   * ---------------------------------------------------
+   * =====================================================
    * TEMP HTTP SERVER
-   * ---------------------------------------------------
+   * =====================================================
    */
 
   const server =
@@ -512,16 +769,19 @@ async function main() {
       `http://127.0.0.1:${address.port}`;
 
     /*
-     * =================================================
-     * PENDING + UNPAID
-     * =================================================
+     * ===================================================
+     * 1. SELLER A — PENDING + UNPAID
+     * ===================================================
      */
 
     const vendorAPending =
       await apiRequest(
         baseUrl,
         "/api/orders/vendor",
-        vendorAToken
+        {
+          token:
+            vendorAToken,
+        }
       );
 
     const vendorAOrderPending =
@@ -533,26 +793,45 @@ async function main() {
     check(
       vendorAPending.status ===
         200 &&
+      vendorAOrderPending
+        ?.vendorStatus ===
+        OrderStatus.pending &&
+      vendorAOrderPending
+        ?.paymentStatus ===
+        PaymentStatus.pending &&
+      privateSellerDataIsLocked(
         vendorAOrderPending
-          ?.buyer
-          ?.phone ===
-          null &&
-        vendorAOrderPending
-          ?.buyer
-          ?.phoneUnlocked ===
-          false &&
-        vendorAOrderPending
-          ?.buyer
-          ?.phoneAvailable ===
-          false,
-      "Seller A cannot see buyer phone while their portion is pending."
+      ),
+      "Seller A cannot see buyer phone or pickup location while pending and unpaid."
     );
+
+    /*
+     * Also make sure the raw buyer-selected location is
+     * not merely hidden from the main property while
+     * leaking somewhere else inside the seller order.
+     */
+
+    check(
+      !containsBuyerPickupLocation(
+        vendorAOrderPending
+      ),
+      "Seller A pending order contains no hidden copy of the buyer pickup location."
+    );
+
+    /*
+     * ===================================================
+     * 2. SELLER B — PENDING + UNPAID
+     * ===================================================
+     */
 
     const vendorBPending =
       await apiRequest(
         baseUrl,
         "/api/orders/vendor",
-        vendorBToken
+        {
+          token:
+            vendorBToken,
+        }
       );
 
     const vendorBOrderPending =
@@ -564,55 +843,73 @@ async function main() {
     check(
       vendorBPending.status ===
         200 &&
+      vendorBOrderPending
+        ?.vendorStatus ===
+        OrderStatus.pending &&
+      privateSellerDataIsLocked(
         vendorBOrderPending
-          ?.buyer
-          ?.phone ===
-          null &&
-        vendorBOrderPending
-          ?.buyer
-          ?.phoneUnlocked ===
-          false,
-      "Seller B also cannot see buyer phone while pending."
+      ),
+      "Seller B also cannot see buyer phone or pickup location while pending."
     );
 
     /*
-     * =================================================
-     * A CONFIRMED BUT PAYMENT STILL PENDING
-     * =================================================
+     * ===================================================
+     * 3. SELLER A CONFIRMS WHILE PAYMENT IS PENDING
+     * ===================================================
+     *
+     * This exercises updateVendorOrderStatus() itself.
      */
 
-    await prisma.orderItem.updateMany({
-      where: {
-        orderId:
-          order.id,
+    const confirmAUnpaid =
+      await apiRequest(
+        baseUrl,
+        `/api/orders/vendor/${order.id}/status`,
+        {
+          method:
+            "PATCH",
 
-        vendorId:
-          vendorA.id,
-      },
+          token:
+            vendorAToken,
 
-      data: {
-        status:
-          OrderStatus.confirmed,
-      },
-    });
+          body: {
+            status:
+              "confirmed",
+          },
+        }
+      );
 
-    await prisma.order.update({
-      where: {
-        id:
-          order.id,
-      },
+    check(
+      confirmAUnpaid.status ===
+        200 &&
+      confirmAUnpaid.body
+        ?.order
+        ?.vendorStatus ===
+        OrderStatus.confirmed &&
+      confirmAUnpaid.body
+        ?.order
+        ?.paymentStatus ===
+        PaymentStatus.pending &&
+      privateSellerDataIsLocked(
+        confirmAUnpaid.body
+          ?.order
+      ),
+      "Seller A confirmation response keeps phone and pickup locked while payment is pending."
+    );
 
-      data: {
-        status:
-          OrderStatus.confirmed,
-      },
-    });
+    /*
+     * ===================================================
+     * 4. SELLER HISTORY AFTER UNPAID CONFIRMATION
+     * ===================================================
+     */
 
     const vendorAUnpaidConfirmed =
       await apiRequest(
         baseUrl,
         "/api/orders/vendor",
-        vendorAToken
+        {
+          token:
+            vendorAToken,
+        }
       );
 
     const vendorAUnpaidOrder =
@@ -622,27 +919,24 @@ async function main() {
       );
 
     check(
+      vendorAUnpaidConfirmed.status ===
+        200 &&
       vendorAUnpaidOrder
         ?.vendorStatus ===
         OrderStatus.confirmed &&
+      vendorAUnpaidOrder
+        ?.paymentStatus ===
+        PaymentStatus.pending &&
+      privateSellerDataIsLocked(
         vendorAUnpaidOrder
-          ?.paymentStatus ===
-          PaymentStatus.pending &&
-        vendorAUnpaidOrder
-          ?.buyer
-          ?.phone ===
-          null &&
-        vendorAUnpaidOrder
-          ?.buyer
-          ?.phoneUnlocked ===
-          false,
-      "Seller confirmation alone does not unlock buyer phone before payment."
+      ),
+      "Seller confirmation alone does not unlock private fulfilment data before payment."
     );
 
     /*
-     * =================================================
-     * PAYMENT BECOMES PAID
-     * =================================================
+     * ===================================================
+     * 5. PAYMENT BECOMES PAID
+     * ===================================================
      */
 
     await prisma.order.update({
@@ -661,7 +955,10 @@ async function main() {
       await apiRequest(
         baseUrl,
         "/api/orders/vendor",
-        vendorAToken
+        {
+          token:
+            vendorAToken,
+        }
       );
 
     const vendorAPaidOrder =
@@ -671,26 +968,38 @@ async function main() {
       );
 
     check(
+      vendorAPaidConfirmed.status ===
+        200 &&
       vendorAPaidOrder
-        ?.buyer
-        ?.phone ===
-        buyerPhone &&
+        ?.vendorStatus ===
+        OrderStatus.confirmed &&
+      vendorAPaidOrder
+        ?.paymentStatus ===
+        PaymentStatus.paid &&
+      privateSellerDataIsUnlocked(
         vendorAPaidOrder
-          ?.buyer
-          ?.phoneUnlocked ===
-          true &&
-        vendorAPaidOrder
-          ?.buyer
-          ?.phoneAvailable ===
-          true,
-      "Paid + confirmed unlocks buyer phone for Seller A."
+      ),
+      "Paid + confirmed unlocks buyer phone and pickup location for Seller A."
     );
+
+    /*
+     * ===================================================
+     * 6. MULTI-VENDOR ISOLATION
+     * ===================================================
+     *
+     * Checkout is paid and Seller A is confirmed.
+     *
+     * Seller B is still pending and must remain locked.
+     */
 
     const vendorBStillPending =
       await apiRequest(
         baseUrl,
         "/api/orders/vendor",
-        vendorBToken
+        {
+          token:
+            vendorBToken,
+        }
       );
 
     const vendorBStillPendingOrder =
@@ -700,79 +1009,88 @@ async function main() {
       );
 
     check(
+      vendorBStillPending.status ===
+        200 &&
       vendorBStillPendingOrder
         ?.paymentStatus ===
         PaymentStatus.paid &&
+      vendorBStillPendingOrder
+        ?.vendorStatus ===
+        OrderStatus.pending &&
+      privateSellerDataIsLocked(
         vendorBStillPendingOrder
-          ?.vendorStatus ===
-          OrderStatus.pending &&
-        vendorBStillPendingOrder
-          ?.buyer
-          ?.phone ===
-          null &&
-        vendorBStillPendingOrder
-          ?.buyer
-          ?.phoneUnlocked ===
-          false,
-      "Seller B remains locked even though the checkout is paid because Seller B is still pending."
+      ),
+      "Seller B remains locked even though payment is paid and Seller A has confirmed."
     );
 
     /*
-     * =================================================
-     * INDIVIDUAL ORDER ENDPOINT
-     * =================================================
+     * ===================================================
+     * 7. SELLER A INDIVIDUAL ORDER
+     * ===================================================
      */
 
     const vendorAIndividual =
       await apiRequest(
         baseUrl,
         `/api/orders/${order.id}`,
-        vendorAToken
+        {
+          token:
+            vendorAToken,
+        }
       );
 
     check(
       vendorAIndividual.status ===
         200 &&
+      vendorAIndividual.body
+        ?.order
+        ?.vendorStatus ===
+        OrderStatus.confirmed &&
+      privateSellerDataIsUnlocked(
         vendorAIndividual.body
           ?.order
-          ?.buyer
-          ?.phone ===
-          buyerPhone &&
-        vendorAIndividual.body
-          ?.order
-          ?.buyer
-          ?.phoneUnlocked ===
-          true,
-      "Individual order endpoint unlocks buyer phone for paid + confirmed Seller A."
+      ),
+      "Individual order endpoint unlocks phone and pickup for paid + confirmed Seller A."
     );
+
+    /*
+     * ===================================================
+     * 8. SELLER B INDIVIDUAL ORDER
+     * ===================================================
+     */
 
     const vendorBIndividual =
       await apiRequest(
         baseUrl,
         `/api/orders/${order.id}`,
-        vendorBToken
+        {
+          token:
+            vendorBToken,
+        }
       );
 
     check(
       vendorBIndividual.status ===
         200 &&
+      vendorBIndividual.body
+        ?.order
+        ?.vendorStatus ===
+        OrderStatus.pending &&
+      privateSellerDataIsLocked(
         vendorBIndividual.body
           ?.order
-          ?.buyer
-          ?.phone ===
-          null &&
+      ) &&
+      !containsBuyerPickupLocation(
         vendorBIndividual.body
           ?.order
-          ?.buyer
-          ?.phoneUnlocked ===
-          false,
-      "Individual order endpoint keeps buyer phone hidden from pending Seller B."
+      ),
+      "Individual order endpoint keeps pending Seller B's phone and pickup access locked."
     );
 
     /*
-     * =================================================
-     * SELLER-SPECIFIC ITEM PRIVACY
-     * =================================================
+     * ===================================================
+     * 9. SELLER-SPECIFIC ITEM PRIVACY
+     * ===================================================
      */
 
     check(
@@ -781,45 +1099,79 @@ async function main() {
           ?.order
           ?.items
       ) &&
-        vendorAIndividual.body
-          .order
-          .items
-          .length ===
-          1 &&
-        vendorAIndividual.body
-          .order
-          .items[0]
-          ?.vendorId ===
-          vendorA.id,
+      vendorAIndividual.body
+        .order
+        .items
+        .length ===
+        1 &&
+      vendorAIndividual.body
+        .order
+        .items[0]
+        ?.vendorId ===
+        vendorA.id,
       "Seller A individual order response contains only Seller A's items."
     );
 
     /*
-     * =================================================
-     * B CONFIRMS
-     * =================================================
+     * ===================================================
+     * 10. SELLER B CONFIRMS WHILE PAID
+     * ===================================================
+     *
+     * This proves the status-update response itself
+     * unlocks private fulfilment data when all conditions
+     * are satisfied.
      */
 
-    await prisma.orderItem.updateMany({
-      where: {
-        orderId:
-          order.id,
+    const confirmBPaid =
+      await apiRequest(
+        baseUrl,
+        `/api/orders/vendor/${order.id}/status`,
+        {
+          method:
+            "PATCH",
 
-        vendorId:
-          vendorB.id,
-      },
+          token:
+            vendorBToken,
 
-      data: {
-        status:
-          OrderStatus.confirmed,
-      },
-    });
+          body: {
+            status:
+              "confirmed",
+          },
+        }
+      );
+
+    check(
+      confirmBPaid.status ===
+        200 &&
+      confirmBPaid.body
+        ?.order
+        ?.vendorStatus ===
+        OrderStatus.confirmed &&
+      confirmBPaid.body
+        ?.order
+        ?.paymentStatus ===
+        PaymentStatus.paid &&
+      privateSellerDataIsUnlocked(
+        confirmBPaid.body
+          ?.order
+      ),
+      "Seller B status-update response unlocks phone and pickup after paid + confirmed."
+    );
+
+    /*
+     * ===================================================
+     * 11. SELLER B HISTORY IS NOW UNLOCKED
+     * ===================================================
+     */
 
     const vendorBAfterConfirm =
       await apiRequest(
         baseUrl,
         "/api/orders/vendor",
-        vendorBToken
+        {
+          token:
+            vendorBToken,
+        }
       );
 
     const vendorBConfirmedOrder =
@@ -829,24 +1181,28 @@ async function main() {
       );
 
     check(
+      vendorBAfterConfirm.status ===
+        200 &&
       vendorBConfirmedOrder
         ?.vendorStatus ===
         OrderStatus.confirmed &&
+      privateSellerDataIsUnlocked(
         vendorBConfirmedOrder
-          ?.buyer
-          ?.phone ===
-          buyerPhone &&
-        vendorBConfirmedOrder
-          ?.buyer
-          ?.phoneUnlocked ===
-          true,
-      "Seller B independently unlocks buyer phone after Seller B confirms."
+      ),
+      "Seller B independently gains phone and pickup access after Seller B confirms."
     );
 
     /*
-     * =================================================
-     * A COMPLETES
-     * =================================================
+     * ===================================================
+     * 12. SELLER A COMPLETES
+     * ===================================================
+     *
+     * Completion normally happens through the secure
+     * fulfilment-code endpoint.
+     *
+     * That mechanism already has its own integration
+     * suite, so this privacy test changes the item state
+     * directly and verifies the resulting privacy state.
      */
 
     await prisma.orderItem.updateMany({
@@ -868,7 +1224,10 @@ async function main() {
       await apiRequest(
         baseUrl,
         "/api/orders/vendor",
-        vendorAToken
+        {
+          token:
+            vendorAToken,
+        }
       );
 
     const vendorACompletedOrder =
@@ -878,30 +1237,68 @@ async function main() {
       );
 
     check(
+      vendorACompleted.status ===
+        200 &&
       vendorACompletedOrder
         ?.vendorStatus ===
         OrderStatus.completed &&
+      privateSellerDataIsLocked(
         vendorACompletedOrder
-          ?.buyer
-          ?.phone ===
-          null &&
-        vendorACompletedOrder
-          ?.buyer
-          ?.phoneUnlocked ===
-          false,
-      "Seller A loses buyer phone access after Seller A's portion completes."
+      ),
+      "Seller A loses buyer phone and pickup access after Seller A's portion completes."
     );
 
     /*
-     * B is still confirmed, so A completing must not
-     * affect B's own contact-access window.
+     * ===================================================
+     * 13. COMPLETED SELLER INDIVIDUAL ORDER
+     * ===================================================
+     */
+
+    const vendorACompletedIndividual =
+      await apiRequest(
+        baseUrl,
+        `/api/orders/${order.id}`,
+        {
+          token:
+            vendorAToken,
+        }
+      );
+
+    check(
+      vendorACompletedIndividual.status ===
+        200 &&
+      vendorACompletedIndividual.body
+        ?.order
+        ?.vendorStatus ===
+        OrderStatus.completed &&
+      privateSellerDataIsLocked(
+        vendorACompletedIndividual.body
+          ?.order
+      ) &&
+      !containsBuyerPickupLocation(
+        vendorACompletedIndividual.body
+          ?.order
+      ),
+      "Completed Seller A's individual order also hides phone and pickup again."
+    );
+
+    /*
+     * ===================================================
+     * 14. SELLER B REMAINS CONFIRMED
+     * ===================================================
+     *
+     * Seller A completing must not affect Seller B's
+     * independent access window.
      */
 
     const vendorBStillConfirmed =
       await apiRequest(
         baseUrl,
         "/api/orders/vendor",
-        vendorBToken
+        {
+          token:
+            vendorBToken,
+        }
       );
 
     const vendorBStillConfirmedOrder =
@@ -911,58 +1308,78 @@ async function main() {
       );
 
     check(
+      vendorBStillConfirmed.status ===
+        200 &&
       vendorBStillConfirmedOrder
         ?.vendorStatus ===
         OrderStatus.confirmed &&
+      privateSellerDataIsUnlocked(
         vendorBStillConfirmedOrder
-          ?.buyer
-          ?.phone ===
-          buyerPhone &&
-        vendorBStillConfirmedOrder
-          ?.buyer
-          ?.phoneUnlocked ===
-          true,
-      "Seller B keeps buyer phone access while Seller B remains confirmed."
+      ),
+      "Seller B keeps phone and pickup access while Seller B remains confirmed."
     );
 
     /*
-     * =================================================
-     * B CANCELS
-     * =================================================
+     * ===================================================
+     * 15. SELLER B CANCELS
+     * ===================================================
+     *
+     * This again exercises updateVendorOrderStatus().
+     *
+     * confirmed -> cancelled must immediately re-lock
+     * private data in the response.
      */
 
-    await prisma.orderItem.updateMany({
-      where: {
-        orderId:
-          order.id,
+    const cancelB =
+      await apiRequest(
+        baseUrl,
+        `/api/orders/vendor/${order.id}/status`,
+        {
+          method:
+            "PATCH",
 
-        vendorId:
-          vendorB.id,
-      },
+          token:
+            vendorBToken,
 
-      data: {
-        status:
-          OrderStatus.cancelled,
-      },
-    });
+          body: {
+            status:
+              "cancelled",
+          },
+        }
+      );
 
-    await prisma.order.update({
-      where: {
-        id:
-          order.id,
-      },
+    check(
+      cancelB.status ===
+        200 &&
+      cancelB.body
+        ?.order
+        ?.vendorStatus ===
+        OrderStatus.cancelled &&
+      privateSellerDataIsLocked(
+        cancelB.body
+          ?.order
+      ) &&
+      !containsBuyerPickupLocation(
+        cancelB.body
+          ?.order
+      ),
+      "Cancelling Seller B's portion immediately hides buyer phone and pickup in the status-update response."
+    );
 
-      data: {
-        status:
-          OrderStatus.completed,
-      },
-    });
+    /*
+     * ===================================================
+     * 16. SELLER B HISTORY AFTER CANCELLATION
+     * ===================================================
+     */
 
     const vendorBCancelled =
       await apiRequest(
         baseUrl,
         "/api/orders/vendor",
-        vendorBToken
+        {
+          token:
+            vendorBToken,
+        }
       );
 
     const vendorBCancelledOrder =
@@ -972,53 +1389,94 @@ async function main() {
       );
 
     check(
+      vendorBCancelled.status ===
+        200 &&
       vendorBCancelledOrder
         ?.vendorStatus ===
         OrderStatus.cancelled &&
+      privateSellerDataIsLocked(
         vendorBCancelledOrder
-          ?.buyer
-          ?.phone ===
-          null &&
+      ) &&
+      !containsBuyerPickupLocation(
         vendorBCancelledOrder
-          ?.buyer
-          ?.phoneUnlocked ===
-          false,
-      "Seller B loses buyer phone access after Seller B's portion is cancelled."
+      ),
+      "Seller B remains unable to see buyer phone or pickup after cancellation."
     );
 
     /*
-     * =================================================
-     * BUYER ACCESS TO OWN ORDER
-     * =================================================
+     * ===================================================
+     * 17. BUYER ACCESS TO OWN INDIVIDUAL ORDER
+     * ===================================================
+     *
+     * Seller privacy filtering must never hide the
+     * buyer's own information from the buyer.
      */
 
     const buyerOrder =
       await apiRequest(
         baseUrl,
         `/api/orders/${order.id}`,
-        buyerToken
+        {
+          token:
+            buyerToken,
+        }
       );
 
     check(
       buyerOrder.status ===
         200 &&
-        buyerOrder.body
-          ?.order
-          ?.buyer
-          ?.id ===
-          buyer.id &&
-        buyerOrder.body
-          ?.order
-          ?.buyer
-          ?.phone ===
-          buyerPhone,
-      "Buyer can still see their own stored phone number on their own order."
+      buyerOrder.body
+        ?.order
+        ?.buyer
+        ?.id ===
+        buyer.id &&
+      buyerOrder.body
+        ?.order
+        ?.buyer
+        ?.phone ===
+        buyerPhone &&
+      buyerOrder.body
+        ?.order
+        ?.pickupLocation ===
+        buyerPickupLocation,
+      "Buyer can still see their own phone and chosen pickup location on their own order."
     );
 
     /*
-     * =================================================
+     * ===================================================
+     * 18. BUYER ORDER HISTORY
+     * ===================================================
+     */
+
+    const buyerHistory =
+      await apiRequest(
+        baseUrl,
+        "/api/orders/mine",
+        {
+          token:
+            buyerToken,
+        }
+      );
+
+    const buyerHistoryOrder =
+      findOrder(
+        buyerHistory.body,
+        order.id
+      );
+
+    check(
+      buyerHistory.status ===
+        200 &&
+      buyerHistoryOrder
+        ?.pickupLocation ===
+        buyerPickupLocation,
+      "Buyer order history still contains the buyer's own pickup location."
+    );
+
+    /*
+     * ===================================================
      * SUMMARY
-     * =================================================
+     * ===================================================
      */
 
     console.log(
@@ -1026,7 +1484,7 @@ async function main() {
     );
 
     console.log(
-      `Order phone privacy tests: ${passed} passed / ${failed} failed`
+      `Order privacy tests: ${passed} passed / ${failed} failed`
     );
 
     console.log(
@@ -1080,7 +1538,7 @@ main()
       error
     ) => {
       console.error(
-        "\nOrder phone privacy test crashed:\n",
+        "\nOrder privacy test crashed:\n",
         error
       );
 
@@ -1096,7 +1554,7 @@ main()
         cleanupError
       ) {
         console.error(
-          "\nOrder phone privacy cleanup failed:\n",
+          "\nOrder privacy cleanup failed:\n",
           cleanupError
         );
 
