@@ -277,6 +277,12 @@ function calculateVendorStatus(
  * - the checkout payment is PAID
  * - THIS seller's portion is CONFIRMED
  *
+ * Private data includes:
+ *
+ * - buyer phone
+ * - buyer-selected pickup location
+ * - buyer-selected preferred slot / availability
+ *
  * Private data remains hidden while:
  *
  * - seller portion is pending
@@ -359,38 +365,45 @@ function buildVendorBuyerContact(
 
 /*
  * =======================================================
- * PICKUP-LOCATION PRIVACY
+ * PRIVATE FULFILMENT DETAILS
  * =======================================================
  *
- * The buyer-selected order pickup location follows the
- * same privacy window as the buyer phone.
+ * Order.pickupLocation and Order.preferredSlot both
+ * describe private buyer fulfilment information.
+ *
+ * They use exactly the same seller-specific privacy
+ * window as buyer phone access.
  *
  * Seller sees:
  *
  * pending / unpaid:
  *   pickupLocation = null
+ *   preferredSlot  = null
  *
  * paid + THIS seller confirmed:
  *   pickupLocation = actual location
+ *   preferredSlot  = actual slot
  *
  * completed / cancelled / refunded:
- *   pickupLocation = null
+ *   both are hidden again
  *
- * This concerns Order.pickupLocation.
+ * This concerns buyer-selected Order fields.
  *
- * It is separate from a seller's own vendor-profile
- * pickup configuration.
+ * It is separate from the seller's own public
+ * VendorProfile.pickupLocation.
  */
 
-function buildVendorPickupDetails(
+function buildVendorFulfillmentDetails(
   pickupLocation:
+    string | null,
+  preferredSlot:
     string | null,
   paymentStatus:
     PaymentStatus,
   vendorStatus:
     OrderStatus
 ) {
-  const pickupLocationUnlocked =
+  const unlocked =
     isVendorFulfillmentWindowOpen(
       paymentStatus,
       vendorStatus
@@ -398,16 +411,31 @@ function buildVendorPickupDetails(
 
   return {
     pickupLocation:
-      pickupLocationUnlocked
+      unlocked
         ? pickupLocation
         : null,
 
-    pickupLocationUnlocked,
+    pickupLocationUnlocked:
+      unlocked,
 
     pickupLocationAvailable:
-      pickupLocationUnlocked &&
+      unlocked &&
       Boolean(
         pickupLocation
+      ),
+
+    preferredSlot:
+      unlocked
+        ? preferredSlot
+        : null,
+
+    preferredSlotUnlocked:
+      unlocked,
+
+    preferredSlotAvailable:
+      unlocked &&
+      Boolean(
+        preferredSlot
       ),
   };
 }
@@ -791,11 +819,6 @@ export const createOrder =
                 },
               });
 
-            /*
-             * One fulfilment challenge per DISTINCT
-             * seller.
-             */
-
             const vendorIds =
               Array.from(
                 new Set(
@@ -994,15 +1017,6 @@ export const getMyOrders =
  *
  * A seller's code is exposed only while that seller's
  * portion of the order is CONFIRMED.
- *
- * Pending:
- * code remains hidden.
- *
- * Confirmed:
- * buyer can see code.
- *
- * Completed / cancelled:
- * code becomes hidden again.
  */
 
 export const getBuyerFulfillmentCodes =
@@ -1278,8 +1292,9 @@ export const getBuyerFulfillmentCodes =
  * SELLER ORDER HISTORY
  * =======================================================
  *
- * Buyer phone and order pickup-location privacy are
- * enforced here.
+ * Buyer phone, buyer-selected pickup location and
+ * buyer-selected preferred slot privacy are enforced
+ * here.
  *
  * Each seller is evaluated using ONLY that seller's own
  * items inside the order.
@@ -1382,20 +1397,22 @@ export const getVendorOrders =
               );
 
             /*
-             * Never spread the raw buyer-selected pickup
-             * location into a seller response.
+             * Never spread raw buyer-selected private
+             * fulfilment details into a seller response.
              */
 
             const {
               buyer,
               pickupLocation,
+              preferredSlot,
               ...orderWithoutPrivateData
             } =
               order;
 
-            const pickupDetails =
-              buildVendorPickupDetails(
+            const fulfillmentDetails =
+              buildVendorFulfillmentDetails(
                 pickupLocation,
+                preferredSlot,
                 order.paymentStatus,
                 vendorStatus
               );
@@ -1403,7 +1420,7 @@ export const getVendorOrders =
             return {
               ...orderWithoutPrivateData,
 
-              ...pickupDetails,
+              ...fulfillmentDetails,
 
               buyer:
                 buildVendorBuyerContact(
@@ -1544,8 +1561,8 @@ export const getVendorOrders =
  *
  * Completion requires the buyer's fulfilment code.
  *
- * Buyer phone and order pickup location are sanitized in
- * the response using the resulting seller-specific
+ * Buyer phone, order pickup location and preferred slot
+ * are sanitized using the resulting seller-specific
  * status.
  */
 
@@ -1752,11 +1769,6 @@ export const updateVendorOrderStatus =
               },
             });
 
-            /*
-             * Compatibility for orders created before the
-             * fulfilment-code feature.
-             */
-
             if (
               nextStatus ===
               OrderStatus.confirmed
@@ -1890,20 +1902,22 @@ export const updateVendorOrderStatus =
               );
 
             /*
-             * Never spread the raw pickup location into
-             * the seller response.
+             * Never spread raw private fulfilment details
+             * into the seller response.
              */
 
             const {
               buyer,
               pickupLocation,
+              preferredSlot,
               ...orderWithoutPrivateData
             } =
               updatedOrder;
 
-            const pickupDetails =
-              buildVendorPickupDetails(
+            const fulfillmentDetails =
+              buildVendorFulfillmentDetails(
                 pickupLocation,
+                preferredSlot,
                 updatedOrder.paymentStatus,
                 vendorStatus
               );
@@ -1911,7 +1925,7 @@ export const updateVendorOrderStatus =
             return {
               ...orderWithoutPrivateData,
 
-              ...pickupDetails,
+              ...fulfillmentDetails,
 
               buyer:
                 buildVendorBuyerContact(
@@ -2264,10 +2278,6 @@ export const verifyVendorFulfillmentCode =
               };
             }
 
-            /*
-             * Correct buyer code.
-             */
-
             await tx.orderVendorFulfillment.update({
               where: {
                 id:
@@ -2506,8 +2516,9 @@ export const verifyVendorFulfillmentCode =
  * Seller:
  * receives only their seller portion.
  *
- * Buyer phone and buyer-selected order pickup location
- * are privacy-gated for seller access.
+ * Buyer phone, buyer-selected pickup location and
+ * buyer-selected preferred slot are privacy-gated for
+ * seller access.
  */
 
 export const getOrderById =
@@ -2597,9 +2608,9 @@ export const getOrderById =
       /*
        * Buyer may view their complete order.
        *
-       * Returning their own stored phone value and their
-       * own chosen pickup location is fine because this
-       * response belongs to the buyer.
+       * Returning their own phone, pickup location and
+       * preferred slot is correct because this response
+       * belongs to the buyer.
        */
 
       if (
@@ -2658,9 +2669,10 @@ export const getOrderById =
               )
             );
 
-          const pickupDetails =
-            buildVendorPickupDetails(
+          const fulfillmentDetails =
+            buildVendorFulfillmentDetails(
               order.pickupLocation,
+              order.preferredSlot,
               order.paymentStatus,
               vendorStatus
             );
@@ -2683,10 +2695,7 @@ export const getOrderById =
                 paymentStatus:
                   order.paymentStatus,
 
-                ...pickupDetails,
-
-                preferredSlot:
-                  order.preferredSlot,
+                ...fulfillmentDetails,
 
                 createdAt:
                   order.createdAt,

@@ -25,28 +25,34 @@ import {
  *
  * - buyer phone
  * - buyer-selected order pickup location
+ * - buyer-selected preferred slot / availability
  *
  * Privacy window:
  *
  * UNPAID + PENDING
- *   phone  -> hidden
- *   pickup -> hidden
+ *   phone          -> hidden
+ *   pickup         -> hidden
+ *   preferred slot -> hidden
  *
  * UNPAID + CONFIRMED
- *   phone  -> hidden
- *   pickup -> hidden
+ *   phone          -> hidden
+ *   pickup         -> hidden
+ *   preferred slot -> hidden
  *
  * PAID + PENDING
- *   phone  -> hidden
- *   pickup -> hidden
+ *   phone          -> hidden
+ *   pickup         -> hidden
+ *   preferred slot -> hidden
  *
  * PAID + CONFIRMED
- *   phone  -> visible
- *   pickup -> visible
+ *   phone          -> visible
+ *   pickup         -> visible
+ *   preferred slot -> visible
  *
  * COMPLETED / CANCELLED
- *   phone  -> hidden again
- *   pickup -> hidden again
+ *   phone          -> hidden again
+ *   pickup         -> hidden again
+ *   preferred slot -> hidden again
  *
  * Also proves:
  *
@@ -56,6 +62,7 @@ import {
  * - seller status-update response privacy
  * - buyer still sees their own private order data
  * - seller individual order contains only that seller's items
+ * - raw private fulfilment data is not leaked elsewhere
  */
 
 /*
@@ -138,6 +145,9 @@ const buyerPhone =
 
 const buyerPickupLocation =
   "Private Buyer Pickup - Campus Library Gate";
+
+const buyerPreferredSlot =
+  "After my 4:30 PM lecture";
 
 let universityId:
   string | null =
@@ -314,6 +324,7 @@ function privateSellerDataIsLocked(
       ?.buyer
       ?.phoneAvailable ===
       false &&
+
     order
       ?.pickupLocation ===
       null &&
@@ -322,6 +333,16 @@ function privateSellerDataIsLocked(
       false &&
     order
       ?.pickupLocationAvailable ===
+      false &&
+
+    order
+      ?.preferredSlot ===
+      null &&
+    order
+      ?.preferredSlotUnlocked ===
+      false &&
+    order
+      ?.preferredSlotAvailable ===
       false
   );
 }
@@ -342,6 +363,7 @@ function privateSellerDataIsUnlocked(
       ?.buyer
       ?.phoneAvailable ===
       true &&
+
     order
       ?.pickupLocation ===
       buyerPickupLocation &&
@@ -350,6 +372,16 @@ function privateSellerDataIsUnlocked(
       true &&
     order
       ?.pickupLocationAvailable ===
+      true &&
+
+    order
+      ?.preferredSlot ===
+      buyerPreferredSlot &&
+    order
+      ?.preferredSlotUnlocked ===
+      true &&
+    order
+      ?.preferredSlotAvailable ===
       true
   );
 }
@@ -361,6 +393,29 @@ function containsBuyerPickupLocation(
     value
   ).includes(
     buyerPickupLocation
+  );
+}
+
+function containsBuyerPreferredSlot(
+  value: unknown
+) {
+  return JSON.stringify(
+    value
+  ).includes(
+    buyerPreferredSlot
+  );
+}
+
+function containsBuyerPrivateFulfillmentData(
+  value: unknown
+) {
+  return (
+    containsBuyerPickupLocation(
+      value
+    ) ||
+    containsBuyerPreferredSlot(
+      value
+    )
   );
 }
 
@@ -437,10 +492,6 @@ async function main() {
    * =====================================================
    * UNIVERSITY
    * =====================================================
-   *
-   * Sellers are created as fully valid CampusMart
-   * sellers so seller-status endpoints are exercised
-   * under normal seller eligibility.
    */
 
   const university =
@@ -642,7 +693,7 @@ async function main() {
           buyerPickupLocation,
 
         preferredSlot:
-          "4:30 PM",
+          buyerPreferredSlot,
 
         items: {
           create: [
@@ -802,13 +853,13 @@ async function main() {
       privateSellerDataIsLocked(
         vendorAOrderPending
       ),
-      "Seller A cannot see buyer phone or pickup location while pending and unpaid."
+      "Seller A cannot see buyer phone, pickup location or preferred slot while pending and unpaid."
     );
 
     /*
-     * Also make sure the raw buyer-selected location is
-     * not merely hidden from the main property while
-     * leaking somewhere else inside the seller order.
+     * Ensure the raw buyer-selected fulfilment values are
+     * not merely hidden from their main properties while
+     * leaking elsewhere inside the seller response.
      */
 
     check(
@@ -816,6 +867,13 @@ async function main() {
         vendorAOrderPending
       ),
       "Seller A pending order contains no hidden copy of the buyer pickup location."
+    );
+
+    check(
+      !containsBuyerPreferredSlot(
+        vendorAOrderPending
+      ),
+      "Seller A pending order contains no hidden copy of the buyer preferred slot."
     );
 
     /*
@@ -849,15 +907,13 @@ async function main() {
       privateSellerDataIsLocked(
         vendorBOrderPending
       ),
-      "Seller B also cannot see buyer phone or pickup location while pending."
+      "Seller B also cannot see buyer phone, pickup location or preferred slot while pending."
     );
 
     /*
      * ===================================================
      * 3. SELLER A CONFIRMS WHILE PAYMENT IS PENDING
      * ===================================================
-     *
-     * This exercises updateVendorOrderStatus() itself.
      */
 
     const confirmAUnpaid =
@@ -893,7 +949,7 @@ async function main() {
         confirmAUnpaid.body
           ?.order
       ),
-      "Seller A confirmation response keeps phone and pickup locked while payment is pending."
+      "Seller A confirmation response keeps phone, pickup and preferred slot locked while payment is pending."
     );
 
     /*
@@ -979,17 +1035,13 @@ async function main() {
       privateSellerDataIsUnlocked(
         vendorAPaidOrder
       ),
-      "Paid + confirmed unlocks buyer phone and pickup location for Seller A."
+      "Paid + confirmed unlocks buyer phone, pickup location and preferred slot for Seller A."
     );
 
     /*
      * ===================================================
      * 6. MULTI-VENDOR ISOLATION
      * ===================================================
-     *
-     * Checkout is paid and Seller A is confirmed.
-     *
-     * Seller B is still pending and must remain locked.
      */
 
     const vendorBStillPending =
@@ -1050,7 +1102,7 @@ async function main() {
         vendorAIndividual.body
           ?.order
       ),
-      "Individual order endpoint unlocks phone and pickup for paid + confirmed Seller A."
+      "Individual order endpoint unlocks phone, pickup and preferred slot for paid + confirmed Seller A."
     );
 
     /*
@@ -1080,11 +1132,11 @@ async function main() {
         vendorBIndividual.body
           ?.order
       ) &&
-      !containsBuyerPickupLocation(
+      !containsBuyerPrivateFulfillmentData(
         vendorBIndividual.body
           ?.order
       ),
-      "Individual order endpoint keeps pending Seller B's phone and pickup access locked."
+      "Individual order endpoint keeps pending Seller B's private fulfilment data locked."
     );
 
     /*
@@ -1116,10 +1168,6 @@ async function main() {
      * ===================================================
      * 10. SELLER B CONFIRMS WHILE PAID
      * ===================================================
-     *
-     * This proves the status-update response itself
-     * unlocks private fulfilment data when all conditions
-     * are satisfied.
      */
 
     const confirmBPaid =
@@ -1155,7 +1203,7 @@ async function main() {
         confirmBPaid.body
           ?.order
       ),
-      "Seller B status-update response unlocks phone and pickup after paid + confirmed."
+      "Seller B status-update response unlocks all private fulfilment data after paid + confirmed."
     );
 
     /*
@@ -1189,20 +1237,13 @@ async function main() {
       privateSellerDataIsUnlocked(
         vendorBConfirmedOrder
       ),
-      "Seller B independently gains phone and pickup access after Seller B confirms."
+      "Seller B independently gains private fulfilment access after Seller B confirms."
     );
 
     /*
      * ===================================================
      * 12. SELLER A COMPLETES
      * ===================================================
-     *
-     * Completion normally happens through the secure
-     * fulfilment-code endpoint.
-     *
-     * That mechanism already has its own integration
-     * suite, so this privacy test changes the item state
-     * directly and verifies the resulting privacy state.
      */
 
     await prisma.orderItem.updateMany({
@@ -1245,7 +1286,7 @@ async function main() {
       privateSellerDataIsLocked(
         vendorACompletedOrder
       ),
-      "Seller A loses buyer phone and pickup access after Seller A's portion completes."
+      "Seller A loses phone, pickup and preferred-slot access after Seller A's portion completes."
     );
 
     /*
@@ -1275,20 +1316,17 @@ async function main() {
         vendorACompletedIndividual.body
           ?.order
       ) &&
-      !containsBuyerPickupLocation(
+      !containsBuyerPrivateFulfillmentData(
         vendorACompletedIndividual.body
           ?.order
       ),
-      "Completed Seller A's individual order also hides phone and pickup again."
+      "Completed Seller A's individual order hides all private fulfilment data again."
     );
 
     /*
      * ===================================================
      * 14. SELLER B REMAINS CONFIRMED
      * ===================================================
-     *
-     * Seller A completing must not affect Seller B's
-     * independent access window.
      */
 
     const vendorBStillConfirmed =
@@ -1316,18 +1354,13 @@ async function main() {
       privateSellerDataIsUnlocked(
         vendorBStillConfirmedOrder
       ),
-      "Seller B keeps phone and pickup access while Seller B remains confirmed."
+      "Seller B keeps private fulfilment access while Seller B remains confirmed."
     );
 
     /*
      * ===================================================
      * 15. SELLER B CANCELS
      * ===================================================
-     *
-     * This again exercises updateVendorOrderStatus().
-     *
-     * confirmed -> cancelled must immediately re-lock
-     * private data in the response.
      */
 
     const cancelB =
@@ -1359,11 +1392,11 @@ async function main() {
         cancelB.body
           ?.order
       ) &&
-      !containsBuyerPickupLocation(
+      !containsBuyerPrivateFulfillmentData(
         cancelB.body
           ?.order
       ),
-      "Cancelling Seller B's portion immediately hides buyer phone and pickup in the status-update response."
+      "Cancelling Seller B's portion immediately re-locks phone, pickup and preferred slot."
     );
 
     /*
@@ -1397,19 +1430,16 @@ async function main() {
       privateSellerDataIsLocked(
         vendorBCancelledOrder
       ) &&
-      !containsBuyerPickupLocation(
+      !containsBuyerPrivateFulfillmentData(
         vendorBCancelledOrder
       ),
-      "Seller B remains unable to see buyer phone or pickup after cancellation."
+      "Seller B remains unable to see private fulfilment data after cancellation."
     );
 
     /*
      * ===================================================
      * 17. BUYER ACCESS TO OWN INDIVIDUAL ORDER
      * ===================================================
-     *
-     * Seller privacy filtering must never hide the
-     * buyer's own information from the buyer.
      */
 
     const buyerOrder =
@@ -1438,8 +1468,12 @@ async function main() {
       buyerOrder.body
         ?.order
         ?.pickupLocation ===
-        buyerPickupLocation,
-      "Buyer can still see their own phone and chosen pickup location on their own order."
+        buyerPickupLocation &&
+      buyerOrder.body
+        ?.order
+        ?.preferredSlot ===
+        buyerPreferredSlot,
+      "Buyer can still see their own phone, pickup location and preferred slot on their own order."
     );
 
     /*
@@ -1469,8 +1503,11 @@ async function main() {
         200 &&
       buyerHistoryOrder
         ?.pickupLocation ===
-        buyerPickupLocation,
-      "Buyer order history still contains the buyer's own pickup location."
+        buyerPickupLocation &&
+      buyerHistoryOrder
+        ?.preferredSlot ===
+        buyerPreferredSlot,
+      "Buyer order history still contains the buyer's own pickup location and preferred slot."
     );
 
     /*
@@ -1555,11 +1592,11 @@ main()
       ) {
         console.error(
           "\nOrder privacy cleanup failed:\n",
-          cleanupError
-        );
+        cleanupError
+      );
 
-        process.exitCode =
-          1;
+      process.exitCode =
+        1;
       }
 
       await prisma.$disconnect();
