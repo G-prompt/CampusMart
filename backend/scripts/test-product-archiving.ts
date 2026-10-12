@@ -3,7 +3,9 @@ import type {
 } from "express";
 
 import {
+  StudentVerificationStatus,
   UserRole,
+  VendorAccessStatus,
 } from "../src/generated/prisma/client";
 
 import {
@@ -128,6 +130,11 @@ async function main() {
   const buyerEmail =
     `archive-buyer-${testId}@campusmart.test`;
 
+  let universityId:
+    | string
+    | null =
+    null;
+
   let vendorId:
     | string
     | null =
@@ -151,8 +158,55 @@ async function main() {
   try {
     /*
      * ---------------------------------------------------
+     * CREATE TEMP UNIVERSITY
+     * ---------------------------------------------------
+     *
+     * The seller fixture must satisfy the real canonical
+     * seller-eligibility policy.
+     */
+
+    const university =
+      await prisma.university.create({
+        data: {
+          name:
+            `Archive Test University ${testId}`,
+
+          shortName:
+            "ATU",
+
+          slug:
+            `archive-test-university-${testId}`,
+
+          country:
+            "Nigeria",
+
+          state:
+            "Rivers",
+
+          city:
+            "Port Harcourt",
+
+          active:
+            true,
+        },
+      });
+
+    universityId =
+      university.id;
+
+    /*
+     * ---------------------------------------------------
      * CREATE TEMP USERS
      * ---------------------------------------------------
+     *
+     * Vendor is a fully eligible CampusMart seller:
+     *
+     * - vendor role
+     * - listed university
+     * - matric number
+     * - verified student
+     * - complete seller profile
+     * - active seller access
      */
 
     const vendor =
@@ -169,6 +223,34 @@ async function main() {
 
           role:
             UserRole.vendor,
+
+          universityId:
+            university.id,
+
+          matricNumber:
+            `ATU-${testId}`,
+
+          studentVerificationStatus:
+            StudentVerificationStatus.verified,
+
+          studentVerifiedAt:
+            new Date(),
+
+          vendorProfile: {
+            create: {
+              businessName:
+                "Archive Test Store",
+
+              businessDescription:
+                "Temporary seller used by the product archiving regression test.",
+
+              pickupLocation:
+                "Archive Test Seller Pickup",
+
+              accessStatus:
+                VendorAccessStatus.active,
+            },
+          },
         },
       });
 
@@ -189,6 +271,9 @@ async function main() {
 
           role:
             UserRole.client,
+
+          universityId:
+            university.id,
         },
       });
 
@@ -267,13 +352,13 @@ async function main() {
       check(
         captured.statusCode ===
           200 &&
-          products.some(
-            (
-              item: any
-            ) =>
-              item.id ===
-              product.id
-          ),
+        products.some(
+          (
+            item: any
+          ) =>
+            item.id ===
+            product.id
+        ),
         "Published listing appears in public marketplace"
       );
     }
@@ -309,8 +394,8 @@ async function main() {
       check(
         captured.statusCode ===
           200 &&
-          captured.body?.product?.id ===
-            product.id,
+        captured.body?.product?.id ===
+          product.id,
         "Published listing public detail is available"
       );
     }
@@ -365,8 +450,8 @@ async function main() {
       check(
         captured.statusCode ===
           201 &&
-          captured.body?.success ===
-            true,
+        captured.body?.success ===
+          true,
         "Published listing can be purchased"
       );
 
@@ -417,11 +502,11 @@ async function main() {
       check(
         captured.statusCode ===
           200 &&
-          captured.body?.success ===
-            true &&
-          captured.body?.product
-            ?.isArchived ===
-            true,
+        captured.body?.success ===
+          true &&
+        captured.body?.product
+          ?.isArchived ===
+          true,
         "Seller can archive own listing"
       );
     }
@@ -444,10 +529,10 @@ async function main() {
       check(
         archived !==
           null &&
-          archived.isArchived ===
-            true &&
-          archived.archivedAt !==
-            null,
+        archived.isArchived ===
+          true &&
+        archived.archivedAt !==
+          null,
         "Archived listing remains in database with archivedAt timestamp"
       );
     }
@@ -480,13 +565,13 @@ async function main() {
       check(
         captured.statusCode ===
           200 &&
-          !products.some(
-            (
-              item: any
-            ) =>
-              item.id ===
-              product.id
-          ),
+        !products.some(
+          (
+            item: any
+          ) =>
+            item.id ===
+            product.id
+        ),
         "Archived listing is hidden from public marketplace"
       );
     }
@@ -570,14 +655,14 @@ async function main() {
       check(
         captured.statusCode ===
           400 &&
-          captured.body?.success ===
-            false &&
-          typeof captured.body
-            ?.message ===
-            "string" &&
-          captured.body.message.includes(
-            "no longer available"
-          ),
+        captured.body?.success ===
+          false &&
+        typeof captured.body
+          ?.message ===
+          "string" &&
+        captured.body.message.includes(
+          "no longer available"
+        ),
         "Archived listing is rejected at checkout from stale cart"
       );
     }
@@ -630,8 +715,8 @@ async function main() {
       check(
         captured.statusCode ===
           200 &&
-          archived?.isArchived ===
-            true,
+        archived?.isArchived ===
+          true,
         "Seller history still contains archived listing"
       );
     }
@@ -640,6 +725,12 @@ async function main() {
      * ---------------------------------------------------
      * 10. RESTORE PRODUCT
      * ---------------------------------------------------
+     *
+     * Route-level seller eligibility is tested separately
+     * by test-seller-action-guard.ts.
+     *
+     * This suite calls the controller directly because its
+     * responsibility here is archive-state behaviour.
      */
 
     {
@@ -675,14 +766,14 @@ async function main() {
       check(
         captured.statusCode ===
           200 &&
-          captured.body?.success ===
-            true &&
-          captured.body?.product
-            ?.isArchived ===
-            false &&
-          captured.body?.product
-            ?.archivedAt ===
-            null,
+        captured.body?.success ===
+          true &&
+        captured.body?.product
+          ?.isArchived ===
+          false &&
+        captured.body?.product
+          ?.archivedAt ===
+          null,
         "Archived listing can be restored"
       );
     }
@@ -715,15 +806,15 @@ async function main() {
       check(
         captured.statusCode ===
           200 &&
-          products.some(
-            (
-              item: any
-            ) =>
-              item.id ===
+        products.some(
+          (
+            item: any
+          ) =>
+            item.id ===
               product.id &&
-              item.isArchived ===
-                false
-          ),
+            item.isArchived ===
+              false
+        ),
         "Restored listing returns to public marketplace"
       );
     }
@@ -753,13 +844,13 @@ async function main() {
       check(
         historicalOrder !==
           null &&
-          historicalOrder.items.some(
-            (
-              item
-            ) =>
-              item.productId ===
-              product.id
-          ),
+        historicalOrder.items.some(
+          (
+            item
+          ) =>
+            item.productId ===
+            product.id
+        ),
         "Existing order history remains connected to listing"
       );
     } else {
@@ -774,7 +865,7 @@ async function main() {
      * CLEANUP
      * ===================================================
      *
-     * Orders must be removed before the temporary users.
+     * Orders must be removed before products/users.
      */
 
     if (
@@ -843,15 +934,28 @@ async function main() {
         },
       });
     }
+
+    if (
+      universityId
+    ) {
+      await prisma.university.deleteMany({
+        where: {
+          id:
+            universityId,
+        },
+      });
+    }
   }
 
   console.log("");
   console.log(
     "======================================"
   );
+
   console.log(
     `Product archiving tests: ${passed} passed, ${failed} failed`
   );
+
   console.log(
     "======================================"
   );

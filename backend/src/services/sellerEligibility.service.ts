@@ -1,4 +1,5 @@
 import {
+  Prisma,
   StudentVerificationStatus,
   UserRole,
   VendorAccessStatus,
@@ -29,6 +30,93 @@ import {
  * remain separate trust decisions.
  *
  * Vendor Verification is NOT yet required to begin selling.
+ */
+
+/*
+ * =======================================================
+ * CANONICAL SELLER STATE
+ * =======================================================
+ *
+ * Any part of CampusMart that needs to decide whether a
+ * seller may receive NEW marketplace activity must use
+ * this state shape together with evaluateSellerState().
+ *
+ * This prevents product visibility, checkout, messaging,
+ * middleware and future seller gates from independently
+ * reimplementing the selling requirements.
+ */
+
+export const sellerEligibilityStateSelect = {
+  id:
+    true,
+
+  role:
+    true,
+
+  universityId:
+    true,
+
+  university: {
+    select: {
+      id:
+        true,
+
+      name:
+        true,
+
+      shortName:
+        true,
+    },
+  },
+
+  matricNumber:
+    true,
+
+  fallbackUniversityName:
+    true,
+
+  fallbackState:
+    true,
+
+  fallbackCity:
+    true,
+
+  studentVerificationStatus:
+    true,
+
+  vendorProfile: {
+    select: {
+      id:
+        true,
+
+      businessName:
+        true,
+
+      businessDescription:
+        true,
+
+      pickupLocation:
+        true,
+
+      accessStatus:
+        true,
+
+      vendorVerificationStatus:
+        true,
+    },
+  },
+} satisfies Prisma.UserSelect;
+
+export type SellerState =
+  Prisma.UserGetPayload<{
+    select:
+      typeof sellerEligibilityStateSelect;
+  }>;
+
+/*
+ * =======================================================
+ * RESULT TYPES
+ * =======================================================
  */
 
 export type SellerRequirementKey =
@@ -141,66 +229,11 @@ export type SellerEligibilityResult = {
     SellerRequirement[];
 };
 
-type SellerState = {
-  id:
-    string;
-
-  role:
-    UserRole;
-
-  universityId:
-    string | null;
-
-  university:
-    | {
-        id:
-          string;
-
-        name:
-          string;
-
-        shortName:
-          string;
-      }
-    | null;
-
-  matricNumber:
-    string | null;
-
-  fallbackUniversityName:
-    string | null;
-
-  fallbackState:
-    string | null;
-
-  fallbackCity:
-    string | null;
-
-  studentVerificationStatus:
-    StudentVerificationStatus;
-
-  vendorProfile:
-    | {
-        id:
-          string;
-
-        businessName:
-          string;
-
-        businessDescription:
-          string;
-
-        pickupLocation:
-          string;
-
-        accessStatus:
-          VendorAccessStatus;
-
-        vendorVerificationStatus:
-          VendorVerificationStatus;
-      }
-    | null;
-};
+/*
+ * =======================================================
+ * INTERNAL HELPERS
+ * =======================================================
+ */
 
 function hasText(
   value:
@@ -224,66 +257,8 @@ async function loadSellerState(
           userId,
       },
 
-      select: {
-        id:
-          true,
-
-        role:
-          true,
-
-        universityId:
-          true,
-
-        university: {
-          select: {
-            id:
-              true,
-
-            name:
-              true,
-
-            shortName:
-              true,
-          },
-        },
-
-        matricNumber:
-          true,
-
-        fallbackUniversityName:
-          true,
-
-        fallbackState:
-          true,
-
-        fallbackCity:
-          true,
-
-        studentVerificationStatus:
-          true,
-
-        vendorProfile: {
-          select: {
-            id:
-              true,
-
-            businessName:
-              true,
-
-            businessDescription:
-              true,
-
-            pickupLocation:
-              true,
-
-            accessStatus:
-              true,
-
-            vendorVerificationStatus:
-              true,
-          },
-        },
-      },
+      select:
+        sellerEligibilityStateSelect,
     });
 
   if (!user) {
@@ -295,7 +270,29 @@ async function loadSellerState(
   return user;
 }
 
-function evaluateSellerState(
+/*
+ * =======================================================
+ * PURE ELIGIBILITY EVALUATOR
+ * =======================================================
+ *
+ * This function performs NO database writes and NO
+ * reconciliation.
+ *
+ * It can therefore safely be reused by:
+ *
+ * - public marketplace reads
+ * - product-detail reads
+ * - checkout validation inside a transaction
+ * - messaging
+ * - seller middleware
+ * - tests
+ *
+ * A caller that already loaded the seller state should use
+ * this function rather than performing another database
+ * query.
+ */
+
+export function evaluateSellerState(
   user:
     SellerState
 ): SellerEligibilityResult {
@@ -332,6 +329,7 @@ function evaluateSellerState(
    * "Other / not listed" universities may use Manual
    * review and supporting evidence instead.
    */
+
   const matricRequired =
     hasListedUniversity;
 
@@ -655,6 +653,77 @@ export async function getSellerEligibility(
 
 /*
  * =======================================================
+ * BATCH READ-ONLY ELIGIBILITY
+ * =======================================================
+ *
+ * Useful when a caller has several seller IDs and wants
+ * canonical eligibility without creating an N+1 query
+ * pattern.
+ *
+ * Missing/deleted users simply do not appear in the
+ * returned map, allowing marketplace callers to treat
+ * them as unavailable.
+ */
+
+export async function getSellerEligibilityMap(
+  userIds:
+    readonly string[]
+): Promise<
+  Map<
+    string,
+    SellerEligibilityResult
+  >
+> {
+  const uniqueUserIds =
+    Array.from(
+      new Set(
+        userIds.filter(
+          (
+            userId
+          ) =>
+            Boolean(
+              userId
+            )
+        )
+      )
+    );
+
+  if (
+    uniqueUserIds.length ===
+    0
+  ) {
+    return new Map();
+  }
+
+  const users =
+    await prisma.user.findMany({
+      where: {
+        id: {
+          in:
+            uniqueUserIds,
+        },
+      },
+
+      select:
+        sellerEligibilityStateSelect,
+    });
+
+  return new Map(
+    users.map(
+      (
+        user
+      ) => [
+        user.id,
+        evaluateSellerState(
+          user
+        ),
+      ]
+    )
+  );
+}
+
+/*
+ * =======================================================
  * SELLER ACCESS RECONCILIATION
  * =======================================================
  *
@@ -692,6 +761,7 @@ export async function reconcileSellerAccess(
    * Nothing to reconcile if this is not a seller account
    * or if the seller has not created a VendorProfile yet.
    */
+
   if (
     !current.isVendor ||
     !user.vendorProfile
@@ -706,6 +776,7 @@ export async function reconcileSellerAccess(
   /*
    * Never automatically override risk/Admin controls.
    */
+
   if (
     currentAccess ===
       VendorAccessStatus.restricted ||
@@ -767,6 +838,7 @@ export async function reconcileSellerAccess(
    * Reload after mutation so the caller always receives
    * the final persisted state.
    */
+
   return getSellerEligibility(
     userId
   );

@@ -28,6 +28,33 @@ import type {
 
 /*
  * =======================================================
+ * CAMPUSMART SELLER MARKETPLACE AVAILABILITY TEST
+ * =======================================================
+ *
+ * Proves that the same canonical seller eligibility rules
+ * control:
+ *
+ * - public marketplace visibility
+ * - public product detail
+ * - new checkout
+ *
+ * It specifically protects against eligibility drift
+ * between controllers.
+ *
+ * Important cases:
+ *
+ * - whitespace matric numbers
+ * - whitespace seller-profile fields
+ * - pending_review
+ * - restricted
+ * - suspended
+ * - temporary ineligibility never archives a product
+ * - public reads / checkout do not reconcile seller state
+ * - existing orders survive later seller ineligibility
+ */
+
+/*
+ * =======================================================
  * TEST HELPERS
  * =======================================================
  */
@@ -107,6 +134,11 @@ function check(
   condition: boolean,
   label: string
 ) {
+  const number =
+    passed +
+    failed +
+    1;
+
   if (
     condition
   ) {
@@ -114,7 +146,7 @@ function check(
       1;
 
     console.log(
-      `PASS: ${label}`
+      `PASS ${number}: ${label}`
     );
 
     return;
@@ -124,8 +156,127 @@ function check(
     1;
 
   console.error(
-    `FAIL: ${label}`
+    `FAIL ${number}: ${label}`
   );
+}
+
+async function marketplaceContainsProduct(
+  productId: number
+) {
+  const {
+    response,
+    captured,
+  } =
+    createMockResponse();
+
+  await getProducts(
+    createPublicRequest(),
+    response
+  );
+
+  const products =
+    Array.isArray(
+      captured.body
+        ?.products
+    )
+      ? captured.body.products
+      : [];
+
+  return {
+    status:
+      captured.statusCode,
+
+    contains:
+      products.some(
+        (
+          item: any
+        ) =>
+          item.id ===
+          productId
+      ),
+
+    body:
+      captured.body,
+  };
+}
+
+async function getPublicProductDetail(
+  productId: number
+) {
+  const {
+    response,
+    captured,
+  } =
+    createMockResponse();
+
+  await getProductById(
+    createPublicRequest({
+      id:
+        String(
+          productId
+        ),
+    }),
+    response
+  );
+
+  return captured;
+}
+
+async function attemptCheckout(
+  buyer: {
+    id: string;
+    role: UserRole;
+  },
+  productId: number
+) {
+  const {
+    response,
+    captured,
+  } =
+    createMockResponse();
+
+  await createOrder(
+    createAuthenticatedRequest(
+      buyer,
+      {
+        items: [
+          {
+            productId,
+            quantity:
+              1,
+          },
+        ],
+
+        pickupLocation:
+          "Main Campus",
+
+        preferredSlot:
+          "Afternoon",
+      }
+    ),
+    response
+  );
+
+  return captured;
+}
+
+async function productArchiveState(
+  productId: number
+) {
+  return prisma.product.findUnique({
+    where: {
+      id:
+        productId,
+    },
+
+    select: {
+      isArchived:
+        true,
+
+      archivedAt:
+        true,
+    },
+  });
 }
 
 /*
@@ -160,16 +311,16 @@ async function main() {
     | null =
     null;
 
-  let orderId:
+  let initialOrderId:
     | string
     | null =
     null;
 
   try {
     /*
-     * ---------------------------------------------------
+     * =====================================================
      * UNIVERSITY
-     * ---------------------------------------------------
+     * =====================================================
      */
 
     const university =
@@ -202,10 +353,22 @@ async function main() {
       university.id;
 
     /*
-     * ---------------------------------------------------
+     * =====================================================
      * ACTIVE VERIFIED SELLER
-     * ---------------------------------------------------
+     * =====================================================
      */
+
+    const originalMatricNumber =
+      `SATU-${testId}`;
+
+    const originalBusinessName =
+      "Availability Test Shop";
+
+    const originalBusinessDescription =
+      "Temporary seller used for availability testing.";
+
+    const originalPickupLocation =
+      "Campus Gate";
 
     const seller =
       await prisma.user.create({
@@ -226,7 +389,7 @@ async function main() {
             university.id,
 
           matricNumber:
-            `SATU-${testId}`,
+            originalMatricNumber,
 
           studentVerificationStatus:
             StudentVerificationStatus.verified,
@@ -237,13 +400,13 @@ async function main() {
           vendorProfile: {
             create: {
               businessName:
-                "Availability Test Shop",
+                originalBusinessName,
 
               businessDescription:
-                "Temporary seller used for availability testing.",
+                originalBusinessDescription,
 
               pickupLocation:
-                "Campus Gate",
+                originalPickupLocation,
 
               accessStatus:
                 VendorAccessStatus.active,
@@ -256,9 +419,9 @@ async function main() {
       seller.id;
 
     /*
-     * ---------------------------------------------------
+     * =====================================================
      * BUYER
-     * ---------------------------------------------------
+     * =====================================================
      */
 
     const buyer =
@@ -285,9 +448,9 @@ async function main() {
       buyer.id;
 
     /*
-     * ---------------------------------------------------
+     * =====================================================
      * PUBLISHED PRODUCT
-     * ---------------------------------------------------
+     * =====================================================
      */
 
     const product =
@@ -328,151 +491,366 @@ async function main() {
     productId =
       product.id;
 
+    const buyerIdentity = {
+      id:
+        buyer.id,
+
+      role:
+        buyer.role,
+    };
+
     /*
-     * ===================================================
-     * 1. ACTIVE SELLER PRODUCT APPEARS PUBLICLY
-     * ===================================================
+     * =====================================================
+     * 1-3. FULLY ELIGIBLE SELLER
+     * =====================================================
      */
 
     {
-      const {
-        response,
-        captured,
-      } =
-        createMockResponse();
-
-      await getProducts(
-        createPublicRequest(),
-        response
-      );
-
-      const products =
-        Array.isArray(
-          captured.body
-            ?.products
-        )
-          ? captured.body.products
-          : [];
+      const marketplace =
+        await marketplaceContainsProduct(
+          product.id
+        );
 
       check(
-        captured.statusCode ===
+        marketplace.status ===
           200 &&
-          products.some(
-            (
-              item: any
-            ) =>
-              item.id ===
-              product.id
-          ),
-        "Active seller product appears in public marketplace"
+        marketplace.contains,
+        "Eligible seller product appears in public marketplace."
       );
     }
 
-    /*
-     * ===================================================
-     * 2. ACTIVE SELLER PRODUCT DETAIL IS PUBLIC
-     * ===================================================
-     */
-
     {
-      const {
-        response,
-        captured,
-      } =
-        createMockResponse();
-
-      await getProductById(
-        createPublicRequest({
-          id:
-            String(
-              product.id
-            ),
-        }),
-        response
-      );
+      const detail =
+        await getPublicProductDetail(
+          product.id
+        );
 
       check(
-        captured.statusCode ===
+        detail.statusCode ===
           200 &&
-          captured.body
-            ?.product
-            ?.id ===
-            product.id,
-        "Active seller product detail is publicly available"
+        detail.body
+          ?.product
+          ?.id ===
+          product.id,
+        "Eligible seller product detail is publicly available."
       );
     }
 
-    /*
-     * ===================================================
-     * 3. BUYER CAN CREATE ORDER WHILE SELLER ACTIVE
-     * ===================================================
-     */
-
     {
-      const {
-        response,
-        captured,
-      } =
-        createMockResponse();
-
-      await createOrder(
-        createAuthenticatedRequest(
-          {
-            id:
-              buyer.id,
-
-            role:
-              UserRole.client,
-          },
-          {
-            items: [
-              {
-                productId:
-                  product.id,
-
-                quantity:
-                  1,
-              },
-            ],
-
-            pickupLocation:
-              "Main Campus",
-
-            preferredSlot:
-              "Afternoon",
-          }
-        ),
-        response
-      );
+      const checkout =
+        await attemptCheckout(
+          buyerIdentity,
+          product.id
+        );
 
       if (
-        captured.body
+        checkout.body
           ?.order
           ?.id
       ) {
-        orderId =
-          captured.body.order.id;
+        initialOrderId =
+          checkout.body.order.id;
       }
 
       check(
-        captured.statusCode ===
+        checkout.statusCode ===
           201 &&
-          captured.body
-            ?.success ===
-            true &&
-          Boolean(
-            captured.body
-              ?.order
-              ?.id
-          ),
-        "Active seller can receive a new order"
+        checkout.body
+          ?.success ===
+          true &&
+        Boolean(
+          checkout.body
+            ?.order
+            ?.id
+        ),
+        "Eligible seller can receive a new order."
       );
     }
 
     /*
-     * ===================================================
-     * SELLER BECOMES PENDING REVIEW
-     * ===================================================
+     * =====================================================
+     * WHITESPACE MATRIC NUMBER
+     * =====================================================
+     *
+     * The old duplicated Prisma predicates only checked
+     * matricNumber != null.
+     *
+     * Therefore "   " could incorrectly pass there while
+     * canonical hasText() correctly rejects it.
+     */
+
+    await prisma.user.update({
+      where: {
+        id:
+          seller.id,
+      },
+
+      data: {
+        matricNumber:
+          "   ",
+      },
+    });
+
+    {
+      const marketplace =
+        await marketplaceContainsProduct(
+          product.id
+        );
+
+      check(
+        marketplace.status ===
+          200 &&
+        !marketplace.contains,
+        "Whitespace-only matric number hides product from marketplace."
+      );
+    }
+
+    {
+      const detail =
+        await getPublicProductDetail(
+          product.id
+        );
+
+      check(
+        detail.statusCode ===
+          404,
+        "Whitespace-only matric number hides direct product detail."
+      );
+    }
+
+    {
+      const checkout =
+        await attemptCheckout(
+          buyerIdentity,
+          product.id
+        );
+
+      check(
+        checkout.statusCode ===
+          400 &&
+        checkout.body
+          ?.message ===
+          "One or more products in your cart are no longer available.",
+        "Whitespace-only matric number blocks new checkout."
+      );
+    }
+
+    {
+      const stored =
+        await productArchiveState(
+          product.id
+        );
+
+      check(
+        stored
+          ?.isArchived ===
+          false &&
+        stored
+          ?.archivedAt ===
+          null,
+        "Whitespace matric ineligibility does not archive the listing."
+      );
+    }
+
+    /*
+     * =====================================================
+     * RESTORE VALID MATRIC NUMBER
+     * =====================================================
+     */
+
+    await prisma.user.update({
+      where: {
+        id:
+          seller.id,
+      },
+
+      data: {
+        matricNumber:
+          originalMatricNumber,
+      },
+    });
+
+    {
+      const marketplace =
+        await marketplaceContainsProduct(
+          product.id
+        );
+
+      check(
+        marketplace.status ===
+          200 &&
+        marketplace.contains,
+        "Product returns to marketplace after valid matric number is restored."
+      );
+    }
+
+    {
+      const detail =
+        await getPublicProductDetail(
+          product.id
+        );
+
+      check(
+        detail.statusCode ===
+          200,
+        "Product detail returns after valid matric number is restored."
+      );
+    }
+
+    {
+      const checkout =
+        await attemptCheckout(
+          buyerIdentity,
+          product.id
+        );
+
+      check(
+        checkout.statusCode ===
+          201,
+        "Checkout works again after valid matric number is restored."
+      );
+    }
+
+    /*
+     * =====================================================
+     * WHITESPACE SELLER PROFILE FIELD
+     * =====================================================
+     *
+     * The old duplicated Prisma predicates checked:
+     *
+     * businessDescription != ""
+     *
+     * which still accepts whitespace-only values.
+     *
+     * Canonical hasText() must reject this.
+     */
+
+    await prisma.vendorProfile.update({
+      where: {
+        userId:
+          seller.id,
+      },
+
+      data: {
+        businessDescription:
+          "   ",
+      },
+    });
+
+    {
+      const marketplace =
+        await marketplaceContainsProduct(
+          product.id
+        );
+
+      check(
+        marketplace.status ===
+          200 &&
+        !marketplace.contains,
+        "Whitespace-only seller profile field hides product from marketplace."
+      );
+    }
+
+    {
+      const detail =
+        await getPublicProductDetail(
+          product.id
+        );
+
+      check(
+        detail.statusCode ===
+          404,
+        "Whitespace-only seller profile field hides direct product detail."
+      );
+    }
+
+    {
+      const checkout =
+        await attemptCheckout(
+          buyerIdentity,
+          product.id
+        );
+
+      check(
+        checkout.statusCode ===
+          400 &&
+        checkout.body
+          ?.message ===
+          "One or more products in your cart are no longer available.",
+        "Whitespace-only seller profile field blocks checkout."
+      );
+    }
+
+    /*
+     * =====================================================
+     * RESTORE COMPLETE SELLER PROFILE
+     * =====================================================
+     */
+
+    await prisma.vendorProfile.update({
+      where: {
+        userId:
+          seller.id,
+      },
+
+      data: {
+        businessDescription:
+          originalBusinessDescription,
+      },
+    });
+
+    {
+      const marketplace =
+        await marketplaceContainsProduct(
+          product.id
+        );
+
+      check(
+        marketplace.status ===
+          200 &&
+        marketplace.contains,
+        "Product returns after seller profile is complete again."
+      );
+    }
+
+    {
+      const detail =
+        await getPublicProductDetail(
+          product.id
+        );
+
+      check(
+        detail.statusCode ===
+          200,
+        "Product detail returns after seller profile is complete again."
+      );
+    }
+
+    {
+      const checkout =
+        await attemptCheckout(
+          buyerIdentity,
+          product.id
+        );
+
+      check(
+        checkout.statusCode ===
+          201,
+        "Checkout works after seller profile is complete again."
+      );
+    }
+
+    /*
+     * =====================================================
+     * PENDING REVIEW
+     * =====================================================
+     *
+     * Public reads and buyer checkout are deliberately
+     * read-only with respect to seller access.
+     *
+     * They must NOT auto-promote pending_review back to
+     * active simply because all other requirements are
+     * currently complete.
      */
 
     await prisma.vendorProfile.update({
@@ -487,171 +865,245 @@ async function main() {
       },
     });
 
-    /*
-     * ===================================================
-     * 4. PRODUCT RECORD REMAINS PUBLISHED
-     * ===================================================
-     */
+    {
+      const marketplace =
+        await marketplaceContainsProduct(
+          product.id
+        );
+
+      check(
+        marketplace.status ===
+          200 &&
+        !marketplace.contains,
+        "Pending-review seller product is hidden from marketplace."
+      );
+    }
 
     {
-      const storedProduct =
-        await prisma.product.findUnique({
+      const detail =
+        await getPublicProductDetail(
+          product.id
+        );
+
+      check(
+        detail.statusCode ===
+          404,
+        "Pending-review seller product detail is hidden."
+      );
+    }
+
+    {
+      const checkout =
+        await attemptCheckout(
+          buyerIdentity,
+          product.id
+        );
+
+      check(
+        checkout.statusCode ===
+          400,
+        "Pending-review seller cannot receive a new checkout."
+      );
+    }
+
+    {
+      const profile =
+        await prisma.vendorProfile.findUnique({
           where: {
-            id:
-              product.id,
+            userId:
+              seller.id,
           },
 
           select: {
-            isArchived:
-              true,
-
-            archivedAt:
+            accessStatus:
               true,
           },
         });
 
       check(
-        storedProduct
-          ?.isArchived ===
-          false &&
-          storedProduct
-            ?.archivedAt ===
-            null,
-        "Seller access change does not archive or delete product"
+        profile
+          ?.accessStatus ===
+          VendorAccessStatus.pending_review,
+        "Public browsing and checkout do not reconcile pending_review seller state."
       );
     }
 
     /*
-     * ===================================================
-     * 5. PRODUCT DISAPPEARS FROM PUBLIC MARKETPLACE
-     * ===================================================
+     * =====================================================
+     * RESTRICTED
+     * =====================================================
      */
 
+    await prisma.vendorProfile.update({
+      where: {
+        userId:
+          seller.id,
+      },
+
+      data: {
+        accessStatus:
+          VendorAccessStatus.restricted,
+      },
+    });
+
     {
-      const {
-        response,
-        captured,
-      } =
-        createMockResponse();
-
-      await getProducts(
-        createPublicRequest(),
-        response
-      );
-
-      const products =
-        Array.isArray(
-          captured.body
-            ?.products
-        )
-          ? captured.body.products
-          : [];
+      const marketplace =
+        await marketplaceContainsProduct(
+          product.id
+        );
 
       check(
-        captured.statusCode ===
+        marketplace.status ===
           200 &&
-          !products.some(
-            (
-              item: any
-            ) =>
-              item.id ===
-              product.id
-          ),
-        "Pending-review seller product is hidden from marketplace"
+        !marketplace.contains,
+        "Restricted seller product is hidden from marketplace."
       );
     }
 
-    /*
-     * ===================================================
-     * 6. DIRECT PRODUCT URL BECOMES UNAVAILABLE
-     * ===================================================
-     */
-
     {
-      const {
-        response,
-        captured,
-      } =
-        createMockResponse();
-
-      await getProductById(
-        createPublicRequest({
-          id:
-            String(
-              product.id
-            ),
-        }),
-        response
-      );
+      const detail =
+        await getPublicProductDetail(
+          product.id
+        );
 
       check(
-        captured.statusCode ===
+        detail.statusCode ===
           404,
-        "Pending-review seller product detail is hidden"
+        "Restricted seller product detail is hidden."
       );
     }
-
-    /*
-     * ===================================================
-     * 7. STALE CART / DIRECT CHECKOUT IS BLOCKED
-     * ===================================================
-     */
 
     {
-      const {
-        response,
-        captured,
-      } =
-        createMockResponse();
-
-      await createOrder(
-        createAuthenticatedRequest(
-          {
-            id:
-              buyer.id,
-
-            role:
-              UserRole.client,
-          },
-          {
-            items: [
-              {
-                productId:
-                  product.id,
-
-                quantity:
-                  1,
-              },
-            ],
-          }
-        ),
-        response
-      );
+      const checkout =
+        await attemptCheckout(
+          buyerIdentity,
+          product.id
+        );
 
       check(
-        captured.statusCode ===
-          400 &&
-          captured.body
-            ?.message ===
-            "One or more products in your cart are no longer available.",
-        "Stale cart checkout is blocked after seller loses access"
+        checkout.statusCode ===
+          400,
+        "Restricted seller cannot receive a new checkout."
+      );
+    }
+
+    {
+      const profile =
+        await prisma.vendorProfile.findUnique({
+          where: {
+            userId:
+              seller.id,
+          },
+
+          select: {
+            accessStatus:
+              true,
+          },
+        });
+
+      check(
+        profile
+          ?.accessStatus ===
+          VendorAccessStatus.restricted,
+        "Marketplace activity never overrides restricted seller state."
       );
     }
 
     /*
-     * ===================================================
-     * 8. EXISTING ORDER IS STILL PRESERVED
-     * ===================================================
+     * =====================================================
+     * SUSPENDED
+     * =====================================================
+     */
+
+    await prisma.vendorProfile.update({
+      where: {
+        userId:
+          seller.id,
+      },
+
+      data: {
+        accessStatus:
+          VendorAccessStatus.suspended,
+      },
+    });
+
+    {
+      const marketplace =
+        await marketplaceContainsProduct(
+          product.id
+        );
+
+      check(
+        marketplace.status ===
+          200 &&
+        !marketplace.contains,
+        "Suspended seller product is hidden from marketplace."
+      );
+    }
+
+    {
+      const detail =
+        await getPublicProductDetail(
+          product.id
+        );
+
+      check(
+        detail.statusCode ===
+          404,
+        "Suspended seller product detail is hidden."
+      );
+    }
+
+    {
+      const checkout =
+        await attemptCheckout(
+          buyerIdentity,
+          product.id
+        );
+
+      check(
+        checkout.statusCode ===
+          400,
+        "Suspended seller cannot receive a new checkout."
+      );
+    }
+
+    {
+      const profile =
+        await prisma.vendorProfile.findUnique({
+          where: {
+            userId:
+              seller.id,
+          },
+
+          select: {
+            accessStatus:
+              true,
+          },
+        });
+
+      check(
+        profile
+          ?.accessStatus ===
+          VendorAccessStatus.suspended,
+        "Marketplace activity never overrides suspended seller state."
+      );
+    }
+
+    /*
+     * =====================================================
+     * EXISTING ORDER PRESERVATION
+     * =====================================================
      */
 
     if (
-      orderId
+      initialOrderId
     ) {
       const existingOrder =
         await prisma.order.findUnique({
           where: {
             id:
-              orderId,
+              initialOrderId,
           },
 
           include: {
@@ -674,31 +1126,31 @@ async function main() {
         Boolean(
           existingOrder
         ) &&
-          existingOrder
-            ?.items
-            .some(
-              (
-                item
-              ) =>
-                item.productId ===
-                  product.id &&
-                item.vendorId ===
-                  seller.id
-            ) ===
-            true,
-        "Existing order remains preserved after seller loses access"
+        existingOrder
+          ?.items
+          .some(
+            (
+              item
+            ) =>
+              item.productId ===
+                product.id &&
+              item.vendorId ===
+                seller.id
+          ) ===
+          true,
+        "Existing order remains preserved after seller later becomes unavailable."
       );
     } else {
       check(
         false,
-        "Existing order remains preserved after seller loses access"
+        "Existing order remains preserved after seller later becomes unavailable."
       );
     }
 
     /*
-     * ===================================================
-     * SELLER BECOMES ACTIVE AGAIN
-     * ===================================================
+     * =====================================================
+     * MANUAL REACTIVATION
+     * =====================================================
      */
 
     await prisma.vendorProfile.update({
@@ -713,118 +1165,78 @@ async function main() {
       },
     });
 
-    /*
-     * ===================================================
-     * 9. SAME PRODUCT AUTOMATICALLY REAPPEARS
-     * ===================================================
-     */
-
     {
-      const {
-        response,
-        captured,
-      } =
-        createMockResponse();
-
-      await getProducts(
-        createPublicRequest(),
-        response
-      );
-
-      const products =
-        Array.isArray(
-          captured.body
-            ?.products
-        )
-          ? captured.body.products
-          : [];
+      const marketplace =
+        await marketplaceContainsProduct(
+          product.id
+        );
 
       check(
-        captured.statusCode ===
+        marketplace.status ===
           200 &&
-          products.some(
-            (
-              item: any
-            ) =>
-              item.id ===
-              product.id
-          ),
-        "Same product automatically returns when seller access becomes active"
+        marketplace.contains,
+        "Same product returns after seller access becomes active again."
+      );
+    }
+
+    {
+      const detail =
+        await getPublicProductDetail(
+          product.id
+        );
+
+      check(
+        detail.statusCode ===
+          200 &&
+        detail.body
+          ?.product
+          ?.id ===
+          product.id,
+        "Same product detail becomes public after seller reactivation."
+      );
+    }
+
+    {
+      const checkout =
+        await attemptCheckout(
+          buyerIdentity,
+          product.id
+        );
+
+      check(
+        checkout.statusCode ===
+          201,
+        "Seller can receive new checkout again after reactivation."
       );
     }
 
     /*
-     * ===================================================
-     * 10. DIRECT PRODUCT DETAIL RETURNS AGAIN
-     * ===================================================
+     * =====================================================
+     * FINAL ARCHIVE INVARIANT
+     * =====================================================
      */
 
     {
-      const {
-        response,
-        captured,
-      } =
-        createMockResponse();
-
-      await getProductById(
-        createPublicRequest({
-          id:
-            String(
-              product.id
-            ),
-        }),
-        response
-      );
+      const stored =
+        await productArchiveState(
+          product.id
+        );
 
       check(
-        captured.statusCode ===
-          200 &&
-          captured.body
-            ?.product
-            ?.id ===
-            product.id,
-        "Same product detail becomes public again after reactivation"
-      );
-    }
-
-    /*
-     * ===================================================
-     * 11. PRODUCT WAS NEVER ARCHIVED DURING TRANSITION
-     * ===================================================
-     */
-
-    {
-      const storedProduct =
-        await prisma.product.findUnique({
-          where: {
-            id:
-              product.id,
-          },
-
-          select: {
-            isArchived:
-              true,
-
-            archivedAt:
-              true,
-          },
-        });
-
-      check(
-        storedProduct
+        stored
           ?.isArchived ===
           false &&
-          storedProduct
-            ?.archivedAt ===
-            null,
-        "Temporary seller restriction never changes product archive state"
+        stored
+          ?.archivedAt ===
+          null,
+        "All temporary seller eligibility transitions leave product archive state untouched."
       );
     }
   } finally {
     /*
-     * ===================================================
+     * =====================================================
      * CLEANUP
-     * ===================================================
+     * =====================================================
      */
 
     if (

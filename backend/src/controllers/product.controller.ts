@@ -16,11 +16,8 @@ import {
 } from "../lib/cloudinary";
 
 import {
-  Prisma,
-  StudentVerificationStatus,
-  UserRole,
-  VendorAccessStatus,
-} from "../generated/prisma/client";
+  getSellerEligibilityMap,
+} from "../services/sellerEligibility.service";
 
 /*
  * =======================================================
@@ -88,114 +85,33 @@ const productResponse = (product: {
 
 /*
  * =======================================================
- * PUBLIC SELLER AVAILABILITY FILTER
+ * PUBLIC PRODUCT AVAILABILITY
  * =======================================================
+ *
+ * Product publication state and seller eligibility are
+ * deliberately separate.
  *
  * A product is publicly available only when:
  *
  * - product is not archived
- * - account is still a vendor
- * - student verification is complete
- * - vendor profile exists
- * - seller access is active
- * - seller profile contains the required business fields
- * - university/location requirements remain satisfied
+ * - canonical seller eligibility says canSell === true
  *
  * IMPORTANT:
  *
- * This does NOT archive or modify a product.
+ * Public marketplace reads do NOT reconcile or mutate a
+ * seller account.
  *
  * If a seller temporarily becomes ineligible:
  *
  * isArchived remains false
  *
- * Their product is simply hidden from public marketplace
- * queries until their selling eligibility becomes active
- * again.
+ * Their product is simply omitted from public marketplace
+ * responses until canonical seller eligibility becomes
+ * valid again.
+ *
+ * Seller eligibility itself is evaluated only by
+ * sellerEligibility.service.ts.
  */
-
-const publicProductWhere:
-  Prisma.ProductWhereInput = {
-    isArchived:
-      false,
-
-    vendor: {
-      role:
-        UserRole.vendor,
-
-      studentVerificationStatus:
-        StudentVerificationStatus.verified,
-
-      vendorProfile: {
-        is: {
-          accessStatus:
-            VendorAccessStatus.active,
-
-          businessName: {
-            not:
-              "",
-          },
-
-          businessDescription: {
-            not:
-              "",
-          },
-
-          pickupLocation: {
-            not:
-              "",
-          },
-        },
-      },
-
-      OR: [
-        /*
-         * Managed/listed university seller.
-         *
-         * A matric number is required.
-         */
-
-        {
-          universityId: {
-            not:
-              null,
-          },
-
-          matricNumber: {
-            not:
-              null,
-          },
-        },
-
-        /*
-         * University not listed in CampusMart.
-         *
-         * Fallback university, state and city are
-         * required.
-         */
-
-        {
-          universityId:
-            null,
-
-          fallbackUniversityName: {
-            not:
-              null,
-          },
-
-          fallbackState: {
-            not:
-              null,
-          },
-
-          fallbackCity: {
-            not:
-              null,
-          },
-        },
-      ],
-    },
-  };
 
 /*
  * =======================================================
@@ -334,14 +250,18 @@ export const getVendorProducts =
  * PUBLIC MARKETPLACE
  * =======================================================
  *
- * A public listing must satisfy BOTH:
+ * Public visibility now uses the canonical seller
+ * eligibility evaluator instead of maintaining a second
+ * copy of the selling requirements here.
  *
- * 1. product is published
- * 2. seller is currently allowed to receive new
- *    marketplace activity
+ * Flow:
  *
- * Temporarily unavailable products remain preserved in
- * the database and in the seller's own listing history.
+ * 1. load non-archived products
+ * 2. batch-load each represented seller once
+ * 3. evaluate every seller through the canonical service
+ * 4. return only products whose seller canSell
+ *
+ * This avoids an N+1 seller query pattern.
  */
 
 export const getProducts =
@@ -352,8 +272,10 @@ export const getProducts =
     try {
       const products =
         await prisma.product.findMany({
-          where:
-            publicProductWhere,
+          where: {
+            isArchived:
+              false,
+          },
 
           include: {
             vendor: {
@@ -370,6 +292,28 @@ export const getProducts =
           },
         });
 
+      const eligibilityMap =
+        await getSellerEligibilityMap(
+          products.map(
+            (
+              product
+            ) =>
+              product.vendorId
+          )
+        );
+
+      const availableProducts =
+        products.filter(
+          (
+            product
+          ) =>
+            eligibilityMap.get(
+              product.vendorId
+            )
+              ?.canSell ===
+            true
+        );
+
       return res
         .status(200)
         .json({
@@ -377,7 +321,7 @@ export const getProducts =
             true,
 
           products:
-            products.map(
+            availableProducts.map(
               productResponse
             ),
         });
@@ -406,10 +350,8 @@ export const getProducts =
  * PUBLIC PRODUCT DETAIL
  * =======================================================
  *
- * Product detail follows exactly the same public
- * availability rules as the marketplace.
- *
- * Therefore:
+ * Product detail follows exactly the same canonical
+ * seller-eligibility decision as the marketplace.
  *
  * seller loses eligibility
  * -> direct listing URL becomes unavailable
@@ -417,7 +359,8 @@ export const getProducts =
  * seller becomes eligible again
  * -> same listing becomes available again
  *
- * The product record is never deleted or archived by this.
+ * The product itself is never deleted or archived by
+ * public availability checks.
  */
 
 export const getProductById =
@@ -448,16 +391,21 @@ export const getProductById =
           });
       }
 
+      /*
+       * Archive state is a property of the listing itself,
+       * so it remains safe to filter at the database level.
+       *
+       * Seller eligibility is evaluated separately through
+       * the canonical seller service.
+       */
+
       const product =
         await prisma.product.findFirst({
           where: {
-            AND: [
-              {
-                id,
-              },
+            id,
 
-              publicProductWhere,
-            ],
+            isArchived:
+              false,
           },
 
           include: {
@@ -473,6 +421,37 @@ export const getProductById =
       if (
         !product
       ) {
+        return res
+          .status(404)
+          .json({
+            success:
+              false,
+
+            message:
+              "Product not found.",
+          });
+      }
+
+      const eligibilityMap =
+        await getSellerEligibilityMap([
+          product.vendorId,
+        ]);
+
+      const sellerEligibility =
+        eligibilityMap.get(
+          product.vendorId
+        );
+
+      if (
+        !sellerEligibility
+          ?.canSell
+      ) {
+        /*
+         * Public callers should not be told whether a
+         * hidden listing exists because of seller state,
+         * archive state or another availability reason.
+         */
+
         return res
           .status(404)
           .json({
@@ -521,6 +500,9 @@ export const getProductById =
  * =======================================================
  *
  * Full seller eligibility is enforced by route middleware.
+ *
+ * requireSellerEligibility uses the same canonical seller
+ * eligibility service as public marketplace visibility.
  */
 
 export const createProduct =

@@ -5,10 +5,7 @@ import {
 import {
   OrderStatus,
   PaymentStatus,
-  Prisma,
-  StudentVerificationStatus,
   UserRole,
-  VendorAccessStatus,
 } from "../generated/prisma/client";
 
 import {
@@ -25,6 +22,11 @@ import {
   isValidFulfillmentCode,
   verifyFulfillmentCodeHash,
 } from "../services/fulfillmentCode.service";
+
+import {
+  evaluateSellerState,
+  sellerEligibilityStateSelect,
+} from "../services/sellerEligibility.service";
 
 class OrderInputError extends Error {}
 
@@ -343,16 +345,6 @@ function buildVendorBuyerContact(
         ? buyer.phone
         : null,
 
-    /*
-     * Lets the frontend distinguish:
-     *
-     * "privacy locked"
-     *
-     * from:
-     *
-     * "contact stage unlocked, but buyer has no phone
-     * stored".
-     */
     phoneUnlocked,
 
     phoneAvailable:
@@ -367,30 +359,6 @@ function buildVendorBuyerContact(
  * =======================================================
  * PRIVATE FULFILMENT DETAILS
  * =======================================================
- *
- * Order.pickupLocation and Order.preferredSlot both
- * describe private buyer fulfilment information.
- *
- * They use exactly the same seller-specific privacy
- * window as buyer phone access.
- *
- * Seller sees:
- *
- * pending / unpaid:
- *   pickupLocation = null
- *   preferredSlot  = null
- *
- * paid + THIS seller confirmed:
- *   pickupLocation = actual location
- *   preferredSlot  = actual slot
- *
- * completed / cancelled / refunded:
- *   both are hidden again
- *
- * This concerns buyer-selected Order fields.
- *
- * It is separate from the seller's own public
- * VendorProfile.pickupLocation.
  */
 
 function buildVendorFulfillmentDetails(
@@ -442,79 +410,9 @@ function buildVendorFulfillmentDetails(
 
 /*
  * =======================================================
- * NEW-ORDER PRODUCT AVAILABILITY
+ * ORDER ITEM RESPONSE INCLUDE
  * =======================================================
  */
-
-const orderableProductWhere:
-  Prisma.ProductWhereInput = {
-    isArchived:
-      false,
-
-    vendor: {
-      role:
-        UserRole.vendor,
-
-      studentVerificationStatus:
-        StudentVerificationStatus.verified,
-
-      vendorProfile: {
-        is: {
-          accessStatus:
-            VendorAccessStatus.active,
-
-          businessName: {
-            not:
-              "",
-          },
-
-          businessDescription: {
-            not:
-              "",
-          },
-
-          pickupLocation: {
-            not:
-              "",
-          },
-        },
-      },
-
-      OR: [
-        {
-          universityId: {
-            not:
-              null,
-          },
-
-          matricNumber: {
-            not:
-              null,
-          },
-        },
-
-        {
-          universityId:
-            null,
-
-          fallbackUniversityName: {
-            not:
-              null,
-          },
-
-          fallbackState: {
-            not:
-              null,
-          },
-
-          fallbackCity: {
-            not:
-              null,
-          },
-        },
-      ],
-    },
-  };
 
 const orderItemInclude = {
   product: {
@@ -562,13 +460,29 @@ const orderItemInclude = {
  * CREATE ORDER
  * =======================================================
  *
- * Every seller represented in a new order receives one
- * private fulfilment challenge.
+ * New checkout uses the exact same canonical seller
+ * eligibility evaluator used elsewhere in CampusMart.
  *
- * The raw code is NOT returned here.
+ * Product availability and seller eligibility remain
+ * separate:
  *
- * Buyer access to the code is controlled by the separate
- * buyer fulfilment endpoint.
+ * product.isArchived === false
+ *
+ * AND
+ *
+ * evaluateSellerState(product.vendor).canSell === true
+ *
+ * Seller state is loaded and evaluated INSIDE the order
+ * transaction.
+ *
+ * The controller does not duplicate the rules for:
+ *
+ * - vendor role
+ * - university details
+ * - matric number
+ * - student verification
+ * - seller-profile completeness
+ * - seller access state
  */
 
 export const createOrder =
@@ -645,19 +559,24 @@ export const createOrder =
                   item.productId
               );
 
+            /*
+             * Only listing publication state is filtered
+             * directly in this product query.
+             *
+             * Seller eligibility is evaluated below by
+             * the canonical seller-eligibility service.
+             */
+
             const products =
               await tx.product.findMany({
                 where: {
-                  AND: [
-                    {
-                      id: {
-                        in:
-                          productIds,
-                      },
-                    },
+                  id: {
+                    in:
+                      productIds,
+                  },
 
-                    orderableProductWhere,
-                  ],
+                  isArchived:
+                    false,
                 },
 
                 select: {
@@ -672,12 +591,55 @@ export const createOrder =
 
                   vendorId:
                     true,
+
+                  vendor: {
+                    select:
+                      sellerEligibilityStateSelect,
+                  },
                 },
               });
+
+            /*
+             * Missing or archived products use the same
+             * public checkout error as before.
+             */
 
             if (
               products.length !==
               requestedItems.length
+            ) {
+              throw new OrderInputError(
+                "One or more products in your cart are no longer available."
+              );
+            }
+
+            /*
+             * Every represented seller must currently
+             * satisfy the canonical canSell policy.
+             *
+             * This catches values that SQL null/empty
+             * checks can easily miss, including:
+             *
+             * matricNumber = "   "
+             * businessName = "   "
+             * businessDescription = "   "
+             * pickupLocation = "   "
+             * fallback location fields containing only
+             * whitespace.
+             */
+
+            const sellerUnavailable =
+              products.some(
+                (
+                  product
+                ) =>
+                  !evaluateSellerState(
+                    product.vendor
+                  ).canSell
+              );
+
+            if (
+              sellerUnavailable
             ) {
               throw new OrderInputError(
                 "One or more products in your cart are no longer available."
@@ -818,6 +780,11 @@ export const createOrder =
                     true,
                 },
               });
+
+            /*
+             * One fulfilment challenge per DISTINCT
+             * seller.
+             */
 
             const vendorIds =
               Array.from(
@@ -1010,13 +977,6 @@ export const getMyOrders =
  * =======================================================
  * BUYER FULFILMENT CODES
  * =======================================================
- *
- * GET /api/orders/:id/fulfillment-codes
- *
- * Only the BUYER who owns this order may use this.
- *
- * A seller's code is exposed only while that seller's
- * portion of the order is CONFIRMED.
  */
 
 export const getBuyerFulfillmentCodes =
@@ -1291,13 +1251,6 @@ export const getBuyerFulfillmentCodes =
  * =======================================================
  * SELLER ORDER HISTORY
  * =======================================================
- *
- * Buyer phone, buyer-selected pickup location and
- * buyer-selected preferred slot privacy are enforced
- * here.
- *
- * Each seller is evaluated using ONLY that seller's own
- * items inside the order.
  */
 
 export const getVendorOrders =
@@ -1395,11 +1348,6 @@ export const getVendorOrders =
                     item.status
                 )
               );
-
-            /*
-             * Never spread raw buyer-selected private
-             * fulfilment details into a seller response.
-             */
 
             const {
               buyer,
@@ -1548,22 +1496,6 @@ export const getVendorOrders =
  * =======================================================
  * UPDATE SELLER ORDER STATUS
  * =======================================================
- *
- * Supports:
- *
- * pending -> confirmed
- * pending -> cancelled
- * confirmed -> cancelled
- *
- * DOES NOT support:
- *
- * confirmed -> completed
- *
- * Completion requires the buyer's fulfilment code.
- *
- * Buyer phone, order pickup location and preferred slot
- * are sanitized using the resulting seller-specific
- * status.
  */
 
 export const updateVendorOrderStatus =
@@ -1901,11 +1833,6 @@ export const updateVendorOrderStatus =
                 )
               );
 
-            /*
-             * Never spread raw private fulfilment details
-             * into the seller response.
-             */
-
             const {
               buyer,
               pickupLocation,
@@ -1993,17 +1920,6 @@ export const updateVendorOrderStatus =
  * =======================================================
  * VERIFY SELLER FULFILMENT CODE
  * =======================================================
- *
- * POST /api/orders/vendor/:id/fulfillment
- *
- * Body:
- *
- * {
- *   "code": "0427"
- * }
- *
- * Seller never receives the expected code from this
- * endpoint.
  */
 
 export const verifyVendorFulfillmentCode =
@@ -2509,16 +2425,6 @@ export const verifyVendorFulfillmentCode =
  * =======================================================
  * GET INDIVIDUAL ORDER
  * =======================================================
- *
- * Buyer:
- * receives their complete order.
- *
- * Seller:
- * receives only their seller portion.
- *
- * Buyer phone, buyer-selected pickup location and
- * buyer-selected preferred slot are privacy-gated for
- * seller access.
  */
 
 export const getOrderById =
@@ -2607,10 +2513,6 @@ export const getOrderById =
 
       /*
        * Buyer may view their complete order.
-       *
-       * Returning their own phone, pickup location and
-       * preferred slot is correct because this response
-       * belongs to the buyer.
        */
 
       if (
