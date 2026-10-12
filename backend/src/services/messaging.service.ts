@@ -3,10 +3,11 @@ import {
   MessagingModerationAction as PrismaMessagingModerationAction,
   MessagingModerationCategory as PrismaMessagingModerationCategory,
   UserRole,
-  VendorAccessStatus,
 } from "../generated/prisma/client";
 
-import { prisma } from "../lib/prisma";
+import {
+  prisma,
+} from "../lib/prisma";
 
 import {
   moderateOutgoingMessage,
@@ -20,13 +21,18 @@ import {
   recordMessagingModerationAttempt,
 } from "./messagingEnforcement.service";
 
+import {
+  getSellerEligibility,
+} from "./sellerEligibility.service";
+
 /*
  * =======================================================
  * CONFIGURATION
  * =======================================================
  */
 
-export const MESSAGE_MAX_LENGTH = 2000;
+export const MESSAGE_MAX_LENGTH =
+  2000;
 
 /*
  * =======================================================
@@ -58,13 +64,18 @@ export class MessagingError extends Error {
       requiresReview?: boolean;
     }
   ) {
-    super(message);
+    super(
+      message
+    );
 
-    this.name = "MessagingError";
+    this.name =
+      "MessagingError";
 
-    this.statusCode = statusCode;
+    this.statusCode =
+      statusCode;
 
-    this.code = code;
+    this.code =
+      code;
 
     this.moderationAction =
       options?.moderationAction;
@@ -135,6 +146,13 @@ type SendMessageInput = {
   replyToMessageId?: unknown;
 };
 
+type ExistingReusableConversation = {
+  id: string;
+
+  context:
+    ResolvedConversationContext;
+};
+
 /*
  * =======================================================
  * DATE HELPERS
@@ -150,7 +168,10 @@ function laterDate(
   if (
     !first
   ) {
-    return second ?? null;
+    return (
+      second ??
+      null
+    );
   }
 
   if (
@@ -216,22 +237,6 @@ export function normalizeMessageBody(
  * =======================================================
  * RECENT PHONE-SHARING HISTORY
  * =======================================================
- *
- * IMPORTANT:
- *
- * We do NOT store previous phone digits here.
- *
- * We only check whether this same sender produced a
- * phone-number moderation event in this same conversation
- * during the short continuation window.
- *
- * That is enough to detect:
- *
- * message 1: 080
- * message 2: 391
- * message 3: 5537
- *
- * without reconstructing or persisting the secret.
  */
 
 async function hasRecentPhoneSharingAttempt(
@@ -289,38 +294,6 @@ async function hasRecentPhoneSharingAttempt(
  * =======================================================
  * RECENT SAME-SENDER MESSAGE CONTEXT
  * =======================================================
- *
- * Phone continuation based on moderation history catches
- * cases such as:
- *
- *   080
- *   391
- *   5537
- *
- * There is a separate bypass class where each individual
- * message looks harmless but the same sender's recent
- * messages clearly combine into contact-sharing intent:
- *
- *   whats
- *   app?
- *
- *   green
- *   app?
- *
- *   drop
- *   ur digits
- *
- *   my
- *   number is
- *   8035535266
- *
- * Only a very small same-sender window is considered.
- * Messages from the other participant are never mixed
- * into this context.
- *
- * Reconstructed context exists only in memory for the
- * current moderation decision. It is never written to a
- * message row or moderation metadata.
  */
 
 const CROSS_MESSAGE_CONTEXT_LIMIT =
@@ -336,14 +309,17 @@ type RecentSenderMessage = {
 };
 
 type CrossMessageModerationSignal = {
-  categories: MessageModerationCategory[];
+  categories:
+    MessageModerationCategory[];
 };
 
 async function getRecentSenderMessages(
   userId: string,
   conversationId:
     string | null | undefined
-): Promise<RecentSenderMessage[]> {
+): Promise<
+  RecentSenderMessage[]
+> {
   if (
     !conversationId
   ) {
@@ -409,7 +385,7 @@ function normalizeCrossMessageText(
     )
     .toLowerCase()
     .replace(
-      /[’‘`´]/g,
+      /[â€™â€˜`Â´]/g,
       "'"
     )
     .replace(
@@ -520,15 +496,6 @@ function extractStandaloneNumericFragment(
       .toLowerCase()
       .trim();
 
-  /*
-   * First support fragments written as number words or a
-   * mixture of number words and ordinary digits:
-   *
-   *   eight
-   *   zero eight
-   *   8 zero 3
-   */
-
   const numberWordMap:
     Record<
       string,
@@ -571,7 +538,7 @@ function extractStandaloneNumericFragment(
   const wordTokens =
     normalized
       .split(
-        /[\s().,\-_/"'’‘“”:;|~+\u200B\u200C\u200D\uFEFF]+/u
+        /[\s().,\-_/"'â€™â€˜â€œâ€:;|~+\u200B\u200C\u200D\uFEFF]+/u
       )
       .filter(
         Boolean
@@ -660,13 +627,6 @@ function extractStandaloneNumericFragment(
     }
   }
 
-  /*
-   * Fall back to symbol/filler-aware numeric extraction:
-   *
-   *   8x0x3
-   *   080📱355
-   */
-
   let digits =
     "";
 
@@ -695,7 +655,7 @@ function extractStandaloneNumericFragment(
     }
 
     if (
-      /[\s().,\-_/"'’‘“”:;|~+\u200B\u200C\u200D\uFEFF]/u.test(
+      /[\s().,\-_/"'â€™â€˜â€œâ€:;|~+\u200B\u200C\u200D\uFEFF]/u.test(
         character
       )
     ) {
@@ -733,10 +693,6 @@ function extractStandaloneNumericFragment(
 function containsNigerianPhoneShape(
   digits: string
 ) {
-  /*
-   * Local number.
-   */
-
   for (
     let start =
       0;
@@ -759,10 +715,6 @@ function containsNigerianPhoneShape(
     }
   }
 
-  /*
-   * Country-code number.
-   */
-
   for (
     let start =
       0;
@@ -784,12 +736,6 @@ function containsNigerianPhoneShape(
       return true;
     }
   }
-
-  /*
-   * A 10-digit no-leading-zero Nigerian mobile shape is
-   * accepted here only when it had to be assembled from
-   * multiple separate messages.
-   */
 
   return /^[789]\d{9}$/.test(
     digits
@@ -845,15 +791,6 @@ function hasSplitPlatformName(
       ) {
         return false;
       }
-
-      /*
-       * This helper is specifically for a platform name
-       * split across message boundaries.
-       *
-       * If one individual message already contains the
-       * full platform name, normal single-message
-       * moderation owns that case.
-       */
 
       return !compactParts.some(
         (
@@ -955,14 +892,6 @@ function hasCrossMessagePhoneDisclosure(
   const personalPhoneSetup =
     /\b(?:my|the)\s+(?:phone\s+)?(?:number|num|digits?|line)\s*(?:is|are)?\s*$|\b(?:contact|reach|call|text)\s+me\s+(?:on|at)\s*$|\b(?:my\s+)?(?:whatsapp|wa)\s*(?:is|:|=)?\s*$/i;
 
-  /*
-   * Example:
-   *
-   * my
-   * number is
-   * 8035535266
-   */
-
   if (
     personalPhoneSetup.test(
       previousText
@@ -973,22 +902,6 @@ function hasCrossMessagePhoneDisclosure(
   ) {
     return true;
   }
-
-  /*
-   * Also detect a phone number assembled entirely from
-   * standalone numeric fragments across messages:
-   *
-   *   80355
-   *   35266
-   *
-   *   08
-   *   0355
-   *   35266
-   *
-   *   234
-   *   80355
-   *   35266
-   */
 
   const numericParts =
     parts.map(
@@ -1013,24 +926,6 @@ function hasCrossMessagePhoneDisclosure(
       ""
     );
 
-  /*
-   * If multiple messages themselves assemble a Nigerian
-   * local prefix, stop the sequence early instead of
-   * waiting for all eleven digits.
-   *
-   * Examples:
-   *
-   *   0
-   *   8
-   *   0
-   *
-   *   08
-   *   03
-   *
-   * Existing single-message partial-prefix moderation
-   * already owns the equivalent one-message case.
-   */
-
   if (
     reconstructed.length >=
       3 &&
@@ -1042,11 +937,6 @@ function hasCrossMessagePhoneDisclosure(
   ) {
     return true;
   }
-
-  /*
-   * Same idea for a country-code number assembled across
-   * message boundaries.
-   */
 
   if (
     reconstructed.length >=
@@ -1077,16 +967,9 @@ function detectCrossMessageModerationSignal(
     return null;
   }
 
-  /*
-   * Only short recent messages are useful for deliberate
-   * fragment reconstruction.
-   *
-   * Stop at a longer message so an old paragraph is not
-   * accidentally combined with a new unrelated message.
-   */
-
   const recentShortParts:
-    string[] = [];
+    string[] =
+    [];
 
   for (
     let index =
@@ -1122,11 +1005,6 @@ function detectCrossMessageModerationSignal(
     return null;
   }
 
-  /*
-   * Test progressively larger suffixes so a harmless
-   * earlier message does not poison the newest context.
-   */
-
   for (
     let count =
       1;
@@ -1146,11 +1024,6 @@ function detectCrossMessageModerationSignal(
         currentBody,
       ];
 
-    /*
-     * Phone reconstruction can use up to ten total
-     * fragments.
-     */
-
     if (
       count <=
         9 &&
@@ -1166,17 +1039,6 @@ function detectCrossMessageModerationSignal(
       };
     }
 
-    /*
-     * A platform name may be split extremely finely:
-     *
-     * w
-     * h
-     * a
-     * t
-     * s
-     * app
-     */
-
     if (
       hasSplitPlatformName(
         parts
@@ -1188,12 +1050,6 @@ function detectCrossMessageModerationSignal(
         ],
       };
     }
-
-    /*
-     * Natural-language intent is deliberately kept to a
-     * tighter context to avoid joining unrelated short
-     * messages from a longer conversation.
-     */
 
     if (
       count <=
@@ -1231,26 +1087,6 @@ function mergeModerationCategories(
  * =======================================================
  * CONTEXTUAL PRODUCT-PLATFORM EXEMPTION
  * =======================================================
- *
- * Single-message moderation intentionally blocks a bare:
- *
- *   WhatsApp?
- *
- * because, by itself, it strongly suggests moving the
- * conversation off CampusMart.
- *
- * But the same fragment can be legitimate when it clearly
- * completes a product-capability question from the SAME
- * sender in the SAME conversation:
- *
- *   Does this phone support
- *   WhatsApp?
- *
- * We only reconsider blocks that contain no sensitive
- * spans and are categorised purely as circumvention.
- *
- * Phone numbers, emails, handles, links and other direct
- * sensitive content can never be downgraded here.
  */
 
 function isPlatformOnlyProductFragment(
@@ -1327,7 +1163,8 @@ function canAllowBlockedPlatformFragmentFromProductContext(
   }
 
   const recentShortParts:
-    string[] = [];
+    string[] =
+    [];
 
   for (
     let index =
@@ -1398,15 +1235,6 @@ function canAllowBlockedPlatformFragmentFromProductContext(
       ].join(
         " "
       );
-
-    /*
-     * Ask the existing single-message moderation engine to
-     * validate the reconstructed sentence as one unit.
-     *
-     * We only downgrade when that canonical moderation
-     * result itself considers the complete product
-     * question safe.
-     */
 
     const combinedModeration =
       moderateOutgoingMessage(
@@ -1495,14 +1323,6 @@ function promoteToContextualBlock(
         signal.categories
       ),
 
-    /*
-     * Findings belong only to spans in the current
-     * message.
-     *
-     * We intentionally do not copy offsets from
-     * reconstructed historical context.
-     */
-
     findings:
       base.findings,
 
@@ -1524,7 +1344,8 @@ function promoteToContextualBlock(
  */
 
 function toPrismaModerationCategory(
-  category: MessageModerationCategory
+  category:
+    MessageModerationCategory
 ): PrismaMessagingModerationCategory {
   switch (
     category
@@ -1553,7 +1374,8 @@ function toPrismaModerationCategory(
 }
 
 function toPrismaModerationAction(
-  action: MessageModerationAction
+  action:
+    MessageModerationAction
 ) {
   switch (
     action
@@ -1643,20 +1465,6 @@ async function prepareOutgoingMessageWithConversationContext(
       options.userId,
       options.conversationId
     );
-
-  /*
-   * A bare platform fragment is normally blocked, but we
-   * allow a very narrow contextual exception when it
-   * clearly completes a legitimate product-capability
-   * question from this same sender.
-   *
-   * Example:
-   *
-   *   Does this phone support
-   *   WhatsApp?
-   *
-   * Direct sensitive content can never enter this branch.
-   */
 
   if (
     prepared.moderation.action ===
@@ -1793,17 +1601,22 @@ async function resolveReplyTarget(
  * =======================================================
  */
 
-async function recordModerationIfRequired(input: {
-  userId: string;
+async function recordModerationIfRequired(
+  input: {
+    userId: string;
 
-  conversationId?: string | null;
+    conversationId?:
+      string | null;
 
-  contextType?: ConversationContextType | null;
+    contextType?:
+      ConversationContextType | null;
 
-  moderation: ReturnType<
-    typeof moderateOutgoingMessage
-  >;
-}) {
+    moderation:
+      ReturnType<
+        typeof moderateOutgoingMessage
+      >;
+  }
+) {
   if (
     input.moderation.action ===
     "allow"
@@ -1856,9 +1669,10 @@ async function recordModerationIfRequired(input: {
  */
 
 function throwBlockedMessage(
-  moderation: ReturnType<
-    typeof moderateOutgoingMessage
-  >,
+  moderation:
+    ReturnType<
+      typeof moderateOutgoingMessage
+    >,
   enforcement:
     Awaited<
       ReturnType<
@@ -1893,38 +1707,52 @@ function throwBlockedMessage(
  * =======================================================
  * SELLER AVAILABILITY
  * =======================================================
+ *
+ * New general/listing conversations must use the SAME
+ * seller eligibility definition as listing publication
+ * and new-order eligibility.
+ *
+ * Vendor Verification is deliberately not checked here
+ * because getSellerEligibility().canSell does not require
+ * that badge.
  */
 
 async function assertSellerAvailableForNewConversation(
   vendorId: string
 ) {
-  const vendor =
-    await prisma.user.findUnique({
-      where: {
-        id:
-          vendorId,
-      },
+  let eligibility:
+    Awaited<
+      ReturnType<
+        typeof getSellerEligibility
+      >
+    >;
 
-      select: {
-        id:
-          true,
+  try {
+    eligibility =
+      await getSellerEligibility(
+        vendorId
+      );
+  } catch (
+    error
+  ) {
+    if (
+      error instanceof
+        Error &&
+      error.message ===
+        "USER_NOT_FOUND"
+    ) {
+      throw new MessagingError(
+        "Seller not found.",
+        404,
+        "SELLER_NOT_FOUND"
+      );
+    }
 
-        role:
-          true,
-
-        vendorProfile: {
-          select: {
-            accessStatus:
-              true,
-          },
-        },
-      },
-    });
+    throw error;
+  }
 
   if (
-    !vendor ||
-    vendor.role !==
-      UserRole.vendor
+    !eligibility.isVendor
   ) {
     throw new MessagingError(
       "Seller not found.",
@@ -1934,10 +1762,7 @@ async function assertSellerAvailableForNewConversation(
   }
 
   if (
-    !vendor.vendorProfile ||
-    vendor.vendorProfile
-      .accessStatus !==
-      VendorAccessStatus.active
+    !eligibility.canSell
   ) {
     throw new MessagingError(
       "This seller is not currently available for new conversations.",
@@ -1946,7 +1771,7 @@ async function assertSellerAvailableForNewConversation(
     );
   }
 
-  return vendor;
+  return eligibility;
 }
 
 /*
@@ -1956,8 +1781,11 @@ async function assertSellerAvailableForNewConversation(
  */
 
 async function resolveGeneralContext(
-  input: ResolveConversationContextInput
-): Promise<ResolvedConversationContext> {
+  input:
+    ResolveConversationContextInput
+): Promise<
+  ResolvedConversationContext
+> {
   const vendorId =
     typeof input.vendorId ===
       "string"
@@ -2019,8 +1847,11 @@ async function resolveGeneralContext(
  */
 
 async function resolveListingContext(
-  input: ResolveConversationContextInput
-): Promise<ResolvedConversationContext> {
+  input:
+    ResolveConversationContextInput
+): Promise<
+  ResolvedConversationContext
+> {
   const productId =
     Number(
       input.productId
@@ -2056,23 +1887,6 @@ async function resolveListingContext(
 
         isArchived:
           true,
-
-        vendor: {
-          select: {
-            id:
-              true,
-
-            role:
-              true,
-
-            vendorProfile: {
-              select: {
-                accessStatus:
-                  true,
-              },
-            },
-          },
-        },
       },
     });
 
@@ -2083,33 +1897,6 @@ async function resolveListingContext(
       "Listing not found.",
       404,
       "LISTING_NOT_FOUND"
-    );
-  }
-
-  if (
-    product.isArchived
-  ) {
-    throw new MessagingError(
-      "This listing is no longer available for new conversations.",
-      400,
-      "LISTING_UNAVAILABLE"
-    );
-  }
-
-  if (
-    product.vendor.role !==
-      UserRole.vendor ||
-    !product.vendor
-      .vendorProfile ||
-    product.vendor
-      .vendorProfile
-      .accessStatus !==
-      VendorAccessStatus.active
-  ) {
-    throw new MessagingError(
-      "This seller is not currently available for new conversations.",
-      400,
-      "SELLER_UNAVAILABLE"
     );
   }
 
@@ -2135,6 +1922,25 @@ async function resolveListingContext(
       "LISTING_SELLER_MISMATCH"
     );
   }
+
+  if (
+    product.isArchived
+  ) {
+    throw new MessagingError(
+      "This listing is no longer available for new conversations.",
+      400,
+      "LISTING_UNAVAILABLE"
+    );
+  }
+
+  /*
+   * Reuse the single canonical seller-eligibility source
+   * instead of duplicating role/profile/access checks.
+   */
+
+  await assertSellerAvailableForNewConversation(
+    product.vendorId
+  );
 
   return {
     buyerId:
@@ -2164,11 +1970,20 @@ async function resolveListingContext(
  * =======================================================
  * ORDER CHAT
  * =======================================================
+ *
+ * Order conversations deliberately do NOT depend on
+ * current seller eligibility.
+ *
+ * Existing transaction communication must remain
+ * available based on actual order participation.
  */
 
 async function resolveOrderContext(
-  input: ResolveConversationContextInput
-): Promise<ResolvedConversationContext> {
+  input:
+    ResolveConversationContextInput
+): Promise<
+  ResolvedConversationContext
+> {
   const orderId =
     typeof input.orderId ===
       "string"
@@ -2246,7 +2061,9 @@ async function resolveOrderContext(
         1
     ) {
       vendorId =
-        vendorIds[0];
+        vendorIds[
+          0
+        ];
     }
 
     if (
@@ -2371,11 +2188,17 @@ async function resolveOrderContext(
  * =======================================================
  * RESOLVE CONVERSATION CONTEXT
  * =======================================================
+ *
+ * This remains the STRICT resolver for a genuinely new
+ * context.
  */
 
 export async function resolveConversationContext(
-  input: ResolveConversationContextInput
-): Promise<ResolvedConversationContext> {
+  input:
+    ResolveConversationContextInput
+): Promise<
+  ResolvedConversationContext
+> {
   switch (
     input.contextType
   ) {
@@ -2401,6 +2224,289 @@ export async function resolveConversationContext(
         "INVALID_CONVERSATION_TYPE"
       );
   }
+}
+
+/*
+ * =======================================================
+ * EXISTING CONVERSATION REUSE
+ * =======================================================
+ *
+ * The "start conversation" endpoint is also used by the
+ * UI when opening/sending from an already-existing
+ * canonical general/listing conversation.
+ *
+ * A seller becoming:
+ *
+ * - pending_review
+ * - restricted
+ * - suspended
+ * - unverified
+ * - otherwise ineligible
+ *
+ * must prevent NEW sales conversations, but must NOT
+ * destroy or disable existing communication history.
+ *
+ * Likewise, archiving a listing prevents new listing
+ * conversations but does not kill an existing one.
+ *
+ * This helper therefore looks for the existing canonical
+ * conversation BEFORE the strict new-context resolver is
+ * used.
+ */
+
+async function findExistingReusableConversation(
+  input:
+    ResolveConversationContextInput
+): Promise<
+  ExistingReusableConversation | null
+> {
+  /*
+   * Order conversations do not require this exception.
+   *
+   * resolveOrderContext() is already based on historical
+   * order participation rather than current eligibility.
+   */
+
+  if (
+    input.contextType ===
+    ConversationContextType.order
+  ) {
+    return null;
+  }
+
+  /*
+   * ---------------------------------------------------
+   * GENERAL
+   * ---------------------------------------------------
+   */
+
+  if (
+    input.contextType ===
+    ConversationContextType.general
+  ) {
+    const vendorId =
+      typeof input.vendorId ===
+        "string"
+        ? input.vendorId.trim()
+        : "";
+
+    if (
+      !vendorId
+    ) {
+      return null;
+    }
+
+    if (
+      vendorId ===
+      input.actorId
+    ) {
+      throw new MessagingError(
+        "You cannot start a conversation with yourself.",
+        400,
+        "SELF_CONVERSATION_NOT_ALLOWED"
+      );
+    }
+
+    const conversation =
+      await prisma.conversation.findUnique({
+        where: {
+          buyerId_vendorId_contextKey: {
+            buyerId:
+              input.actorId,
+
+            vendorId,
+
+            contextKey:
+              "general",
+          },
+        },
+
+        select: {
+          id:
+            true,
+
+          buyerId:
+            true,
+
+          vendorId:
+            true,
+
+          contextType:
+            true,
+
+          contextKey:
+            true,
+
+          productId:
+            true,
+
+          orderId:
+            true,
+        },
+      });
+
+    if (
+      !conversation
+    ) {
+      return null;
+    }
+
+    return {
+      id:
+        conversation.id,
+
+      context: {
+        buyerId:
+          conversation.buyerId,
+
+        vendorId:
+          conversation.vendorId,
+
+        contextType:
+          conversation.contextType,
+
+        contextKey:
+          conversation.contextKey,
+
+        productId:
+          conversation.productId,
+
+        orderId:
+          conversation.orderId,
+
+        actorSide:
+          "buyer",
+      },
+    };
+  }
+
+  /*
+   * ---------------------------------------------------
+   * LISTING
+   * ---------------------------------------------------
+   */
+
+  const productId =
+    Number(
+      input.productId
+    );
+
+  if (
+    !Number.isInteger(
+      productId
+    ) ||
+    productId <=
+      0
+  ) {
+    return null;
+  }
+
+  const contextKey =
+    `listing:${productId}`;
+
+  /*
+   * We intentionally do not use the product table here.
+   *
+   * The canonical conversation itself is enough to prove
+   * that this buyer previously established a valid
+   * listing conversation.
+   *
+   * This means later listing archival or seller
+   * eligibility changes cannot break it.
+   */
+
+  const conversation =
+    await prisma.conversation.findFirst({
+      where: {
+        buyerId:
+          input.actorId,
+
+        contextType:
+          ConversationContextType.listing,
+
+        contextKey,
+      },
+
+      select: {
+        id:
+          true,
+
+        buyerId:
+          true,
+
+        vendorId:
+          true,
+
+        contextType:
+          true,
+
+        contextKey:
+          true,
+
+        productId:
+          true,
+
+        orderId:
+          true,
+      },
+    });
+
+  if (
+    !conversation
+  ) {
+    return null;
+  }
+
+  if (
+    input.vendorId &&
+    input.vendorId !==
+      conversation.vendorId
+  ) {
+    throw new MessagingError(
+      "The selected seller does not own this listing.",
+      400,
+      "LISTING_SELLER_MISMATCH"
+    );
+  }
+
+  if (
+    conversation.vendorId ===
+    input.actorId
+  ) {
+    throw new MessagingError(
+      "You cannot message yourself about your own listing.",
+      400,
+      "SELF_CONVERSATION_NOT_ALLOWED"
+    );
+  }
+
+  return {
+    id:
+      conversation.id,
+
+    context: {
+      buyerId:
+        conversation.buyerId,
+
+      vendorId:
+        conversation.vendorId,
+
+      contextType:
+        conversation.contextType,
+
+      contextKey:
+        conversation.contextKey,
+
+      productId:
+        conversation.productId,
+
+      orderId:
+        conversation.orderId,
+
+      actorSide:
+        "buyer",
+    },
+  };
 }
 
 /*
@@ -2635,7 +2741,8 @@ async function resolveIncomingReceiptMessage(
  */
 
 export async function startConversationWithMessage(
-  input: StartConversationInput
+  input:
+    StartConversationInput
 ) {
   /*
    * Existing messaging restrictions always run first.
@@ -2646,49 +2753,69 @@ export async function startConversationWithMessage(
   );
 
   /*
-   * Resolve the actual buyer/seller/context before
-   * moderation-history lookup.
+   * ---------------------------------------------------
+   * EXISTING GENERAL/LISTING CONVERSATION
+   * ---------------------------------------------------
+   *
+   * Check this BEFORE enforcing current seller
+   * eligibility.
+   *
+   * Existing conversations survive later changes to
+   * seller eligibility or listing availability.
+   */
+
+  const reusableExistingConversation =
+    await findExistingReusableConversation(
+      input
+    );
+
+  /*
+   * If there is no existing reusable general/listing
+   * conversation, resolve the context strictly.
+   *
+   * This is where full current seller eligibility and
+   * listing availability are required for a genuinely
+   * new conversation.
    */
 
   const context =
+    reusableExistingConversation
+      ?.context ??
     await resolveConversationContext(
       input
     );
 
   /*
-   * There may already be a canonical conversation for
-   * this buyer/seller/context.
-   *
-   * This matters because "start conversation" can also
-   * be used against a conversation that already exists.
+   * Order conversations, or strict contexts which did not
+   * use the reuse shortcut, may still already have a
+   * canonical conversation.
    */
 
   const existingConversation =
-    await prisma.conversation.findUnique({
-      where: {
-        buyerId_vendorId_contextKey: {
-          buyerId:
-            context.buyerId,
+    reusableExistingConversation
+      ? {
+          id:
+            reusableExistingConversation.id,
+        }
+      : await prisma.conversation.findUnique({
+          where: {
+            buyerId_vendorId_contextKey: {
+              buyerId:
+                context.buyerId,
 
-          vendorId:
-            context.vendorId,
+              vendorId:
+                context.vendorId,
 
-          contextKey:
-            context.contextKey,
-        },
-      },
+              contextKey:
+                context.contextKey,
+            },
+          },
 
-      select: {
-        id:
-          true,
-      },
-    });
-
-  /*
-   * Activate strict numeric continuation scanning only
-   * when this same user recently attempted to share a
-   * phone number in this exact conversation.
-   */
+          select: {
+            id:
+              true,
+          },
+        });
 
   const recentPhoneSharingAttempt =
     await hasRecentPhoneSharingAttempt(
@@ -2720,7 +2847,8 @@ export async function startConversationWithMessage(
         input.actorId,
 
       conversationId:
-        existingConversation?.id ??
+        existingConversation
+          ?.id ??
         null,
 
       contextType:
@@ -2979,15 +3107,6 @@ export async function startConversationWithMessage(
       }
     );
 
-  /*
-   * A redacted first message may have created the
-   * conversation only AFTER its moderation event was
-   * recorded.
-   *
-   * Link the event now so future continuation checks can
-   * find it by conversation ID.
-   */
-
   if (
     moderationRecord
   ) {
@@ -3024,12 +3143,14 @@ export async function startConversationWithMessage(
         prepared.moderation.warningCode,
 
       restrictedUntil:
-        moderationRecord?.enforcement
+        moderationRecord
+          ?.enforcement
           .restrictedUntil ??
         null,
 
       requiresReview:
-        moderationRecord?.enforcement
+        moderationRecord
+          ?.enforcement
           .requiresReview ??
         false,
     },
@@ -3040,26 +3161,26 @@ export async function startConversationWithMessage(
  * =======================================================
  * SEND MESSAGE TO EXISTING CONVERSATION
  * =======================================================
+ *
+ * IMPORTANT:
+ *
+ * There is intentionally NO current seller-eligibility
+ * check here.
+ *
+ * If the conversation already exists, later seller
+ * restriction/suspension/profile/verification changes do
+ * not destroy communication history.
+ *
+ * User-level messaging restrictions are still enforced.
  */
 
 export async function sendConversationMessage(
-  input: SendMessageInput
+  input:
+    SendMessageInput
 ) {
-  /*
-   * ---------------------------------------------------
-   * 1. EXISTING RESTRICTION
-   * ---------------------------------------------------
-   */
-
   await assertMessagingAllowed(
     input.senderId
   );
-
-  /*
-   * ---------------------------------------------------
-   * 2. CONVERSATION ACCESS
-   * ---------------------------------------------------
-   */
 
   const {
     conversation,
@@ -3070,30 +3191,11 @@ export async function sendConversationMessage(
       input.senderId
     );
 
-  /*
-   * ---------------------------------------------------
-   * 3. CROSS-MESSAGE MODERATION HISTORY
-   * ---------------------------------------------------
-   *
-   * The moderation-event lookup activates the existing
-   * strict phone-continuation mode.
-   *
-   * The preparation step below separately reads only a
-   * small, recent, same-sender message window so split
-   * contact intent can be evaluated transiently.
-   */
-
   const recentPhoneSharingAttempt =
     await hasRecentPhoneSharingAttempt(
       input.senderId,
       conversation.id
     );
-
-  /*
-   * ---------------------------------------------------
-   * 4. MESSAGE BODY + MODERATION
-   * ---------------------------------------------------
-   */
 
   const prepared =
     await prepareOutgoingMessageWithConversationContext(
@@ -3109,23 +3211,11 @@ export async function sendConversationMessage(
       }
     );
 
-  /*
-   * ---------------------------------------------------
-   * 5. VALIDATE REPLY TARGET
-   * ---------------------------------------------------
-   */
-
   const replyTarget =
     await resolveReplyTarget(
       conversation.id,
       input.replyToMessageId
     );
-
-  /*
-   * ---------------------------------------------------
-   * 6. RECORD MODERATION
-   * ---------------------------------------------------
-   */
 
   const moderationRecord =
     await recordModerationIfRequired({
@@ -3141,12 +3231,6 @@ export async function sendConversationMessage(
       moderation:
         prepared.moderation,
     });
-
-  /*
-   * ---------------------------------------------------
-   * 7. BLOCK WHEN REQUIRED
-   * ---------------------------------------------------
-   */
 
   if (
     prepared.moderation.action ===
@@ -3165,12 +3249,6 @@ export async function sendConversationMessage(
       moderationRecord
     );
   }
-
-  /*
-   * ---------------------------------------------------
-   * 8. STORE ALLOWED / SANITIZED MESSAGE
-   * ---------------------------------------------------
-   */
 
   const result =
     await prisma.$transaction(
@@ -3275,12 +3353,6 @@ export async function sendConversationMessage(
       }
     );
 
-  /*
-   * ---------------------------------------------------
-   * 9. LINK REDACTION EVENT
-   * ---------------------------------------------------
-   */
-
   if (
     moderationRecord
   ) {
@@ -3314,12 +3386,14 @@ export async function sendConversationMessage(
         prepared.moderation.warningCode,
 
       restrictedUntil:
-        moderationRecord?.enforcement
+        moderationRecord
+          ?.enforcement
           .restrictedUntil ??
         null,
 
       requiresReview:
-        moderationRecord?.enforcement
+        moderationRecord
+          ?.enforcement
           .requiresReview ??
         false,
     },
@@ -3475,6 +3549,12 @@ export async function markConversationRead(
       ?.createdAt ??
     new Date();
 
+  /*
+   * =====================================================
+   * BUYER SIDE
+   * =====================================================
+   */
+
   if (
     side ===
     "buyer"
@@ -3551,6 +3631,15 @@ export async function markConversationRead(
         null,
     };
   }
+
+  /*
+   * =====================================================
+   * VENDOR SIDE
+   * =====================================================
+   *
+   * If execution reaches here, TypeScript already knows
+   * side === "vendor".
+   */
 
   const nextReadAt =
     laterDate(

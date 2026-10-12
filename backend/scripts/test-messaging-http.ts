@@ -51,6 +51,14 @@ import type {
  * - Canonical conversation reuse
  * - Multi-vendor order isolation
  * - Seller-initiated order conversations
+ * - Vendor acting as buyer
+ * - Full seller eligibility for NEW sales conversations
+ * - Pending-review seller protection
+ * - Restricted seller protection
+ * - Suspended seller protection
+ * - Existing chat preservation after seller ineligibility
+ * - Existing listing chat preservation after archival
+ * - Order-chat preservation after seller ineligibility
  * - Unread counts
  * - Delivery receipts
  * - Read receipts
@@ -192,6 +200,9 @@ const rawPhone =
 const externalUsername =
   "campusmartleakhttp";
 
+const sellerAMatricNumber =
+  `MHTUA-${suffix}`;
+
 let universityId:
   string | null =
     null;
@@ -209,6 +220,10 @@ let sellerBId:
     null;
 
 let outsiderId:
+  string | null =
+    null;
+
+let eligibilityBuyerId:
   string | null =
     null;
 
@@ -543,6 +558,7 @@ async function cleanup() {
       sellerAId,
       sellerBId,
       outsiderId,
+      eligibilityBuyerId,
     ].filter(
       (
         value
@@ -745,7 +761,7 @@ async function main() {
           university.id,
 
         matricNumber:
-          `MHTUA-${suffix}`,
+          sellerAMatricNumber,
 
         studentVerificationStatus:
           StudentVerificationStatus.verified,
@@ -865,6 +881,46 @@ async function main() {
 
   /*
    * =====================================================
+   * ELIGIBILITY TEST BUYER
+   * =====================================================
+   *
+   * This account deliberately has no existing general or
+   * listing conversation with Seller A.
+   *
+   * That lets us distinguish:
+   *
+   * NEW conversation eligibility
+   *
+   * from:
+   *
+   * EXISTING conversation preservation.
+   */
+
+  const eligibilityBuyer =
+    await prisma.user.create({
+      data: {
+        name:
+          "Messaging Eligibility Buyer",
+
+        email:
+          `messaging-http-eligibility-buyer-${suffix}@campusmart.test`,
+
+        passwordHash:
+          "test-password-hash",
+
+        role:
+          UserRole.client,
+
+        universityId:
+          university.id,
+      },
+    });
+
+  eligibilityBuyerId =
+    eligibilityBuyer.id;
+
+  /*
+   * =====================================================
    * PRODUCTS
    * =====================================================
    */
@@ -973,6 +1029,12 @@ async function main() {
     createToken(
       outsider.id,
       outsider.role
+    );
+
+  const eligibilityBuyerToken =
+    createToken(
+      eligibilityBuyer.id,
+      eligibilityBuyer.role
     );
 
   /*
@@ -1363,14 +1425,6 @@ async function main() {
       );
     }
 
-    /*
-     * NEW RECEIPT CHECK 1
-     *
-     * The message exists, therefore it is SENT.
-     *
-     * But the buyer has not acknowledged delivery yet.
-     */
-
     const listingAfterSellerSend =
       await prisma.conversation.findUnique({
         where: {
@@ -1469,13 +1523,6 @@ async function main() {
       "Buyer can open listing conversation history."
     );
 
-    /*
-     * NEW RECEIPT CHECK 2
-     *
-     * Merely fetching the thread must not create a fake
-     * delivery acknowledgement.
-     */
-
     check(
       buyerListingThread.body
         ?.conversation
@@ -1483,12 +1530,6 @@ async function main() {
         null,
       "Opening the thread does not automatically fake a delivery acknowledgement."
     );
-
-    /*
-     * NEW RECEIPT CHECK 3
-     *
-     * Buyer explicitly acknowledges the seller message.
-     */
 
     const buyerDeliveredSellerReply =
       await apiRequest(
@@ -1524,13 +1565,6 @@ async function main() {
       "Buyer can explicitly acknowledge the seller message as Delivered."
     );
 
-    /*
-     * NEW RECEIPT CHECK 4
-     *
-     * Sender can now observe the recipient delivery
-     * cursor in the normal thread response.
-     */
-
     const sellerThreadAfterDelivery =
       await apiRequest(
         baseUrl,
@@ -1554,12 +1588,6 @@ async function main() {
       "Sender can observe the recipient's delivery cursor after acknowledgement."
     );
 
-    /*
-     * NEW RECEIPT CHECK 5
-     *
-     * Delivery must NOT mean read.
-     */
-
     const unreadAfterDeliveryOnly =
       await apiRequest(
         baseUrl,
@@ -1578,12 +1606,6 @@ async function main() {
           1,
       "Delivery acknowledgement does not incorrectly clear unread messages."
     );
-
-    /*
-     * NEW RECEIPT CHECK 6
-     *
-     * Seller cannot acknowledge the seller's own message.
-     */
 
     const sellerAcknowledgesOwnMessage =
       await apiRequest(
@@ -1628,12 +1650,6 @@ async function main() {
         1,
       "Opening a thread does not silently mark it read."
     );
-
-    /*
-     * Precise mark-read acknowledgement.
-     *
-     * Read also implies delivered.
-     */
 
     const listingMarkRead =
       await apiRequest(
@@ -1785,10 +1801,6 @@ async function main() {
       );
     }
 
-    /*
-     * Advance delivery cursor to the newer social message.
-     */
-
     const newerDeliveryAck =
       await apiRequest(
         baseUrl,
@@ -1811,10 +1823,6 @@ async function main() {
       newerDeliveryAck.body
         ?.deliveredAt;
 
-    /*
-     * Then intentionally send an OLD acknowledgement.
-     */
-
     const olderDeliveryAck =
       await apiRequest(
         baseUrl,
@@ -1832,13 +1840,6 @@ async function main() {
           },
         }
       );
-
-    /*
-     * NEW RECEIPT CHECK 7
-     *
-     * Old/delayed tabs cannot move receipt state
-     * backwards.
-     */
 
     check(
       newerDeliveryAck.status ===
@@ -2000,13 +2001,6 @@ async function main() {
         listingConversationId,
       "General seller conversation is separate from listing conversation."
     );
-
-    /*
-     * NEW RECEIPT CHECK 8
-     *
-     * Message belongs to GENERAL conversation but seller
-     * tries acknowledging it through LISTING conversation.
-     */
 
     const generalFirstMessageId =
       String(
@@ -2868,6 +2862,96 @@ async function main() {
 
     /*
      * ===================================================
+     * VENDOR ACTING AS BUYER
+     * ===================================================
+     *
+     * A vendor account is still allowed to act as the
+     * buyer side of a conversation with another eligible
+     * seller.
+     */
+
+    const vendorAsBuyer =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            sellerBToken,
+
+          body: {
+            contextType:
+              "general",
+
+            vendorId:
+              sellerA.id,
+
+            body:
+              "Hi, I'm interested in buying something from your store.",
+          },
+        }
+      );
+
+    check(
+      vendorAsBuyer.status ===
+        201 &&
+        vendorAsBuyer.body
+          ?.conversation
+          ?.buyerId ===
+          sellerB.id &&
+        vendorAsBuyer.body
+          ?.conversation
+          ?.vendorId ===
+          sellerA.id &&
+        vendorAsBuyer.body
+          ?.conversation
+          ?.contextType ===
+          "general",
+      "A vendor account can act as a buyer and message another eligible seller."
+    );
+
+    /*
+     * ===================================================
+     * PREPARE ORDER FOR LATER ELIGIBILITY TEST
+     * ===================================================
+     *
+     * Create the order NOW while Seller A is eligible.
+     *
+     * We intentionally do not create its conversation
+     * yet.
+     *
+     * Later, after Seller A becomes suspended, the buyer
+     * must still be able to start the order conversation
+     * because order communication follows transaction
+     * participation rather than current selling
+     * eligibility.
+     */
+
+    const postEligibilityOrderId =
+      await createTestOrder(
+        {
+          id:
+            buyer.id,
+
+          role:
+            buyer.role,
+        },
+        [
+          {
+            productId:
+              productA.id,
+
+            quantity:
+              1,
+          },
+        ],
+        "Post Eligibility"
+      );
+
+    /*
+     * ===================================================
      * TEMPORARY MESSAGING RESTRICTION
      * ===================================================
      */
@@ -2961,15 +3045,6 @@ async function main() {
       "Temporary restriction blocks the user's next send."
     );
 
-    /*
-     * Seller sends a normal message to the restricted
-     * participant.
-     *
-     * This gives us an incoming message with which to
-     * prove that restrictions do not block delivery/read
-     * receipts.
-     */
-
     const sellerMessageToRestrictedUser =
       await apiRequest(
         baseUrl,
@@ -3023,10 +3098,6 @@ async function main() {
           true,
       "Messaging-restricted user can still read existing conversations."
     );
-
-    /*
-     * NEW RECEIPT CHECK 9
-     */
 
     const restrictedDeliveryAck =
       await apiRequest(
@@ -3105,6 +3176,7 @@ async function main() {
         sellerA.id,
         sellerB.id,
         outsider.id,
+        eligibilityBuyer.id,
       ];
 
     const moderationEvents =
@@ -3253,6 +3325,734 @@ async function main() {
 
     /*
      * ===================================================
+     * SELLER ELIGIBILITY — FULL CANSELL
+     * ===================================================
+     *
+     * accessStatus remains ACTIVE here.
+     *
+     * Removing the required matric number should still
+     * make Seller A ineligible because the university is
+     * a listed university.
+     *
+     * This proves messaging uses the canonical
+     * getSellerEligibility().canSell result rather than
+     * merely checking vendorProfile.accessStatus.
+     */
+
+    await prisma.user.update({
+      where: {
+        id:
+          sellerA.id,
+      },
+
+      data: {
+        matricNumber:
+          null,
+      },
+    });
+
+    const missingMatricGeneral =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            eligibilityBuyerToken,
+
+          body: {
+            contextType:
+              "general",
+
+            vendorId:
+              sellerA.id,
+
+            body:
+              "Can I ask about your store?",
+          },
+        }
+      );
+
+    check(
+      missingMatricGeneral.status ===
+        400 &&
+        missingMatricGeneral.body
+          ?.code ===
+          "SELLER_UNAVAILABLE",
+      "New general conversation requires full seller eligibility, not only active access status."
+    );
+
+    const missingMatricListing =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            eligibilityBuyerToken,
+
+          body: {
+            contextType:
+              "listing",
+
+            productId:
+              productA.id,
+
+            body:
+              "Is this listing still available?",
+          },
+        }
+      );
+
+    check(
+      missingMatricListing.status ===
+        400 &&
+        missingMatricListing.body
+          ?.code ===
+          "SELLER_UNAVAILABLE",
+      "New listing conversation also requires full seller eligibility."
+    );
+
+    /*
+     * The main buyer ALREADY has both canonical threads.
+     *
+     * Missing current eligibility must not destroy those
+     * established conversations.
+     */
+
+    const existingGeneralWhileIneligible =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            buyerToken,
+
+          body: {
+            contextType:
+              "general",
+
+            vendorId:
+              sellerA.id,
+
+            body:
+              "Following up in our existing shop conversation.",
+          },
+        }
+      );
+
+    check(
+      existingGeneralWhileIneligible.status ===
+        201 &&
+        existingGeneralWhileIneligible.body
+          ?.conversation
+          ?.id ===
+          generalConversationId,
+      "Existing general conversation survives later loss of seller eligibility."
+    );
+
+    const existingListingWhileIneligible =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            buyerToken,
+
+          body: {
+            contextType:
+              "listing",
+
+            productId:
+              productA.id,
+
+            body:
+              "Following up in our existing listing conversation.",
+          },
+        }
+      );
+
+    check(
+      existingListingWhileIneligible.status ===
+        201 &&
+        existingListingWhileIneligible.body
+          ?.conversation
+          ?.id ===
+          listingConversationId,
+      "Existing listing conversation survives later loss of seller eligibility."
+    );
+
+    /*
+     * Restore matric before testing explicit access-state
+     * controls.
+     */
+
+    await prisma.user.update({
+      where: {
+        id:
+          sellerA.id,
+      },
+
+      data: {
+        matricNumber:
+          sellerAMatricNumber,
+      },
+    });
+
+    /*
+     * ===================================================
+     * PENDING REVIEW
+     * ===================================================
+     */
+
+    await prisma.vendorProfile.update({
+      where: {
+        userId:
+          sellerA.id,
+      },
+
+      data: {
+        accessStatus:
+          VendorAccessStatus.pending_review,
+      },
+    });
+
+    const pendingReviewGeneral =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            eligibilityBuyerToken,
+
+          body: {
+            contextType:
+              "general",
+
+            vendorId:
+              sellerA.id,
+
+            body:
+              "Can I start a new conversation?",
+          },
+        }
+      );
+
+    check(
+      pendingReviewGeneral.status ===
+        400 &&
+        pendingReviewGeneral.body
+          ?.code ===
+          "SELLER_UNAVAILABLE",
+      "Pending-review seller cannot receive a new general sales conversation."
+    );
+
+    const pendingReviewListing =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            eligibilityBuyerToken,
+
+          body: {
+            contextType:
+              "listing",
+
+            productId:
+              productA.id,
+
+            body:
+              "Can I start a new listing conversation?",
+          },
+        }
+      );
+
+    check(
+      pendingReviewListing.status ===
+        400 &&
+        pendingReviewListing.body
+          ?.code ===
+          "SELLER_UNAVAILABLE",
+      "Pending-review seller cannot receive a new listing conversation."
+    );
+
+    /*
+     * ===================================================
+     * RESTRICTED
+     * ===================================================
+     */
+
+    await prisma.vendorProfile.update({
+      where: {
+        userId:
+          sellerA.id,
+      },
+
+      data: {
+        accessStatus:
+          VendorAccessStatus.restricted,
+      },
+    });
+
+    const restrictedSellerGeneral =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            eligibilityBuyerToken,
+
+          body: {
+            contextType:
+              "general",
+
+            vendorId:
+              sellerA.id,
+
+            body:
+              "Can I start a new conversation now?",
+          },
+        }
+      );
+
+    check(
+      restrictedSellerGeneral.status ===
+        400 &&
+        restrictedSellerGeneral.body
+          ?.code ===
+          "SELLER_UNAVAILABLE",
+      "Restricted seller cannot receive a new general sales conversation."
+    );
+
+    const restrictedSellerListing =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            eligibilityBuyerToken,
+
+          body: {
+            contextType:
+              "listing",
+
+            productId:
+              productA.id,
+
+            body:
+              "Can I start a new listing chat now?",
+          },
+        }
+      );
+
+    check(
+      restrictedSellerListing.status ===
+        400 &&
+        restrictedSellerListing.body
+          ?.code ===
+          "SELLER_UNAVAILABLE",
+      "Restricted seller cannot receive a new listing conversation."
+    );
+
+    /*
+     * ===================================================
+     * SUSPENDED
+     * ===================================================
+     */
+
+    await prisma.vendorProfile.update({
+      where: {
+        userId:
+          sellerA.id,
+      },
+
+      data: {
+        accessStatus:
+          VendorAccessStatus.suspended,
+      },
+    });
+
+    const suspendedSellerGeneral =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            eligibilityBuyerToken,
+
+          body: {
+            contextType:
+              "general",
+
+            vendorId:
+              sellerA.id,
+
+            body:
+              "Can I start a conversation with this seller?",
+          },
+        }
+      );
+
+    check(
+      suspendedSellerGeneral.status ===
+        400 &&
+        suspendedSellerGeneral.body
+          ?.code ===
+          "SELLER_UNAVAILABLE",
+      "Suspended seller cannot receive a new general sales conversation."
+    );
+
+    const suspendedSellerListing =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            eligibilityBuyerToken,
+
+          body: {
+            contextType:
+              "listing",
+
+            productId:
+              productA.id,
+
+            body:
+              "Can I start a conversation about this listing?",
+          },
+        }
+      );
+
+    check(
+      suspendedSellerListing.status ===
+        400 &&
+        suspendedSellerListing.body
+          ?.code ===
+          "SELLER_UNAVAILABLE",
+      "Suspended seller cannot receive a new listing conversation."
+    );
+
+    /*
+     * ===================================================
+     * ARCHIVE LISTING
+     * ===================================================
+     */
+
+    await prisma.product.update({
+      where: {
+        id:
+          productA.id,
+      },
+
+      data: {
+        isArchived:
+          true,
+
+        archivedAt:
+          new Date(),
+      },
+    });
+
+    /*
+     * Main buyer already owns the canonical listing
+     * conversation.
+     *
+     * Both listing archival and seller suspension must
+     * leave that established conversation intact.
+     */
+
+    const existingArchivedListingReuse =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            buyerToken,
+
+          body: {
+            contextType:
+              "listing",
+
+            productId:
+              productA.id,
+
+            body:
+              "I can still follow up in our existing archived-listing thread.",
+          },
+        }
+      );
+
+    check(
+      existingArchivedListingReuse.status ===
+        201 &&
+        existingArchivedListingReuse.body
+          ?.conversation
+          ?.id ===
+          listingConversationId,
+      "Existing listing conversation survives listing archival and seller suspension."
+    );
+
+    const existingGeneralWhileSuspended =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            buyerToken,
+
+          body: {
+            contextType:
+              "general",
+
+            vendorId:
+              sellerA.id,
+
+            body:
+              "I can still follow up in our existing storefront thread.",
+          },
+        }
+      );
+
+    check(
+      existingGeneralWhileSuspended.status ===
+        201 &&
+        existingGeneralWhileSuspended.body
+          ?.conversation
+          ?.id ===
+          generalConversationId,
+      "Existing general conversation survives seller suspension."
+    );
+
+    /*
+     * Seller-side sending also survives seller access
+     * suspension because this is an established
+     * conversation, not a new sales lead.
+     */
+
+    const suspendedSellerExistingReply =
+      await apiRequest(
+        baseUrl,
+        `/api/messages/conversations/${listingConversationId}/messages`,
+        {
+          method:
+            "POST",
+
+          token:
+            sellerAToken,
+
+          body: {
+            body:
+              "I can still reply in this existing conversation.",
+          },
+        }
+      );
+
+    check(
+      suspendedSellerExistingReply.status ===
+        201 &&
+        suspendedSellerExistingReply.body
+          ?.moderation
+          ?.action ===
+          "allow",
+      "Suspended seller can still reply inside an existing conversation."
+    );
+
+    /*
+     * A buyer who has never established this listing
+     * conversation cannot create it after archival.
+     *
+     * LISTING_UNAVAILABLE owns the response because
+     * archival is checked before seller eligibility.
+     */
+
+    const newArchivedListingAttempt =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            eligibilityBuyerToken,
+
+          body: {
+            contextType:
+              "listing",
+
+            productId:
+              productA.id,
+
+            body:
+              "Can I message about this archived listing?",
+          },
+        }
+      );
+
+    check(
+      newArchivedListingAttempt.status ===
+        400 &&
+        newArchivedListingAttempt.body
+          ?.code ===
+          "LISTING_UNAVAILABLE",
+      "Archived listing cannot receive a new listing conversation."
+    );
+
+    /*
+     * ===================================================
+     * ORDER CHAT AFTER SELLER SUSPENSION
+     * ===================================================
+     *
+     * This order existed before Seller A lost eligibility,
+     * but it had no conversation yet.
+     *
+     * Creating the transaction conversation now must
+     * still work.
+     */
+
+    const orderAfterSellerSuspension =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/conversations",
+        {
+          method:
+            "POST",
+
+          token:
+            buyerToken,
+
+          body: {
+            contextType:
+              "order",
+
+            orderId:
+              postEligibilityOrderId,
+
+            vendorId:
+              sellerA.id,
+
+            body:
+              "I need an update about this existing order.",
+          },
+        }
+      );
+
+    const postEligibilityOrderConversationId =
+      String(
+        orderAfterSellerSuspension.body
+          ?.conversation
+          ?.id ??
+          ""
+      );
+
+    check(
+      orderAfterSellerSuspension.status ===
+        201 &&
+        Boolean(
+          postEligibilityOrderConversationId
+        ) &&
+        orderAfterSellerSuspension.body
+          ?.conversation
+          ?.contextType ===
+          "order",
+      "Buyer can start an order conversation after the participating seller becomes suspended."
+    );
+
+    const suspendedSellerOrderReply =
+      await apiRequest(
+        baseUrl,
+        `/api/messages/conversations/${postEligibilityOrderConversationId}/messages`,
+        {
+          method:
+            "POST",
+
+          token:
+            sellerAToken,
+
+          body: {
+            body:
+              "I can still communicate about this existing order.",
+          },
+        }
+      );
+
+    check(
+      suspendedSellerOrderReply.status ===
+        201 &&
+        suspendedSellerOrderReply.body
+          ?.moderation
+          ?.action ===
+          "allow",
+      "Suspended seller can still reply in an existing-order conversation."
+    );
+
+    /*
+     * ===================================================
+     * NO CONVERSATIONS CREATED BY BLOCKED ELIGIBILITY
+     * ===================================================
+     */
+
+    const eligibilityBuyerSalesConversations =
+      await prisma.conversation.count({
+        where: {
+          buyerId:
+            eligibilityBuyer.id,
+
+          vendorId:
+            sellerA.id,
+
+          contextType: {
+            in: [
+              "general",
+              "listing",
+            ],
+          },
+        },
+      });
+
+    check(
+      eligibilityBuyerSalesConversations ===
+        0,
+      "Blocked seller-eligibility attempts create no general or listing conversation rows."
+    );
+
+    /*
+     * ===================================================
      * FINAL PRIVACY / HEALTH CHECKS
      * ===================================================
      */
@@ -3292,10 +4092,12 @@ async function main() {
       );
 
     check(
-      !serializedContains(
-        finalSellerInbox.body,
-        buyer.email
-      ) &&
+      finalSellerInbox.status ===
+        200 &&
+        !serializedContains(
+          finalSellerInbox.body,
+          buyer.email
+        ) &&
         !serializedContains(
           finalSellerInbox.body,
           buyer.phone ??
@@ -3377,7 +4179,7 @@ async function main() {
       hasGeneral &&
         hasListing &&
         sellerAOrderThreads.length ===
-          2,
+          3,
       "General, listing and separate order contexts coexist without collapsing into one thread."
     );
 
@@ -3463,11 +4265,11 @@ main()
       ) {
         console.error(
           "\nMessaging HTTP test cleanup failed:\n",
-          cleanupError
-        );
+        cleanupError
+      );
 
-        process.exitCode =
-          1;
+      process.exitCode =
+        1;
       }
 
       await prisma.$disconnect();
