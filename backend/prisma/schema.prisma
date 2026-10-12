@@ -270,18 +270,12 @@ model User {
 
   /**
    * Messaging-only restriction.
-   * This is deliberately independent from seller access.
-   * Repeated off-platform/contact circumvention can
-   * temporarily disable sending messages without
-   * automatically disabling the user's marketplace
-   * account or seller shop.
    */
   messagingRestrictedUntil DateTime?
 
   /**
    * Internal reason/code only.
-   * Do not store copied phone numbers, emails, bank
-   * details or message content here.
+   * Never store copied sensitive values here.
    */
   messagingRestrictionReason String?
 
@@ -381,7 +375,7 @@ model VerificationAppeal {
   id String @id @default(uuid())
 
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   universityId String?
   university   University? @relation(fields: [universityId], references: [id], onDelete: SetNull)
@@ -556,7 +550,7 @@ model Product {
   images String[]
 
   vendorId String
-  vendor   User   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendor   User @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   isArchived Boolean @default(false)
 
@@ -577,7 +571,7 @@ model Order {
   id String @id @default(uuid())
 
   buyerId String
-  buyer   User   @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
+  buyer   User @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
 
   status OrderStatus @default(pending)
 
@@ -607,13 +601,13 @@ model OrderItem {
   id String @id @default(uuid())
 
   orderId String
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   productId Int?
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   vendorId String
-  vendor   User   @relation("VendorOrderItems", fields: [vendorId], references: [id], onDelete: Restrict)
+  vendor   User @relation("VendorOrderItems", fields: [vendorId], references: [id], onDelete: Restrict)
 
   productTitle String
 
@@ -636,10 +630,10 @@ model OrderVendorFulfillment {
   id String @id @default(uuid())
 
   orderId String
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   vendorId String
-  vendor   User   @relation("VendorFulfillments", fields: [vendorId], references: [id], onDelete: Restrict)
+  vendor   User @relation("VendorFulfillments", fields: [vendorId], references: [id], onDelete: Restrict)
 
   codeHash String
 
@@ -674,10 +668,10 @@ model Conversation {
   id String @id @default(uuid())
 
   buyerId String
-  buyer   User   @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Restrict)
+  buyer   User @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Restrict)
 
   vendorId String
-  vendor   User   @relation("VendorConversations", fields: [vendorId], references: [id], onDelete: Restrict)
+  vendor   User @relation("VendorConversations", fields: [vendorId], references: [id], onDelete: Restrict)
 
   contextType ConversationContextType @default(general)
 
@@ -693,7 +687,23 @@ model Conversation {
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   orderId String?
-  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  order   Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  /**
+   * =====================================================
+   * DELIVERY RECEIPTS
+   * =====================================================
+   */
+
+  buyerLastDeliveredAt DateTime?
+
+  vendorLastDeliveredAt DateTime?
+
+  /**
+   * =====================================================
+   * READ RECEIPTS
+   * =====================================================
+   */
 
   buyerLastReadAt DateTime?
 
@@ -728,15 +738,33 @@ model Message {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   senderId String
-  sender   User   @relation("SentMessages", fields: [senderId], references: [id], onDelete: Restrict)
+  sender   User @relation("SentMessages", fields: [senderId], references: [id], onDelete: Restrict)
 
   /**
    * Only the allowed or sanitized message reaches this
    * field.
-   * Sensitive original text must never be persisted here
-   * after moderation redaction.
    */
   body String
+
+  /**
+   * =====================================================
+   * MESSAGE REPLIES
+   * =====================================================
+   *
+   * The backend must verify that the target message
+   * belongs to this same conversation before saving the
+   * relationship.
+   *
+   * If the original Message row is ever physically
+   * deleted, existing replies survive and this foreign
+   * key becomes null.
+   */
+
+  replyToMessageId String?
+
+  replyToMessage Message? @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+
+  replies Message[] @relation("MessageReplies")
 
   editedAt DateTime?
 
@@ -745,6 +773,7 @@ model Message {
   /**
    * At most one moderation event belongs to the message
    * attempt that produced this stored message.
+   *
    * Blocked attempts have no Message row at all.
    */
   moderationEvent MessagingModerationEvent?
@@ -754,28 +783,13 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@index([senderId, createdAt])
+  @@index([replyToMessageId])
 }
 
 /**
  * =======================================================
  * MESSAGING MODERATION EVENT
  * =======================================================
- * One row represents one suspicious SEND ATTEMPT.
- * Examples:
- * - A message containing a phone number was redacted.
- * - A message attempting to move chat to WhatsApp was
- * blocked.
- * - Later, a protected-payment bypass attempt was
- * blocked.
- * The original sensitive text is deliberately NOT stored.
- * Multiple categories can belong to one attempt:
- * [
- * phone_number,
- * external_username,
- * circumvention
- * ]
- * That avoids counting one message as three different
- * strikes merely because it triggered three detectors.
  */
 model MessagingModerationEvent {
   id String @id @default(uuid())
@@ -784,12 +798,10 @@ model MessagingModerationEvent {
    * User who attempted to send the suspicious message.
    */
   userId String
-  user   User   @relation("MessagingModerationActor", fields: [userId], references: [id], onDelete: Cascade)
+  user   User @relation("MessagingModerationActor", fields: [userId], references: [id], onDelete: Cascade)
 
   /**
    * Existing conversation when available.
-   * This can be null when the very first message of a new
-   * thread is blocked before a Conversation is created.
    */
   conversationId String?
   conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
@@ -797,22 +809,17 @@ model MessagingModerationEvent {
   /**
    * Stored sanitized message when the action was
    * `redacted`.
-   * Null for blocked attempts because no Message row is
-   * created.
+   *
+   * Null for blocked attempts.
    */
-  messageId String?  @unique
+  messageId String? @unique
   message   Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
 
-  /**
-   * Useful when a blocked first-message attempt happened
-   * before a conversation existed.
-   */
   contextType ConversationContextType?
 
   /**
    * Categories only.
-   * Never put actual detected phone/email/account values
-   * into this array or another moderation field.
+   * Never store detected raw values here.
    */
   categories MessagingModerationCategory[]
 
@@ -820,33 +827,12 @@ model MessagingModerationEvent {
 
   severity MessagingModerationSeverity @default(low)
 
-  /**
-   * Used by the future strike calculation.
-   * Example policy:
-   * redacted contact sharing = 1
-   * explicit circumvention   = 2
-   * serious payment bypass   = 3
-   */
   strikeWeight Int @default(1)
 
-  /**
-   * Safe frontend/controller warning identifier.
-   * Examples:
-   * CONTACT_DETAILS_REDACTED
-   * OFF_PLATFORM_ATTEMPT_BLOCKED
-   */
   warningCode String?
 
-  /**
-   * Allows repeated/high-risk behaviour to enter the
-   * future Admin moderation queue.
-   */
   requiresReview Boolean @default(false)
 
-  /**
-   * If this event caused a temporary messaging
-   * restriction, preserve the resulting expiry for audit.
-   */
   restrictionAppliedUntil DateTime?
 
   createdAt DateTime @default(now())

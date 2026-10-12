@@ -39,6 +39,7 @@ import type {
  * POST /api/messages/conversations
  * GET  /api/messages/conversations/:id
  * POST /api/messages/conversations/:id/messages
+ * POST /api/messages/conversations/:id/delivered
  * POST /api/messages/conversations/:id/read
  *
  * Covers:
@@ -51,13 +52,18 @@ import type {
  * - Multi-vendor order isolation
  * - Seller-initiated order conversations
  * - Unread counts
- * - Mark-read behavior
+ * - Delivery receipts
+ * - Read receipts
+ * - Receipt monotonicity
+ * - Receipt ownership validation
+ * - Cross-conversation receipt protection
  * - Privacy
  * - Redaction
  * - Circumvention blocking
  * - Blocked first-message behavior
  * - Messaging-specific temporary restrictions
  * - Reading while messaging-restricted
+ * - Delivery acknowledgement while restricted
  * - Moderation audit history
  * - No raw contact-detail persistence
  */
@@ -103,6 +109,47 @@ function check(
 
   console.error(
     `FAIL ${number}: ${label}`
+  );
+}
+
+/*
+ * =======================================================
+ * DATE COMPARISON
+ * =======================================================
+ */
+
+function sameInstant(
+  first:
+    unknown,
+  second:
+    unknown
+) {
+  if (
+    !first ||
+    !second
+  ) {
+    return false;
+  }
+
+  const firstTime =
+    new Date(
+      first as string
+    ).getTime();
+
+  const secondTime =
+    new Date(
+      second as string
+    ).getTime();
+
+  return (
+    Number.isFinite(
+      firstTime
+    ) &&
+    Number.isFinite(
+      secondTime
+    ) &&
+    firstTime ===
+      secondTime
   );
 }
 
@@ -309,10 +356,6 @@ async function apiRequest(
  * =======================================================
  * MOCK CONTROLLER RESPONSE
  * =======================================================
- *
- * Used only for creating real CampusMart orders through
- * the same createOrder controller already covered by the
- * order integration tests.
  */
 
 type CapturedResponse = {
@@ -509,14 +552,6 @@ async function cleanup() {
         )
     );
 
-  /*
-   * Conversations are deleted first because participant
-   * relations are intentionally restrictive.
-   *
-   * Message rows attached to those conversations are
-   * removed through their conversation relationship.
-   */
-
   if (
     userIds.length >
     0
@@ -541,12 +576,6 @@ async function cleanup() {
       },
     });
   }
-
-  /*
-   * Remove orders before products/users.
-   *
-   * OrderItems and fulfilment rows cascade from Order.
-   */
 
   if (
     buyerId
@@ -583,12 +612,6 @@ async function cleanup() {
       },
     });
   }
-
-  /*
-   * Moderation history and vendor profiles are attached
-   * to the temporary users and use their existing cascade
-   * behavior.
-   */
 
   if (
     userIds.length >
@@ -1030,12 +1053,6 @@ async function main() {
      * ===================================================
      */
 
-    /*
-     * ---------------------------------------------------
-     * 2. BUYER STARTS LISTING CHAT BEFORE ORDER
-     * ---------------------------------------------------
-     */
-
     const listingStarted =
       await apiRequest(
         baseUrl,
@@ -1089,12 +1106,6 @@ async function main() {
       );
     }
 
-    /*
-     * ---------------------------------------------------
-     * 3. FIRST PHONE NUMBER REDACTED
-     * ---------------------------------------------------
-     */
-
     check(
       listingStarted.body
         ?.moderation
@@ -1141,12 +1152,6 @@ async function main() {
           ),
       "Raw phone number is absent from persisted listing message."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 4. LISTING CONTEXT REUSES CANONICAL THREAD
-     * ---------------------------------------------------
-     */
 
     const listingReuse =
       await apiRequest(
@@ -1202,12 +1207,6 @@ async function main() {
       "Database contains exactly one canonical conversation for the listing context."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 5. SELLER INBOX
-     * ---------------------------------------------------
-     */
-
     const sellerAInbox =
       await apiRequest(
         baseUrl,
@@ -1243,12 +1242,6 @@ async function main() {
       "Seller receives buyer listing conversation in inbox."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 6. INBOX PRIVACY
-     * ---------------------------------------------------
-     */
-
     check(
       !serializedContains(
         sellerAInbox.body,
@@ -1274,12 +1267,6 @@ async function main() {
         ),
       "Messaging inbox exposes no phone, email or private seller pickup data."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 7. SELLER OPENS LISTING THREAD
-     * ---------------------------------------------------
-     */
 
     const sellerAListingThread =
       await apiRequest(
@@ -1323,9 +1310,9 @@ async function main() {
     );
 
     /*
-     * ---------------------------------------------------
-     * 8. SELLER REPLIES
-     * ---------------------------------------------------
+     * ===================================================
+     * SELLER REPLY + RECEIPT FOUNDATION
+     * ===================================================
      */
 
     const sellerAReply =
@@ -1360,11 +1347,49 @@ async function main() {
       "Seller can send a normal listing reply."
     );
 
+    const sellerAReplyMessageId =
+      String(
+        sellerAReply.body
+          ?.sentMessage
+          ?.id ??
+          ""
+      );
+
+    if (
+      !sellerAReplyMessageId
+    ) {
+      throw new Error(
+        "Seller A listing reply message ID was not returned."
+      );
+    }
+
     /*
-     * ---------------------------------------------------
-     * 9. BUYER UNREAD COUNT INCREASES
-     * ---------------------------------------------------
+     * NEW RECEIPT CHECK 1
+     *
+     * The message exists, therefore it is SENT.
+     *
+     * But the buyer has not acknowledged delivery yet.
      */
+
+    const listingAfterSellerSend =
+      await prisma.conversation.findUnique({
+        where: {
+          id:
+            listingConversationId,
+        },
+
+        select: {
+          buyerLastDeliveredAt:
+            true,
+        },
+      });
+
+    check(
+      listingAfterSellerSend
+        ?.buyerLastDeliveredAt ===
+        null,
+      "New seller message starts as Sent and is not falsely marked Delivered."
+    );
 
     const buyerUnreadAfterSellerReply =
       await apiRequest(
@@ -1384,12 +1409,6 @@ async function main() {
           1,
       "Seller reply increases buyer unread count."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 10. BUYER INBOX REPORTS UNREAD
-     * ---------------------------------------------------
-     */
 
     const buyerInbox =
       await apiRequest(
@@ -1426,12 +1445,6 @@ async function main() {
       "Buyer inbox reports seller reply as unread."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 11. BUYER OPENS THREAD
-     * ---------------------------------------------------
-     */
-
     const buyerListingThread =
       await apiRequest(
         baseUrl,
@@ -1457,10 +1470,147 @@ async function main() {
     );
 
     /*
-     * ---------------------------------------------------
-     * 12. OPENING DOES NOT AUTO-MARK READ
-     * ---------------------------------------------------
+     * NEW RECEIPT CHECK 2
+     *
+     * Merely fetching the thread must not create a fake
+     * delivery acknowledgement.
      */
+
+    check(
+      buyerListingThread.body
+        ?.conversation
+        ?.buyerLastDeliveredAt ===
+        null,
+      "Opening the thread does not automatically fake a delivery acknowledgement."
+    );
+
+    /*
+     * NEW RECEIPT CHECK 3
+     *
+     * Buyer explicitly acknowledges the seller message.
+     */
+
+    const buyerDeliveredSellerReply =
+      await apiRequest(
+        baseUrl,
+        `/api/messages/conversations/${listingConversationId}/delivered`,
+        {
+          method:
+            "POST",
+
+          token:
+            buyerToken,
+
+          body: {
+            messageId:
+              sellerAReplyMessageId,
+          },
+        }
+      );
+
+    check(
+      buyerDeliveredSellerReply.status ===
+        200 &&
+        buyerDeliveredSellerReply.body
+          ?.success ===
+          true &&
+        buyerDeliveredSellerReply.body
+          ?.deliveredThroughMessageId ===
+          sellerAReplyMessageId &&
+        Boolean(
+          buyerDeliveredSellerReply.body
+            ?.deliveredAt
+        ),
+      "Buyer can explicitly acknowledge the seller message as Delivered."
+    );
+
+    /*
+     * NEW RECEIPT CHECK 4
+     *
+     * Sender can now observe the recipient delivery
+     * cursor in the normal thread response.
+     */
+
+    const sellerThreadAfterDelivery =
+      await apiRequest(
+        baseUrl,
+        `/api/messages/conversations/${listingConversationId}`,
+        {
+          token:
+            sellerAToken,
+        }
+      );
+
+    check(
+      sellerThreadAfterDelivery.status ===
+        200 &&
+        sameInstant(
+          sellerThreadAfterDelivery.body
+            ?.conversation
+            ?.buyerLastDeliveredAt,
+          buyerDeliveredSellerReply.body
+            ?.deliveredAt
+        ),
+      "Sender can observe the recipient's delivery cursor after acknowledgement."
+    );
+
+    /*
+     * NEW RECEIPT CHECK 5
+     *
+     * Delivery must NOT mean read.
+     */
+
+    const unreadAfterDeliveryOnly =
+      await apiRequest(
+        baseUrl,
+        "/api/messages/unread-count",
+        {
+          token:
+            buyerToken,
+        }
+      );
+
+    check(
+      unreadAfterDeliveryOnly.status ===
+        200 &&
+        unreadAfterDeliveryOnly.body
+          ?.unreadCount ===
+          1,
+      "Delivery acknowledgement does not incorrectly clear unread messages."
+    );
+
+    /*
+     * NEW RECEIPT CHECK 6
+     *
+     * Seller cannot acknowledge the seller's own message.
+     */
+
+    const sellerAcknowledgesOwnMessage =
+      await apiRequest(
+        baseUrl,
+        `/api/messages/conversations/${listingConversationId}/delivered`,
+        {
+          method:
+            "POST",
+
+          token:
+            sellerAToken,
+
+          body: {
+            messageId:
+              sellerAReplyMessageId,
+          },
+        }
+      );
+
+    check(
+      sellerAcknowledgesOwnMessage.status ===
+        400 &&
+        sellerAcknowledgesOwnMessage.body
+          ?.code ===
+          "INVALID_RECEIPT_MESSAGE",
+      "A participant cannot acknowledge their own outgoing message as delivered."
+    );
 
     const unreadBeforeExplicitRead =
       await apiRequest(
@@ -1480,9 +1630,9 @@ async function main() {
     );
 
     /*
-     * ---------------------------------------------------
-     * 13. BUYER MARKS THREAD READ
-     * ---------------------------------------------------
+     * Precise mark-read acknowledgement.
+     *
+     * Read also implies delivered.
      */
 
     const listingMarkRead =
@@ -1495,6 +1645,11 @@ async function main() {
 
           token:
             buyerToken,
+
+          body: {
+            messageId:
+              sellerAReplyMessageId,
+          },
         }
       );
 
@@ -1507,8 +1662,15 @@ async function main() {
         Boolean(
           listingMarkRead.body
             ?.readAt
-        ),
-      "Buyer can explicitly mark listing conversation read."
+        ) &&
+        Boolean(
+          listingMarkRead.body
+            ?.deliveredAt
+        ) &&
+        listingMarkRead.body
+          ?.readThroughMessageId ===
+          sellerAReplyMessageId,
+      "Buyer can explicitly mark listing conversation read and Viewed implies Delivered."
     );
 
     const unreadAfterListingRead =
@@ -1529,9 +1691,9 @@ async function main() {
     );
 
     /*
-     * ---------------------------------------------------
-     * 14. HARMLESS MEETUP COORDINATION
-     * ---------------------------------------------------
+     * ===================================================
+     * NORMAL / MODERATED MESSAGES
+     * ===================================================
      */
 
     const meetupMessage =
@@ -1565,12 +1727,6 @@ async function main() {
           "Can we meet by the library at 4:30?",
       "Normal physical meetup coordination is allowed."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 15. SOCIAL USERNAME REDACTION
-     * ---------------------------------------------------
-     */
 
     const socialAttempt =
       await apiRequest(
@@ -1613,11 +1769,89 @@ async function main() {
       "External social username is redacted through HTTP API."
     );
 
+    const socialAttemptMessageId =
+      String(
+        socialAttempt.body
+          ?.sentMessage
+          ?.id ??
+          ""
+      );
+
+    if (
+      !socialAttemptMessageId
+    ) {
+      throw new Error(
+        "Social redaction message ID was not returned."
+      );
+    }
+
     /*
-     * ---------------------------------------------------
-     * 16. EXPLICIT WHATSAPP CIRCUMVENTION BLOCKED
-     * ---------------------------------------------------
+     * Advance delivery cursor to the newer social message.
      */
+
+    const newerDeliveryAck =
+      await apiRequest(
+        baseUrl,
+        `/api/messages/conversations/${listingConversationId}/delivered`,
+        {
+          method:
+            "POST",
+
+          token:
+            buyerToken,
+
+          body: {
+            messageId:
+              socialAttemptMessageId,
+          },
+        }
+      );
+
+    const newerDeliveredAt =
+      newerDeliveryAck.body
+        ?.deliveredAt;
+
+    /*
+     * Then intentionally send an OLD acknowledgement.
+     */
+
+    const olderDeliveryAck =
+      await apiRequest(
+        baseUrl,
+        `/api/messages/conversations/${listingConversationId}/delivered`,
+        {
+          method:
+            "POST",
+
+          token:
+            buyerToken,
+
+          body: {
+            messageId:
+              sellerAReplyMessageId,
+          },
+        }
+      );
+
+    /*
+     * NEW RECEIPT CHECK 7
+     *
+     * Old/delayed tabs cannot move receipt state
+     * backwards.
+     */
+
+    check(
+      newerDeliveryAck.status ===
+        200 &&
+        olderDeliveryAck.status ===
+          200 &&
+        sameInstant(
+          newerDeliveredAt,
+          olderDeliveryAck.body
+            ?.deliveredAt
+        ),
+      "Older delivery acknowledgements cannot move the delivery cursor backwards."
+    );
 
     const messageCountBeforeBlocked =
       await prisma.message.count({
@@ -1675,11 +1909,6 @@ async function main() {
       "Blocked existing-thread message creates no Message row."
     );
 
-    /*
-     * Buyer now has the seller's redacted social message
-     * as unread. Clear it before later unread-count tests.
-     */
-
     await apiRequest(
       baseUrl,
       `/api/messages/conversations/${listingConversationId}/read`,
@@ -1689,14 +1918,13 @@ async function main() {
 
         token:
           buyerToken,
+
+        body: {
+          messageId:
+            socialAttemptMessageId,
+        },
       }
     );
-
-    /*
-     * ---------------------------------------------------
-     * 17. OUTSIDER CANNOT OPEN LISTING CONVERSATION
-     * ---------------------------------------------------
-     */
 
     const outsiderListingThread =
       await apiRequest(
@@ -1721,12 +1949,6 @@ async function main() {
      * ===================================================
      * GENERAL STOREFRONT CONVERSATION
      * ===================================================
-     */
-
-    /*
-     * ---------------------------------------------------
-     * 18. BUYER STARTS GENERAL SELLER CONVERSATION
-     * ---------------------------------------------------
      */
 
     const generalStarted =
@@ -1773,12 +1995,6 @@ async function main() {
       "Buyer can start a general seller conversation."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 19. GENERAL THREAD IS DISTINCT FROM LISTING THREAD
-     * ---------------------------------------------------
-     */
-
     check(
       generalConversationId !==
         listingConversationId,
@@ -1786,10 +2002,46 @@ async function main() {
     );
 
     /*
-     * ---------------------------------------------------
-     * 20. GENERAL CONTEXT REUSES CANONICAL THREAD
-     * ---------------------------------------------------
+     * NEW RECEIPT CHECK 8
+     *
+     * Message belongs to GENERAL conversation but seller
+     * tries acknowledging it through LISTING conversation.
      */
+
+    const generalFirstMessageId =
+      String(
+        generalStarted.body
+          ?.sentMessage
+          ?.id ??
+          ""
+      );
+
+    const crossConversationReceipt =
+      await apiRequest(
+        baseUrl,
+        `/api/messages/conversations/${listingConversationId}/delivered`,
+        {
+          method:
+            "POST",
+
+          token:
+            sellerAToken,
+
+          body: {
+            messageId:
+              generalFirstMessageId,
+          },
+        }
+      );
+
+    check(
+      crossConversationReceipt.status ===
+        404 &&
+        crossConversationReceipt.body
+          ?.code ===
+          "RECEIPT_MESSAGE_NOT_FOUND",
+      "A message from another conversation cannot be used to forge a receipt."
+    );
 
     const generalReuse =
       await apiRequest(
@@ -1849,12 +2101,6 @@ async function main() {
      * ===================================================
      * BLOCKED FIRST MESSAGE / EMPTY-THREAD PROTECTION
      * ===================================================
-     */
-
-    /*
-     * ---------------------------------------------------
-     * 21. BLOCKED FIRST MESSAGE DOES NOT CREATE THREAD
-     * ---------------------------------------------------
      */
 
     const outsiderGeneralBefore =
@@ -1939,12 +2185,6 @@ async function main() {
           outsiderMessageCountBefore,
       "Blocked first message creates neither an empty Conversation nor a Message row."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 22. REDACTED FIRST MESSAGE DOES CREATE THREAD
-     * ---------------------------------------------------
-     */
 
     const outsiderRedactedStart =
       await apiRequest(
@@ -2059,12 +2299,6 @@ async function main() {
         "Multi Vendor"
       );
 
-    /*
-     * ---------------------------------------------------
-     * 23. BUYER STARTS SELLER A ORDER CHAT
-     * ---------------------------------------------------
-     */
-
     const orderAStarted =
       await apiRequest(
         baseUrl,
@@ -2108,12 +2342,6 @@ async function main() {
         ),
       "Buyer can start order conversation with Seller A."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 24. BUYER STARTS SELLER B ORDER CHAT
-     * ---------------------------------------------------
-     */
 
     const orderBStarted =
       await apiRequest(
@@ -2159,23 +2387,11 @@ async function main() {
       "Buyer can start separate order conversation with Seller B."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 25. MULTI-VENDOR CHATS ARE DISTINCT
-     * ---------------------------------------------------
-     */
-
     check(
       orderAConversationId !==
         orderBConversationId,
       "Seller A and Seller B receive separate order conversations for the same order."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 26. SELLER A ORDER CONTEXT REUSES CANONICAL THREAD
-     * ---------------------------------------------------
-     */
 
     const orderAReuse =
       await apiRequest(
@@ -2213,12 +2429,6 @@ async function main() {
           orderAConversationId,
       "Repeated Seller A order context reuses the same canonical order thread."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 27. TWO DATABASE ORDER CONVERSATIONS EXIST
-     * ---------------------------------------------------
-     */
 
     const multiOrderConversations =
       await prisma.conversation.findMany({
@@ -2266,12 +2476,6 @@ async function main() {
       "Database stores one order conversation per seller in a multi-vendor order."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 28. SELLER A INBOX SEES A BUT NOT B
-     * ---------------------------------------------------
-     */
-
     const sellerAOrderInbox =
       await apiRequest(
         baseUrl,
@@ -2304,12 +2508,6 @@ async function main() {
         ),
       "Seller A inbox contains only Seller A's order conversation."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 29. SELLER B INBOX SEES B BUT NOT A
-     * ---------------------------------------------------
-     */
 
     const sellerBOrderInbox =
       await apiRequest(
@@ -2344,12 +2542,6 @@ async function main() {
       "Seller B inbox contains only Seller B's order conversation."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 30. SELLER A CANNOT OPEN SELLER B THREAD
-     * ---------------------------------------------------
-     */
-
     const sellerAReadsB =
       await apiRequest(
         baseUrl,
@@ -2369,12 +2561,6 @@ async function main() {
       "Seller A cannot open Seller B's order conversation."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 31. SELLER B CANNOT OPEN SELLER A THREAD
-     * ---------------------------------------------------
-     */
-
     const sellerBReadsA =
       await apiRequest(
         baseUrl,
@@ -2393,12 +2579,6 @@ async function main() {
           "CONVERSATION_FORBIDDEN",
       "Seller B cannot open Seller A's order conversation."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 32. SELLER A CAN OPEN OWN ORDER THREAD
-     * ---------------------------------------------------
-     */
 
     const sellerAOwnOrderThread =
       await apiRequest(
@@ -2430,12 +2610,6 @@ async function main() {
       "Seller A can open their own order conversation with the buyer."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 33. SELLER B CAN OPEN OWN ORDER THREAD
-     * ---------------------------------------------------
-     */
-
     const sellerBOwnOrderThread =
       await apiRequest(
         baseUrl,
@@ -2462,12 +2636,6 @@ async function main() {
       "Seller B can independently open their own order conversation."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 34. ORDER CHAT DOES NOT EXPOSE BUYER CONTACT
-     * ---------------------------------------------------
-     */
-
     check(
       !serializedContains(
         sellerAOwnOrderThread.body,
@@ -2484,12 +2652,6 @@ async function main() {
         ),
       "Generic order messaging API does not expose buyer phone, email or order pickup data."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 35. SELLER A REPLY CREATES ONE BUYER UNREAD
-     * ---------------------------------------------------
-     */
 
     const sellerAOrderReply =
       await apiRequest(
@@ -2538,12 +2700,6 @@ async function main() {
       "Seller A order reply increases buyer unread count by one."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 36. READING SELLER A THREAD CLEARS ONLY THAT UNREAD
-     * ---------------------------------------------------
-     */
-
     const readOrderA =
       await apiRequest(
         baseUrl,
@@ -2554,6 +2710,13 @@ async function main() {
 
           token:
             buyerToken,
+
+          body: {
+            messageId:
+              sellerAOrderReply.body
+                ?.sentMessage
+                ?.id,
+          },
         }
       );
 
@@ -2603,12 +2766,6 @@ async function main() {
         "Seller Initiated"
       );
 
-    /*
-     * ---------------------------------------------------
-     * 37. SELLER CAN START ORDER CHAT
-     * ---------------------------------------------------
-     */
-
     const sellerInitiated =
       await apiRequest(
         baseUrl,
@@ -2653,12 +2810,6 @@ async function main() {
       "Seller can initiate an order conversation for an order containing their items."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 38. BUYER RESOLVES TO SAME SELLER-INITIATED THREAD
-     * ---------------------------------------------------
-     */
-
     const buyerReusesSellerInitiated =
       await apiRequest(
         baseUrl,
@@ -2696,12 +2847,6 @@ async function main() {
       "Buyer and seller resolve to the same canonical thread even when seller started it first."
     );
 
-    /*
-     * Buyer had one unread seller message before replying.
-     * Mark this seller-initiated thread read to keep later
-     * tests deterministic.
-     */
-
     await apiRequest(
       baseUrl,
       `/api/messages/conversations/${sellerInitiatedConversationId}/read`,
@@ -2711,6 +2856,13 @@ async function main() {
 
         token:
           buyerToken,
+
+        body: {
+          messageId:
+            sellerInitiated.body
+              ?.sentMessage
+              ?.id,
+        },
       }
     );
 
@@ -2718,23 +2870,6 @@ async function main() {
      * ===================================================
      * TEMPORARY MESSAGING RESTRICTION
      * ===================================================
-     *
-     * Outsider currently has:
-     *
-     * - blocked first circumvention = 2 points
-     * - redacted phone message      = 1 point
-     *
-     * One more redacted contact attempt reaches the
-     * 4-point / 24-hour threshold.
-     *
-     * The threshold-crossing attempt itself should still
-     * complete. The NEXT send should be restricted.
-     */
-
-    /*
-     * ---------------------------------------------------
-     * 39. THRESHOLD-CROSSING MESSAGE STILL SENDS
-     * ---------------------------------------------------
      */
 
     const restrictionTrigger =
@@ -2792,12 +2927,6 @@ async function main() {
       "Repeated moderation attempts create a temporary messaging restriction."
     );
 
-    /*
-     * ---------------------------------------------------
-     * 40. NEXT SEND IS BLOCKED BY RESTRICTION
-     * ---------------------------------------------------
-     */
-
     const restrictedSend =
       await apiRequest(
         baseUrl,
@@ -2816,27 +2945,65 @@ async function main() {
         }
       );
 
-check(
-  restrictedSend.status ===
-    403 &&
-    restrictedSend.body
-      ?.success ===
-      false &&
-    restrictedSend.body
-      ?.code ===
-      "MESSAGING_TEMPORARILY_RESTRICTED" &&
-    Boolean(
-      restrictedSend.body
-        ?.restrictedUntil
-    ),
-  "Temporary restriction blocks the user's next send."
-);
+    check(
+      restrictedSend.status ===
+        403 &&
+        restrictedSend.body
+          ?.success ===
+          false &&
+        restrictedSend.body
+          ?.code ===
+          "MESSAGING_TEMPORARILY_RESTRICTED" &&
+        Boolean(
+          restrictedSend.body
+            ?.restrictedUntil
+        ),
+      "Temporary restriction blocks the user's next send."
+    );
 
     /*
-     * ---------------------------------------------------
-     * 41. RESTRICTED USER CAN STILL READ
-     * ---------------------------------------------------
+     * Seller sends a normal message to the restricted
+     * participant.
+     *
+     * This gives us an incoming message with which to
+     * prove that restrictions do not block delivery/read
+     * receipts.
      */
+
+    const sellerMessageToRestrictedUser =
+      await apiRequest(
+        baseUrl,
+        `/api/messages/conversations/${outsiderConversationId}/messages`,
+        {
+          method:
+            "POST",
+
+          token:
+            sellerAToken,
+
+          body: {
+            body:
+              "You can still receive updates while messaging is restricted.",
+          },
+        }
+      );
+
+    if (
+      sellerMessageToRestrictedUser.status !==
+        201
+    ) {
+      throw new Error(
+        "Seller could not create receipt test message for restricted user."
+      );
+    }
+
+    const restrictedIncomingMessageId =
+      String(
+        sellerMessageToRestrictedUser.body
+          ?.sentMessage
+          ?.id ??
+          ""
+      );
 
     const restrictedRead =
       await apiRequest(
@@ -2858,10 +3025,38 @@ check(
     );
 
     /*
-     * ---------------------------------------------------
-     * 42. RESTRICTED USER CAN STILL MARK READ
-     * ---------------------------------------------------
+     * NEW RECEIPT CHECK 9
      */
+
+    const restrictedDeliveryAck =
+      await apiRequest(
+        baseUrl,
+        `/api/messages/conversations/${outsiderConversationId}/delivered`,
+        {
+          method:
+            "POST",
+
+          token:
+            outsiderToken,
+
+          body: {
+            messageId:
+              restrictedIncomingMessageId,
+          },
+        }
+      );
+
+    check(
+      restrictedDeliveryAck.status ===
+        200 &&
+        restrictedDeliveryAck.body
+          ?.success ===
+          true &&
+        restrictedDeliveryAck.body
+          ?.deliveredThroughMessageId ===
+          restrictedIncomingMessageId,
+      "Messaging restriction does not block delivery acknowledgement."
+    );
 
     const restrictedMarkRead =
       await apiRequest(
@@ -2873,6 +3068,11 @@ check(
 
           token:
             outsiderToken,
+
+          body: {
+            messageId:
+              restrictedIncomingMessageId,
+          },
         }
       );
 
@@ -2881,7 +3081,15 @@ check(
         200 &&
         restrictedMarkRead.body
           ?.success ===
-          true,
+          true &&
+        Boolean(
+          restrictedMarkRead.body
+            ?.deliveredAt
+        ) &&
+        Boolean(
+          restrictedMarkRead.body
+            ?.readAt
+        ),
       "Messaging restriction does not block mark-read behavior."
     );
 
@@ -2941,12 +3149,6 @@ check(
           outsider.id
       );
 
-    /*
-     * ---------------------------------------------------
-     * 43. AUDIT EVENTS HAVE EXPECTED MESSAGE LINKS
-     * ---------------------------------------------------
-     */
-
     check(
       buyerEvents.some(
         (
@@ -2986,12 +3188,6 @@ check(
         ),
       "Suspicious attempts create correct linked and unlinked moderation audit events."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 44. ONE BLOCKED FIRST ATTEMPT = ONE EVENT
-     * ---------------------------------------------------
-     */
 
     const outsiderBlockedEvents =
       outsiderEvents.filter(
@@ -3039,12 +3235,6 @@ check(
         moderationEvents
       ).toLowerCase();
 
-    /*
-     * ---------------------------------------------------
-     * 45. RAW CONTACT VALUES NEVER PERSIST
-     * ---------------------------------------------------
-     */
-
     check(
       !messageJson.includes(
         rawPhone.toLowerCase()
@@ -3065,12 +3255,6 @@ check(
      * ===================================================
      * FINAL PRIVACY / HEALTH CHECKS
      * ===================================================
-     */
-
-    /*
-     * ---------------------------------------------------
-     * 46. FINAL LISTING THREAD STILL HEALTHY
-     * ---------------------------------------------------
      */
 
     const finalBuyerListingThread =
@@ -3096,12 +3280,6 @@ check(
         ),
       "Final listing conversation remains usable without leaked raw contact details."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 47. ALL GENERIC MESSAGING PAYLOADS STAY PRIVATE
-     * ---------------------------------------------------
-     */
 
     const finalSellerInbox =
       await apiRequest(
@@ -3142,12 +3320,6 @@ check(
         ),
       "Final generic messaging inbox remains free of private account and pickup data."
     );
-
-    /*
-     * ---------------------------------------------------
-     * 48. CANONICAL CONTEXTS REMAIN SEPARATE
-     * ---------------------------------------------------
-     */
 
     const buyerSellerAConversations =
       await prisma.conversation.findMany({

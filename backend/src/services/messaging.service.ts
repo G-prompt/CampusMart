@@ -10,6 +10,7 @@ import { prisma } from "../lib/prisma";
 
 import {
   moderateOutgoingMessage,
+  PHONE_CONTINUATION_WINDOW_MS,
   type MessageModerationAction,
   type MessageModerationCategory,
 } from "./messageModeration.service";
@@ -130,7 +131,39 @@ type SendMessageInput = {
   senderId: string;
 
   body: unknown;
+
+  replyToMessageId?: unknown;
 };
+
+/*
+ * =======================================================
+ * DATE HELPERS
+ * =======================================================
+ */
+
+function laterDate(
+  first:
+    Date | null | undefined,
+  second:
+    Date | null | undefined
+) {
+  if (
+    !first
+  ) {
+    return second ?? null;
+  }
+
+  if (
+    !second
+  ) {
+    return first;
+  }
+
+  return first.getTime() >=
+    second.getTime()
+    ? first
+    : second;
+}
 
 /*
  * =======================================================
@@ -181,15 +214,1313 @@ export function normalizeMessageBody(
 
 /*
  * =======================================================
- * MODERATION CATEGORY MAPPING
+ * RECENT PHONE-SHARING HISTORY
  * =======================================================
  *
- * The scanner deliberately uses simple string-union
- * types so it remains independent from Prisma.
+ * IMPORTANT:
  *
- * Persistent moderation events use Prisma enums.
+ * We do NOT store previous phone digits here.
  *
- * We map explicitly instead of trusting casts.
+ * We only check whether this same sender produced a
+ * phone-number moderation event in this same conversation
+ * during the short continuation window.
+ *
+ * That is enough to detect:
+ *
+ * message 1: 080
+ * message 2: 391
+ * message 3: 5537
+ *
+ * without reconstructing or persisting the secret.
+ */
+
+async function hasRecentPhoneSharingAttempt(
+  userId: string,
+  conversationId:
+    string | null | undefined
+) {
+  if (
+    !conversationId
+  ) {
+    return false;
+  }
+
+  const since =
+    new Date(
+      Date.now() -
+        PHONE_CONTINUATION_WINDOW_MS
+    );
+
+  const recentEvent =
+    await prisma.messagingModerationEvent.findFirst({
+      where: {
+        userId,
+
+        conversationId,
+
+        createdAt: {
+          gte:
+            since,
+        },
+
+        categories: {
+          has:
+            PrismaMessagingModerationCategory.phone_number,
+        },
+      },
+
+      orderBy: {
+        createdAt:
+          "desc",
+      },
+
+      select: {
+        id:
+          true,
+      },
+    });
+
+  return Boolean(
+    recentEvent
+  );
+}
+
+/*
+ * =======================================================
+ * RECENT SAME-SENDER MESSAGE CONTEXT
+ * =======================================================
+ *
+ * Phone continuation based on moderation history catches
+ * cases such as:
+ *
+ *   080
+ *   391
+ *   5537
+ *
+ * There is a separate bypass class where each individual
+ * message looks harmless but the same sender's recent
+ * messages clearly combine into contact-sharing intent:
+ *
+ *   whats
+ *   app?
+ *
+ *   green
+ *   app?
+ *
+ *   drop
+ *   ur digits
+ *
+ *   my
+ *   number is
+ *   8035535266
+ *
+ * Only a very small same-sender window is considered.
+ * Messages from the other participant are never mixed
+ * into this context.
+ *
+ * Reconstructed context exists only in memory for the
+ * current moderation decision. It is never written to a
+ * message row or moderation metadata.
+ */
+
+const CROSS_MESSAGE_CONTEXT_LIMIT =
+  10;
+
+const CROSS_MESSAGE_CONTEXT_PART_MAX_LENGTH =
+  80;
+
+type RecentSenderMessage = {
+  body: string;
+
+  createdAt: Date;
+};
+
+type CrossMessageModerationSignal = {
+  categories: MessageModerationCategory[];
+};
+
+async function getRecentSenderMessages(
+  userId: string,
+  conversationId:
+    string | null | undefined
+): Promise<RecentSenderMessage[]> {
+  if (
+    !conversationId
+  ) {
+    return [];
+  }
+
+  const since =
+    new Date(
+      Date.now() -
+        PHONE_CONTINUATION_WINDOW_MS
+    );
+
+  const messages =
+    await prisma.message.findMany({
+      where: {
+        conversationId,
+
+        senderId:
+          userId,
+
+        deletedAt:
+          null,
+
+        createdAt: {
+          gte:
+            since,
+        },
+      },
+
+      orderBy: [
+        {
+          createdAt:
+            "desc",
+        },
+
+        {
+          id:
+            "desc",
+        },
+      ],
+
+      take:
+        CROSS_MESSAGE_CONTEXT_LIMIT,
+
+      select: {
+        body:
+          true,
+
+        createdAt:
+          true,
+      },
+    });
+
+  return messages.reverse();
+}
+
+function normalizeCrossMessageText(
+  value: string
+) {
+  return value
+    .normalize(
+      "NFKC"
+    )
+    .toLowerCase()
+    .replace(
+      /[’‘`´]/g,
+      "'"
+    )
+    .replace(
+      /([a-z])'([a-z])/g,
+      "$1$2"
+    )
+    .replace(
+      /[^a-z0-9+]+/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
+    .trim();
+}
+
+function compactCrossMessageText(
+  value: string
+) {
+  return value
+    .normalize(
+      "NFKC"
+    )
+    .toLowerCase()
+    .replace(
+      /4/g,
+      "a"
+    )
+    .replace(
+      /@/g,
+      "a"
+    )
+    .replace(
+      /7/g,
+      "t"
+    )
+    .replace(
+      /[^a-z0-9]/g,
+      ""
+    );
+}
+
+function toCrossMessageDigit(
+  character: string
+): string | null {
+  const code =
+    character.charCodeAt(
+      0
+    );
+
+  if (
+    code >=
+      0x30 &&
+    code <=
+      0x39
+  ) {
+    return character;
+  }
+
+  if (
+    code >=
+      0x0660 &&
+    code <=
+      0x0669
+  ) {
+    return String(
+      code -
+        0x0660
+    );
+  }
+
+  if (
+    code >=
+      0x06f0 &&
+    code <=
+      0x06f9
+  ) {
+    return String(
+      code -
+        0x06f0
+    );
+  }
+
+  if (
+    code >=
+      0xff10 &&
+    code <=
+      0xff19
+  ) {
+    return String(
+      code -
+        0xff10
+    );
+  }
+
+  return null;
+}
+
+function extractStandaloneNumericFragment(
+  value: string
+) {
+  const normalized =
+    value
+      .normalize(
+        "NFKC"
+      )
+      .toLowerCase()
+      .trim();
+
+  /*
+   * First support fragments written as number words or a
+   * mixture of number words and ordinary digits:
+   *
+   *   eight
+   *   zero eight
+   *   8 zero 3
+   */
+
+  const numberWordMap:
+    Record<
+      string,
+      string
+    > = {
+      zero:
+        "0",
+
+      oh:
+        "0",
+
+      one:
+        "1",
+
+      two:
+        "2",
+
+      three:
+        "3",
+
+      four:
+        "4",
+
+      five:
+        "5",
+
+      six:
+        "6",
+
+      seven:
+        "7",
+
+      eight:
+        "8",
+
+      nine:
+        "9",
+    };
+
+  const wordTokens =
+    normalized
+      .split(
+        /[\s().,\-_/"'’‘“”:;|~+\u200B\u200C\u200D\uFEFF]+/u
+      )
+      .filter(
+        Boolean
+      );
+
+  if (
+    wordTokens.length >
+    0
+  ) {
+    let wordDigits =
+      "";
+
+    let validWordSequence =
+      true;
+
+    for (
+      const token
+      of wordTokens
+    ) {
+      if (
+        numberWordMap[
+          token
+        ]
+      ) {
+        wordDigits +=
+          numberWordMap[
+            token
+          ];
+
+        continue;
+      }
+
+      let tokenDigits =
+        "";
+
+      let tokenIsDigits =
+        true;
+
+      for (
+        const character
+        of token
+      ) {
+        const digit =
+          toCrossMessageDigit(
+            character
+          );
+
+        if (
+          digit ===
+          null
+        ) {
+          tokenIsDigits =
+            false;
+
+          break;
+        }
+
+        tokenDigits +=
+          digit;
+      }
+
+      if (
+        tokenIsDigits &&
+        tokenDigits
+      ) {
+        wordDigits +=
+          tokenDigits;
+
+        continue;
+      }
+
+      validWordSequence =
+        false;
+
+      break;
+    }
+
+    if (
+      validWordSequence &&
+      wordDigits.length >=
+        1 &&
+      wordDigits.length <=
+        13
+    ) {
+      return wordDigits;
+    }
+  }
+
+  /*
+   * Fall back to symbol/filler-aware numeric extraction:
+   *
+   *   8x0x3
+   *   080📱355
+   */
+
+  let digits =
+    "";
+
+  let meaningfulNonDigit =
+    false;
+
+  for (
+    const character
+    of value.normalize(
+      "NFKC"
+    )
+  ) {
+    const digit =
+      toCrossMessageDigit(
+        character
+      );
+
+    if (
+      digit !==
+      null
+    ) {
+      digits +=
+        digit;
+
+      continue;
+    }
+
+    if (
+      /[\s().,\-_/"'’‘“”:;|~+\u200B\u200C\u200D\uFEFF]/u.test(
+        character
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      character ===
+        "x" ||
+      character ===
+        "X"
+    ) {
+      continue;
+    }
+
+    meaningfulNonDigit =
+      true;
+
+    break;
+  }
+
+  if (
+    meaningfulNonDigit ||
+    digits.length <
+      1 ||
+    digits.length >
+      13
+  ) {
+    return null;
+  }
+
+  return digits;
+}
+
+function containsNigerianPhoneShape(
+  digits: string
+) {
+  /*
+   * Local number.
+   */
+
+  for (
+    let start =
+      0;
+    start +
+        11 <=
+      digits.length;
+    start +=
+      1
+  ) {
+    if (
+      /^0[789]\d{9}$/.test(
+        digits.slice(
+          start,
+          start +
+            11
+        )
+      )
+    ) {
+      return true;
+    }
+  }
+
+  /*
+   * Country-code number.
+   */
+
+  for (
+    let start =
+      0;
+    start +
+        13 <=
+      digits.length;
+    start +=
+      1
+  ) {
+    if (
+      /^234[789]\d{9}$/.test(
+        digits.slice(
+          start,
+          start +
+            13
+        )
+      )
+    ) {
+      return true;
+    }
+  }
+
+  /*
+   * A 10-digit no-leading-zero Nigerian mobile shape is
+   * accepted here only when it had to be assembled from
+   * multiple separate messages.
+   */
+
+  return /^[789]\d{9}$/.test(
+    digits
+  );
+}
+
+function hasSplitPlatformName(
+  parts: string[]
+) {
+  if (
+    parts.length <
+      2
+  ) {
+    return false;
+  }
+
+  const platformPatterns =
+    [
+      "whatsapp",
+      "whatsap",
+      "watsapp",
+      "watsap",
+      "whatapp",
+      "whtsapp",
+      "telegram",
+      "instagram",
+      "snapchat",
+      "tiktok",
+      "facebook",
+      "discord",
+      "signal",
+      "greenapp",
+    ];
+
+  const compactParts =
+    parts.map(
+      compactCrossMessageText
+    );
+
+  const combined =
+    compactParts.join(
+      ""
+    );
+
+  return platformPatterns.some(
+    (
+      platform
+    ) => {
+      if (
+        !combined.includes(
+          platform
+        )
+      ) {
+        return false;
+      }
+
+      /*
+       * This helper is specifically for a platform name
+       * split across message boundaries.
+       *
+       * If one individual message already contains the
+       * full platform name, normal single-message
+       * moderation owns that case.
+       */
+
+      return !compactParts.some(
+        (
+          part
+        ) =>
+          part.includes(
+            platform
+          )
+      );
+    }
+  );
+}
+
+function hasCrossMessageContactIntent(
+  parts: string[]
+) {
+  if (
+    parts.length <
+      2
+  ) {
+    return false;
+  }
+
+  const text =
+    normalizeCrossMessageText(
+      parts.join(
+        " "
+      )
+    );
+
+  const patterns =
+    [
+      /\b(?:what|wat|wats|whats|wht)\s+(?:(?:is|are)\s+)?(?:your|ur|ya)\s+(?:number|num|digits?|line|contact|handle|username|whatsapp|wa|telegram|tg|instagram|ig)\b/i,
+
+      /\b(?:your|ur|ya)\s+(?:number|num|digits?|line|contact|handle|username|whatsapp|wa|telegram|tg|instagram|ig)\b/i,
+
+      /\b(?:send|drop|give|share|pass|gimme)\b.{0,35}\b(?:(?:your|ur|ya)\s+)?(?:number|num|digits?|line|contact|handle|username|whatsapp|wa|telegram|tg|instagram|ig)\b/i,
+
+      /\b(?:lemme|let\s+me)\b.{0,30}\b(?:get|have)\b.{0,20}\b(?:(?:your|ur|ya)\s+)?(?:number|num|digits?|line|contact|handle|username|whatsapp|wa|telegram|tg|instagram|ig)\b/i,
+
+      /\b(?:should|shall|can|could|would|may|maybe|lets)\b.{0,20}\b(?:we|i|you|u)?\b.{0,20}\b(?:text|txt|message|msg|dm|chat|talk|call|continue|move|switch|use|go)\b.{0,25}\b(?:whatsapp|wa|wapp|telegram|tg|instagram|ig|insta|snap|green\s+app|another\s+app|other\s+app)\b/i,
+
+      /\b(?:can|could|may)\s+i\b.{0,25}\b(?:get|have|call|text|txt|message|msg|reach|contact)\b.{0,25}\b(?:you|u|your|ur|ya)\b/i,
+
+      /\b(?:how|where)\b.{0,20}\b(?:can|could|do)\s+i\b.{0,25}\b(?:reach|contact|text|message|call|get\s+in\s+touch\s+with)\b.{0,20}\b(?:you|u)\b/i,
+
+      /\b(?:move|take|continue|switch|go|talk|chat|message|text)\b.{0,40}\b(?:somewhere\s+else|elsewhere|another\s+app|other\s+app|off\s+platform|outside\s+campusmart)\b/i,
+    ];
+
+  return patterns.some(
+    (
+      pattern
+    ) =>
+      pattern.test(
+        text
+      )
+  );
+}
+
+function hasCrossMessagePhoneDisclosure(
+  parts: string[]
+) {
+  if (
+    parts.length <
+      2
+  ) {
+    return false;
+  }
+
+  const current =
+    parts[
+      parts.length -
+        1
+    ];
+
+  const currentDigits =
+    extractStandaloneNumericFragment(
+      current
+    );
+
+  if (
+    !currentDigits
+  ) {
+    return false;
+  }
+
+  const previousText =
+    normalizeCrossMessageText(
+      parts
+        .slice(
+          0,
+          -1
+        )
+        .join(
+          " "
+        )
+    );
+
+  const personalPhoneSetup =
+    /\b(?:my|the)\s+(?:phone\s+)?(?:number|num|digits?|line)\s*(?:is|are)?\s*$|\b(?:contact|reach|call|text)\s+me\s+(?:on|at)\s*$|\b(?:my\s+)?(?:whatsapp|wa)\s*(?:is|:|=)?\s*$/i;
+
+  /*
+   * Example:
+   *
+   * my
+   * number is
+   * 8035535266
+   */
+
+  if (
+    personalPhoneSetup.test(
+      previousText
+    ) &&
+    /^[789]\d{9}$/.test(
+      currentDigits
+    )
+  ) {
+    return true;
+  }
+
+  /*
+   * Also detect a phone number assembled entirely from
+   * standalone numeric fragments across messages:
+   *
+   *   80355
+   *   35266
+   *
+   *   08
+   *   0355
+   *   35266
+   *
+   *   234
+   *   80355
+   *   35266
+   */
+
+  const numericParts =
+    parts.map(
+      extractStandaloneNumericFragment
+    );
+
+  if (
+    numericParts.some(
+      (
+        part
+      ) =>
+        !part
+    )
+  ) {
+    return false;
+  }
+
+  const reconstructed =
+    (
+      numericParts as string[]
+    ).join(
+      ""
+    );
+
+  /*
+   * If multiple messages themselves assemble a Nigerian
+   * local prefix, stop the sequence early instead of
+   * waiting for all eleven digits.
+   *
+   * Examples:
+   *
+   *   0
+   *   8
+   *   0
+   *
+   *   08
+   *   03
+   *
+   * Existing single-message partial-prefix moderation
+   * already owns the equivalent one-message case.
+   */
+
+  if (
+    reconstructed.length >=
+      3 &&
+    reconstructed.length <=
+      10 &&
+    /^0[789]\d{1,8}$/.test(
+      reconstructed
+    )
+  ) {
+    return true;
+  }
+
+  /*
+   * Same idea for a country-code number assembled across
+   * message boundaries.
+   */
+
+  if (
+    reconstructed.length >=
+      4 &&
+    reconstructed.length <=
+      12 &&
+    /^234[789]\d{0,8}$/.test(
+      reconstructed
+    )
+  ) {
+    return true;
+  }
+
+  return containsNigerianPhoneShape(
+    reconstructed
+  );
+}
+
+function detectCrossMessageModerationSignal(
+  recentMessages:
+    RecentSenderMessage[],
+  currentBody: string
+): CrossMessageModerationSignal | null {
+  if (
+    recentMessages.length ===
+    0
+  ) {
+    return null;
+  }
+
+  /*
+   * Only short recent messages are useful for deliberate
+   * fragment reconstruction.
+   *
+   * Stop at a longer message so an old paragraph is not
+   * accidentally combined with a new unrelated message.
+   */
+
+  const recentShortParts:
+    string[] = [];
+
+  for (
+    let index =
+      recentMessages.length -
+        1;
+    index >=
+      0;
+    index -=
+      1
+  ) {
+    const body =
+      recentMessages[
+        index
+      ].body.trim();
+
+    if (
+      !body ||
+      body.length >
+        CROSS_MESSAGE_CONTEXT_PART_MAX_LENGTH
+    ) {
+      break;
+    }
+
+    recentShortParts.unshift(
+      body
+    );
+  }
+
+  if (
+    recentShortParts.length ===
+      0
+  ) {
+    return null;
+  }
+
+  /*
+   * Test progressively larger suffixes so a harmless
+   * earlier message does not poison the newest context.
+   */
+
+  for (
+    let count =
+      1;
+    count <=
+      Math.min(
+        recentShortParts.length,
+        9
+      );
+    count +=
+      1
+  ) {
+    const parts =
+      [
+        ...recentShortParts.slice(
+          -count
+        ),
+        currentBody,
+      ];
+
+    /*
+     * Phone reconstruction can use up to ten total
+     * fragments.
+     */
+
+    if (
+      count <=
+        9 &&
+      hasCrossMessagePhoneDisclosure(
+        parts
+      )
+    ) {
+      return {
+        categories: [
+          "phone_number",
+          "circumvention",
+        ],
+      };
+    }
+
+    /*
+     * A platform name may be split extremely finely:
+     *
+     * w
+     * h
+     * a
+     * t
+     * s
+     * app
+     */
+
+    if (
+      hasSplitPlatformName(
+        parts
+      )
+    ) {
+      return {
+        categories: [
+          "circumvention",
+        ],
+      };
+    }
+
+    /*
+     * Natural-language intent is deliberately kept to a
+     * tighter context to avoid joining unrelated short
+     * messages from a longer conversation.
+     */
+
+    if (
+      count <=
+        3 &&
+      hasCrossMessageContactIntent(
+        parts
+      )
+    ) {
+      return {
+        categories: [
+          "circumvention",
+        ],
+      };
+    }
+  }
+
+  return null;
+}
+
+function mergeModerationCategories(
+  first:
+    MessageModerationCategory[],
+  second:
+    MessageModerationCategory[]
+) {
+  return Array.from(
+    new Set([
+      ...first,
+      ...second,
+    ])
+  );
+}
+
+/*
+ * =======================================================
+ * CONTEXTUAL PRODUCT-PLATFORM EXEMPTION
+ * =======================================================
+ *
+ * Single-message moderation intentionally blocks a bare:
+ *
+ *   WhatsApp?
+ *
+ * because, by itself, it strongly suggests moving the
+ * conversation off CampusMart.
+ *
+ * But the same fragment can be legitimate when it clearly
+ * completes a product-capability question from the SAME
+ * sender in the SAME conversation:
+ *
+ *   Does this phone support
+ *   WhatsApp?
+ *
+ * We only reconsider blocks that contain no sensitive
+ * spans and are categorised purely as circumvention.
+ *
+ * Phone numbers, emails, handles, links and other direct
+ * sensitive content can never be downgraded here.
+ */
+
+function isPlatformOnlyProductFragment(
+  body: string
+) {
+  const text =
+    normalizeCrossMessageText(
+      body
+    );
+
+  return /^(?:whatsapp|telegram|instagram|snapchat|tiktok|facebook|discord|signal|messenger)(?:\s+(?:app|apps|notification|notifications))?$/.test(
+    text
+  );
+}
+
+function isProductCapabilityLead(
+  value: string
+) {
+  const text =
+    normalizeCrossMessageText(
+      value
+    );
+
+  const patterns =
+    [
+      /\b(?:does|do|can|could|will|would)\s+(?:this|that|the)\s+(?:phone|tablet|laptop|watch|smartwatch|device|item|product)\b.{0,45}\b(?:support|supports|run|runs|use|uses|have|has|show|shows|display|displays|install|work|works|open|handle)\s*$/i,
+
+      /\b(?:is|are)\s+(?:this|that|the)\s+(?:phone|tablet|laptop|watch|smartwatch|device|item|product)\b.{0,45}\b(?:compatible\s+with|able\s+to\s+run|able\s+to\s+use)\s*$/i,
+
+      /\b(?:does|do|can|could|will|would)\s+(?:it|this|that)\b.{0,35}\b(?:support|run|use|have|show|display|install|work\s+with|open)\s*$/i,
+    ];
+
+  return patterns.some(
+    (
+      pattern
+    ) =>
+      pattern.test(
+        text
+      )
+  );
+}
+
+function canAllowBlockedPlatformFragmentFromProductContext(
+  recentMessages:
+    RecentSenderMessage[],
+  currentBody: string,
+  moderation:
+    ReturnType<
+      typeof moderateOutgoingMessage
+    >,
+  recentPhoneSharingAttempt:
+    boolean
+) {
+  if (
+    recentPhoneSharingAttempt ||
+    moderation.action !==
+      "blocked" ||
+    moderation.findings.length >
+      0 ||
+    moderation.categories.length ===
+      0 ||
+    moderation.categories.some(
+      (
+        category
+      ) =>
+        category !==
+        "circumvention"
+    ) ||
+    !isPlatformOnlyProductFragment(
+      currentBody
+    )
+  ) {
+    return false;
+  }
+
+  const recentShortParts:
+    string[] = [];
+
+  for (
+    let index =
+      recentMessages.length -
+        1;
+    index >=
+      0 &&
+    recentShortParts.length <
+      3;
+    index -=
+      1
+  ) {
+    const body =
+      recentMessages[
+        index
+      ].body.trim();
+
+    if (
+      !body ||
+      body.length >
+        CROSS_MESSAGE_CONTEXT_PART_MAX_LENGTH
+    ) {
+      break;
+    }
+
+    recentShortParts.unshift(
+      body
+    );
+  }
+
+  if (
+    recentShortParts.length ===
+      0
+  ) {
+    return false;
+  }
+
+  for (
+    let count =
+      1;
+    count <=
+      recentShortParts.length;
+    count +=
+      1
+  ) {
+    const previousParts =
+      recentShortParts.slice(
+        -count
+      );
+
+    const previousText =
+      previousParts.join(
+        " "
+      );
+
+    if (
+      !isProductCapabilityLead(
+        previousText
+      )
+    ) {
+      continue;
+    }
+
+    const combined =
+      [
+        ...previousParts,
+        currentBody,
+      ].join(
+        " "
+      );
+
+    /*
+     * Ask the existing single-message moderation engine to
+     * validate the reconstructed sentence as one unit.
+     *
+     * We only downgrade when that canonical moderation
+     * result itself considers the complete product
+     * question safe.
+     */
+
+    const combinedModeration =
+      moderateOutgoingMessage(
+        combined,
+        {
+          recentPhoneSharingAttempt:
+            false,
+        }
+      );
+
+    if (
+      combinedModeration.action ===
+        "allow"
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function allowContextualProductPlatformFragment(
+  prepared: {
+    originalBody: string;
+
+    body: string;
+
+    moderation:
+      ReturnType<
+        typeof moderateOutgoingMessage
+      >;
+  }
+) {
+  return {
+    ...prepared,
+
+    body:
+      prepared.originalBody,
+
+    moderation: {
+      ...prepared.moderation,
+
+      sanitizedBody:
+        prepared.originalBody,
+
+      action:
+        "allow" as const,
+
+      categories:
+        [],
+
+      findings:
+        [],
+
+      warningRequired:
+        false,
+
+      shouldRecordModerationEvent:
+        false,
+
+      warningCode:
+        null,
+    },
+  };
+}
+
+function promoteToContextualBlock(
+  base:
+    ReturnType<
+      typeof moderateOutgoingMessage
+    >,
+  signal:
+    CrossMessageModerationSignal
+): ReturnType<
+  typeof moderateOutgoingMessage
+> {
+  return {
+    ...base,
+
+    action:
+      "blocked",
+
+    categories:
+      mergeModerationCategories(
+        base.categories,
+        signal.categories
+      ),
+
+    /*
+     * Findings belong only to spans in the current
+     * message.
+     *
+     * We intentionally do not copy offsets from
+     * reconstructed historical context.
+     */
+
+    findings:
+      base.findings,
+
+    warningRequired:
+      true,
+
+    shouldRecordModerationEvent:
+      true,
+
+    warningCode:
+      "OFF_PLATFORM_ATTEMPT_BLOCKED",
+  };
+}
+
+/*
+ * =======================================================
+ * MODERATION CATEGORY MAPPING
+ * =======================================================
  */
 
 function toPrismaModerationCategory(
@@ -244,24 +1575,13 @@ function toPrismaModerationAction(
  * =======================================================
  * PREPARE OUTGOING MESSAGE
  * =======================================================
- *
- * Important:
- *
- * This function does NOT write to Prisma.
- *
- * It also does NOT throw merely because moderation
- * detected something.
- *
- * That allows the calling operation to:
- *
- * 1. validate conversation context
- * 2. record the moderation attempt
- * 3. apply strikes/restrictions
- * 4. then decide whether a Message may be created
  */
 
 function prepareOutgoingMessage(
-  value: unknown
+  value: unknown,
+  options?: {
+    recentPhoneSharingAttempt?: boolean;
+  }
 ) {
   const normalizedBody =
     normalizeMessageBody(
@@ -270,15 +1590,201 @@ function prepareOutgoingMessage(
 
   const moderation =
     moderateOutgoingMessage(
-      normalizedBody
+      normalizedBody,
+      {
+        recentPhoneSharingAttempt:
+          options
+            ?.recentPhoneSharingAttempt ??
+          false,
+      }
     );
 
   return {
+    originalBody:
+      normalizedBody,
+
     body:
       moderation.sanitizedBody,
 
     moderation,
   };
+}
+
+async function prepareOutgoingMessageWithConversationContext(
+  value: unknown,
+  options: {
+    userId: string;
+
+    conversationId?:
+      string | null;
+
+    recentPhoneSharingAttempt?: boolean;
+  }
+) {
+  const prepared =
+    prepareOutgoingMessage(
+      value,
+      {
+        recentPhoneSharingAttempt:
+          options
+            .recentPhoneSharingAttempt ??
+          false,
+      }
+    );
+
+  if (
+    !options.conversationId
+  ) {
+    return prepared;
+  }
+
+  const recentMessages =
+    await getRecentSenderMessages(
+      options.userId,
+      options.conversationId
+    );
+
+  /*
+   * A bare platform fragment is normally blocked, but we
+   * allow a very narrow contextual exception when it
+   * clearly completes a legitimate product-capability
+   * question from this same sender.
+   *
+   * Example:
+   *
+   *   Does this phone support
+   *   WhatsApp?
+   *
+   * Direct sensitive content can never enter this branch.
+   */
+
+  if (
+    prepared.moderation.action ===
+      "blocked"
+  ) {
+    if (
+      canAllowBlockedPlatformFragmentFromProductContext(
+        recentMessages,
+        prepared.originalBody,
+        prepared.moderation,
+        options
+          .recentPhoneSharingAttempt ??
+        false
+      )
+    ) {
+      return allowContextualProductPlatformFragment(
+        prepared
+      );
+    }
+
+    return prepared;
+  }
+
+  const contextualSignal =
+    detectCrossMessageModerationSignal(
+      recentMessages,
+      prepared.originalBody
+    );
+
+  if (
+    !contextualSignal
+  ) {
+    return prepared;
+  }
+
+  return {
+    ...prepared,
+
+    moderation:
+      promoteToContextualBlock(
+        prepared.moderation,
+        contextualSignal
+      ),
+  };
+}
+
+/*
+ * =======================================================
+ * REPLY TARGET
+ * =======================================================
+ */
+
+async function resolveReplyTarget(
+  conversationId: string,
+  value: unknown
+) {
+  if (
+    value ===
+      undefined ||
+    value ===
+      null ||
+    value ===
+      ""
+  ) {
+    return null;
+  }
+
+  if (
+    typeof value !==
+    "string"
+  ) {
+    throw new MessagingError(
+      "Reply message ID must be a string.",
+      400,
+      "INVALID_REPLY_MESSAGE_ID"
+    );
+  }
+
+  const replyToMessageId =
+    value.trim();
+
+  if (
+    !replyToMessageId
+  ) {
+    return null;
+  }
+
+  const target =
+    await prisma.message.findFirst({
+      where: {
+        id:
+          replyToMessageId,
+
+        conversationId,
+
+        deletedAt:
+          null,
+      },
+
+      select: {
+        id:
+          true,
+
+        conversationId:
+          true,
+
+        senderId:
+          true,
+
+        body:
+          true,
+
+        createdAt:
+          true,
+      },
+    });
+
+  if (
+    !target
+  ) {
+    throw new MessagingError(
+      "The message you are replying to could not be found in this conversation.",
+      404,
+      "REPLY_MESSAGE_NOT_FOUND"
+    );
+  }
+
+  return target;
 }
 
 /*
@@ -314,10 +1820,6 @@ async function recordModerationIfRequired(input: {
     categories.length ===
     0
   ) {
-    /*
-     * A blocked/redacted moderation result should always
-     * carry at least one category.
-     */
     throw new Error(
       "Messaging moderation produced an actionable result without a moderation category."
     );
@@ -391,14 +1893,6 @@ function throwBlockedMessage(
  * =======================================================
  * SELLER AVAILABILITY
  * =======================================================
- *
- * Used only when opening a NEW general/listing thread.
- *
- * Existing conversations remain readable/usable even if
- * seller marketplace access later changes.
- *
- * Messaging-specific restrictions are handled
- * independently.
  */
 
 async function assertSellerAvailableForNewConversation(
@@ -459,11 +1953,6 @@ async function assertSellerAvailableForNewConversation(
  * =======================================================
  * GENERAL SELLER CHAT
  * =======================================================
- *
- * The actor becomes the buyer side of this conversation.
- *
- * A vendor account can therefore still message another
- * vendor while shopping as a buyer.
  */
 
 async function resolveGeneralContext(
@@ -527,10 +2016,6 @@ async function resolveGeneralContext(
  * =======================================================
  * LISTING CHAT
  * =======================================================
- *
- * The seller is resolved from Product.
- *
- * A client cannot spoof vendor ownership.
  */
 
 async function resolveListingContext(
@@ -600,13 +2085,6 @@ async function resolveListingContext(
       "LISTING_NOT_FOUND"
     );
   }
-
-  /*
-   * Existing conversations survive an archive.
-   *
-   * Only creation of a NEW listing conversation is
-   * prevented.
-   */
 
   if (
     product.isArchived
@@ -686,19 +2164,6 @@ async function resolveListingContext(
  * =======================================================
  * ORDER CHAT
  * =======================================================
- *
- * Buyer:
- *
- * - must own the order
- * - can message only sellers represented in that order
- *
- * Seller:
- *
- * - must actually own items inside the order
- * - cannot use arbitrary order IDs to reach unrelated
- *   buyers
- *
- * Multi-vendor orders get one conversation per seller.
  */
 
 async function resolveOrderContext(
@@ -765,12 +2230,6 @@ async function resolveOrderContext(
       )
     );
 
-  /*
-   * ---------------------------------------------------
-   * ACTOR IS ORDER BUYER
-   * ---------------------------------------------------
-   */
-
   if (
     order.buyerId ===
     input.actorId
@@ -780,11 +2239,6 @@ async function resolveOrderContext(
         "string"
         ? input.vendorId.trim()
         : "";
-
-    /*
-     * Single-seller order:
-     * infer seller automatically.
-     */
 
     if (
       !vendorId &&
@@ -850,12 +2304,6 @@ async function resolveOrderContext(
         "buyer",
     };
   }
-
-  /*
-   * ---------------------------------------------------
-   * ACTOR IS ONE OF THE ORDER SELLERS
-   * ---------------------------------------------------
-   */
 
   const actorIsSeller =
     vendorIds.includes(
@@ -1010,6 +2458,12 @@ export async function getConversationAccess(
         orderId:
           true,
 
+        buyerLastDeliveredAt:
+          true,
+
+        vendorLastDeliveredAt:
+          true,
+
         buyerLastReadAt:
           true,
 
@@ -1070,23 +2524,121 @@ export async function getConversationAccess(
 
 /*
  * =======================================================
+ * RECEIPT MESSAGE RESOLUTION
+ * =======================================================
+ */
+
+async function resolveIncomingReceiptMessage(
+  conversationId: string,
+  userId: string,
+  messageId?: string | null
+) {
+  const cleanMessageId =
+    typeof messageId ===
+      "string"
+      ? messageId.trim()
+      : "";
+
+  if (
+    cleanMessageId
+  ) {
+    const message =
+      await prisma.message.findUnique({
+        where: {
+          id:
+            cleanMessageId,
+        },
+
+        select: {
+          id:
+            true,
+
+          conversationId:
+            true,
+
+          senderId:
+            true,
+
+          createdAt:
+            true,
+        },
+      });
+
+    if (
+      !message ||
+      message.conversationId !==
+        conversationId
+    ) {
+      throw new MessagingError(
+        "Receipt message was not found in this conversation.",
+        404,
+        "RECEIPT_MESSAGE_NOT_FOUND"
+      );
+    }
+
+    if (
+      message.senderId ===
+      userId
+    ) {
+      throw new MessagingError(
+        "You cannot acknowledge your own outgoing message.",
+        400,
+        "INVALID_RECEIPT_MESSAGE"
+      );
+    }
+
+    return message;
+  }
+
+  return prisma.message.findFirst({
+    where: {
+      conversationId,
+
+      senderId: {
+        not:
+          userId,
+      },
+    },
+
+    orderBy: [
+      {
+        createdAt:
+          "desc",
+      },
+
+      {
+        id:
+          "desc",
+      },
+    ],
+
+    select: {
+      id:
+        true,
+
+      conversationId:
+        true,
+
+      senderId:
+        true,
+
+      createdAt:
+        true,
+    },
+  });
+}
+
+/*
+ * =======================================================
  * START CONVERSATION + FIRST MESSAGE
  * =======================================================
- *
- * V1 does not create empty inbox conversations.
- *
- * A valid first message is required.
  */
 
 export async function startConversationWithMessage(
   input: StartConversationInput
 ) {
   /*
-   * -----------------------------------------------
-   * 1. CHECK CURRENT MESSAGING RESTRICTION
-   * -----------------------------------------------
-   *
-   * Restricted users may read history, but cannot send.
+   * Existing messaging restrictions always run first.
    */
 
   await assertMessagingAllowed(
@@ -1094,23 +2646,8 @@ export async function startConversationWithMessage(
   );
 
   /*
-   * -----------------------------------------------
-   * 2. NORMALIZE + SCAN
-   * -----------------------------------------------
-   */
-
-  const prepared =
-    prepareOutgoingMessage(
-      input.body
-    );
-
-  /*
-   * -----------------------------------------------
-   * 3. VALIDATE TRUSTED CONVERSATION CONTEXT
-   * -----------------------------------------------
-   *
-   * Do this before recording a strike so bogus seller,
-   * product or order IDs do not create moderation events.
+   * Resolve the actual buyer/seller/context before
+   * moderation-history lookup.
    */
 
   const context =
@@ -1119,11 +2656,11 @@ export async function startConversationWithMessage(
     );
 
   /*
-   * If this canonical conversation already exists, attach
-   * moderation attempts to it.
+   * There may already be a canonical conversation for
+   * this buyer/seller/context.
    *
-   * A blocked first-ever attempt will correctly have no
-   * conversation row.
+   * This matters because "start conversation" can also
+   * be used against a conversation that already exists.
    */
 
   const existingConversation =
@@ -1148,16 +2685,34 @@ export async function startConversationWithMessage(
     });
 
   /*
-   * -----------------------------------------------
-   * 4. RECORD MODERATION EVENT
-   * -----------------------------------------------
-   *
-   * This happens BEFORE any suspicious content can reach
-   * the Message table.
-   *
-   * It may also activate a temporary messaging
-   * restriction for FUTURE sends.
+   * Activate strict numeric continuation scanning only
+   * when this same user recently attempted to share a
+   * phone number in this exact conversation.
    */
+
+  const recentPhoneSharingAttempt =
+    await hasRecentPhoneSharingAttempt(
+      input.actorId,
+      existingConversation
+        ?.id ??
+        null
+    );
+
+  const prepared =
+    await prepareOutgoingMessageWithConversationContext(
+      input.body,
+      {
+        userId:
+          input.actorId,
+
+        conversationId:
+          existingConversation
+            ?.id ??
+          null,
+
+        recentPhoneSharingAttempt,
+      }
+    );
 
   const moderationRecord =
     await recordModerationIfRequired({
@@ -1174,17 +2729,6 @@ export async function startConversationWithMessage(
       moderation:
         prepared.moderation,
     });
-
-  /*
-   * -----------------------------------------------
-   * 5. BLOCK WHEN REQUIRED
-   * -----------------------------------------------
-   *
-   * No Conversation is created for a first-ever blocked
-   * attempt.
-   *
-   * No Message row is ever created.
-   */
 
   if (
     prepared.moderation.action ===
@@ -1203,17 +2747,6 @@ export async function startConversationWithMessage(
       moderationRecord
     );
   }
-
-  /*
-   * -----------------------------------------------
-   * 6. CREATE/REUSE CONVERSATION + STORE MESSAGE
-   * -----------------------------------------------
-   *
-   * prepared.body is safe:
-   *
-   * allow    -> normal body
-   * redacted -> sanitized body
-   */
 
   const now =
     new Date();
@@ -1259,6 +2792,12 @@ export async function startConversationWithMessage(
               orderId:
                 context.orderId,
 
+              buyerLastDeliveredAt:
+                null,
+
+              vendorLastDeliveredAt:
+                null,
+
               buyerLastReadAt:
                 context.actorSide ===
                 "buyer"
@@ -1297,6 +2836,12 @@ export async function startConversationWithMessage(
               orderId:
                 true,
 
+              buyerLastDeliveredAt:
+                true,
+
+              vendorLastDeliveredAt:
+                true,
+
               buyerLastReadAt:
                 true,
 
@@ -1323,10 +2868,6 @@ export async function startConversationWithMessage(
               senderId:
                 input.actorId,
 
-              /*
-               * The raw sensitive body never reaches this
-               * field after redaction.
-               */
               body:
                 prepared.body,
             },
@@ -1342,6 +2883,9 @@ export async function startConversationWithMessage(
                 true,
 
               body:
+                true,
+
+              replyToMessageId:
                 true,
 
               editedAt:
@@ -1403,6 +2947,12 @@ export async function startConversationWithMessage(
               orderId:
                 true,
 
+              buyerLastDeliveredAt:
+                true,
+
+              vendorLastDeliveredAt:
+                true,
+
               buyerLastReadAt:
                 true,
 
@@ -1430,15 +2980,12 @@ export async function startConversationWithMessage(
     );
 
   /*
-   * -----------------------------------------------
-   * 7. LINK REDACTION EVENT TO STORED MESSAGE
-   * -----------------------------------------------
+   * A redacted first message may have created the
+   * conversation only AFTER its moderation event was
+   * recorded.
    *
-   * The moderation event already exists before storage,
-   * so a suspicious send cannot bypass strike history.
-   *
-   * Now attach the resulting sanitized Message and final
-   * Conversation IDs for audit/review.
+   * Link the event now so future continuation checks can
+   * find it by conversation ID.
    */
 
   if (
@@ -1499,9 +3046,9 @@ export async function sendConversationMessage(
   input: SendMessageInput
 ) {
   /*
-   * -----------------------------------------------
-   * 1. EXISTING RESTRICTION CHECK
-   * -----------------------------------------------
+   * ---------------------------------------------------
+   * 1. EXISTING RESTRICTION
+   * ---------------------------------------------------
    */
 
   await assertMessagingAllowed(
@@ -1509,9 +3056,9 @@ export async function sendConversationMessage(
   );
 
   /*
-   * -----------------------------------------------
+   * ---------------------------------------------------
    * 2. CONVERSATION ACCESS
-   * -----------------------------------------------
+   * ---------------------------------------------------
    */
 
   const {
@@ -1524,20 +3071,60 @@ export async function sendConversationMessage(
     );
 
   /*
-   * -----------------------------------------------
-   * 3. NORMALIZE + MODERATE
-   * -----------------------------------------------
+   * ---------------------------------------------------
+   * 3. CROSS-MESSAGE MODERATION HISTORY
+   * ---------------------------------------------------
+   *
+   * The moderation-event lookup activates the existing
+   * strict phone-continuation mode.
+   *
+   * The preparation step below separately reads only a
+   * small, recent, same-sender message window so split
+   * contact intent can be evaluated transiently.
    */
 
-  const prepared =
-    prepareOutgoingMessage(
-      input.body
+  const recentPhoneSharingAttempt =
+    await hasRecentPhoneSharingAttempt(
+      input.senderId,
+      conversation.id
     );
 
   /*
-   * -----------------------------------------------
-   * 4. RECORD SUSPICIOUS ATTEMPT
-   * -----------------------------------------------
+   * ---------------------------------------------------
+   * 4. MESSAGE BODY + MODERATION
+   * ---------------------------------------------------
+   */
+
+  const prepared =
+    await prepareOutgoingMessageWithConversationContext(
+      input.body,
+      {
+        userId:
+          input.senderId,
+
+        conversationId:
+          conversation.id,
+
+        recentPhoneSharingAttempt,
+      }
+    );
+
+  /*
+   * ---------------------------------------------------
+   * 5. VALIDATE REPLY TARGET
+   * ---------------------------------------------------
+   */
+
+  const replyTarget =
+    await resolveReplyTarget(
+      conversation.id,
+      input.replyToMessageId
+    );
+
+  /*
+   * ---------------------------------------------------
+   * 6. RECORD MODERATION
+   * ---------------------------------------------------
    */
 
   const moderationRecord =
@@ -1556,9 +3143,9 @@ export async function sendConversationMessage(
     });
 
   /*
-   * -----------------------------------------------
-   * 5. BLOCKED MESSAGE
-   * -----------------------------------------------
+   * ---------------------------------------------------
+   * 7. BLOCK WHEN REQUIRED
+   * ---------------------------------------------------
    */
 
   if (
@@ -1580,9 +3167,9 @@ export async function sendConversationMessage(
   }
 
   /*
-   * -----------------------------------------------
-   * 6. STORE ALLOWED / SANITIZED BODY
-   * -----------------------------------------------
+   * ---------------------------------------------------
+   * 8. STORE ALLOWED / SANITIZED MESSAGE
+   * ---------------------------------------------------
    */
 
   const result =
@@ -1601,6 +3188,10 @@ export async function sendConversationMessage(
 
               body:
                 prepared.body,
+
+              replyToMessageId:
+                replyTarget?.id ??
+                null,
             },
 
             select: {
@@ -1615,6 +3206,28 @@ export async function sendConversationMessage(
 
               body:
                 true,
+
+              replyToMessageId:
+                true,
+
+              replyToMessage: {
+                select: {
+                  id:
+                    true,
+
+                  senderId:
+                    true,
+
+                  body:
+                    true,
+
+                  deletedAt:
+                    true,
+
+                  createdAt:
+                    true,
+                },
+              },
 
               editedAt:
                 true,
@@ -1663,9 +3276,9 @@ export async function sendConversationMessage(
     );
 
   /*
-   * -----------------------------------------------
-   * 7. LINK REDACTION EVENT
-   * -----------------------------------------------
+   * ---------------------------------------------------
+   * 9. LINK REDACTION EVENT
+   * ---------------------------------------------------
    */
 
   if (
@@ -1715,24 +3328,15 @@ export async function sendConversationMessage(
 
 /*
  * =======================================================
- * MARK CONVERSATION READ
+ * MARK CONVERSATION DELIVERED
  * =======================================================
- *
- * Messaging restrictions intentionally do NOT affect
- * reading.
- *
- * A temporarily restricted user may still:
- *
- * - open their inbox
- * - read previous messages
- * - view order-related communication
- *
- * They simply cannot SEND new messages until expiry.
  */
 
-export async function markConversationRead(
+export async function markConversationDelivered(
   conversationId: string,
-  userId: string
+  userId: string,
+  deliveredThroughMessageId?:
+    string | null
 ) {
   const {
     conversation,
@@ -1743,8 +3347,46 @@ export async function markConversationRead(
       userId
     );
 
-  const readAt =
-    new Date();
+  const receiptMessage =
+    await resolveIncomingReceiptMessage(
+      conversation.id,
+      userId,
+      deliveredThroughMessageId
+    );
+
+  if (
+    !receiptMessage
+  ) {
+    return {
+      conversationId:
+        conversation.id,
+
+      deliveredAt:
+        side ===
+        "buyer"
+          ? conversation
+              .buyerLastDeliveredAt
+          : conversation
+              .vendorLastDeliveredAt,
+
+      deliveredThroughMessageId:
+        null,
+    };
+  }
+
+  const existingDeliveredAt =
+    side ===
+    "buyer"
+      ? conversation
+          .buyerLastDeliveredAt
+      : conversation
+          .vendorLastDeliveredAt;
+
+  const nextDeliveredAt =
+    laterDate(
+      existingDeliveredAt,
+      receiptMessage.createdAt
+    );
 
   const updated =
     await prisma.conversation.update({
@@ -1757,16 +3399,200 @@ export async function markConversationRead(
         side ===
         "buyer"
           ? {
-              buyerLastReadAt:
-                readAt,
+              buyerLastDeliveredAt:
+                nextDeliveredAt,
             }
           : {
-              vendorLastReadAt:
-                readAt,
+              vendorLastDeliveredAt:
+                nextDeliveredAt,
             },
 
       select: {
         id:
+          true,
+
+        buyerLastDeliveredAt:
+          true,
+
+        vendorLastDeliveredAt:
+          true,
+
+        buyerLastReadAt:
+          true,
+
+        vendorLastReadAt:
+          true,
+      },
+    });
+
+  return {
+    conversationId:
+      updated.id,
+
+    deliveredAt:
+      side ===
+      "buyer"
+        ? updated
+            .buyerLastDeliveredAt
+        : updated
+            .vendorLastDeliveredAt,
+
+    deliveredThroughMessageId:
+      receiptMessage.id,
+  };
+}
+
+/*
+ * =======================================================
+ * MARK CONVERSATION READ
+ * =======================================================
+ */
+
+export async function markConversationRead(
+  conversationId: string,
+  userId: string,
+  readThroughMessageId?:
+    string | null
+) {
+  const {
+    conversation,
+    side,
+  } =
+    await getConversationAccess(
+      conversationId,
+      userId
+    );
+
+  const receiptMessage =
+    await resolveIncomingReceiptMessage(
+      conversation.id,
+      userId,
+      readThroughMessageId
+    );
+
+  const requestedReadAt =
+    receiptMessage
+      ?.createdAt ??
+    new Date();
+
+  if (
+    side ===
+    "buyer"
+  ) {
+    const nextReadAt =
+      laterDate(
+        conversation
+          .buyerLastReadAt,
+        requestedReadAt
+      );
+
+    const nextDeliveredAt =
+      receiptMessage
+        ? laterDate(
+            conversation
+              .buyerLastDeliveredAt,
+            receiptMessage
+              .createdAt
+          )
+        : conversation
+            .buyerLastDeliveredAt;
+
+    const updated =
+      await prisma.conversation.update({
+        where: {
+          id:
+            conversation.id,
+        },
+
+        data: {
+          buyerLastReadAt:
+            nextReadAt,
+
+          buyerLastDeliveredAt:
+            nextDeliveredAt,
+        },
+
+        select: {
+          id:
+            true,
+
+          buyerLastDeliveredAt:
+            true,
+
+          vendorLastDeliveredAt:
+            true,
+
+          buyerLastReadAt:
+            true,
+
+          vendorLastReadAt:
+            true,
+
+          lastMessageAt:
+            true,
+        },
+      });
+
+    return {
+      conversationId:
+        updated.id,
+
+      deliveredAt:
+        updated
+          .buyerLastDeliveredAt,
+
+      readAt:
+        updated
+          .buyerLastReadAt,
+
+      readThroughMessageId:
+        receiptMessage
+          ?.id ??
+        null,
+    };
+  }
+
+  const nextReadAt =
+    laterDate(
+      conversation
+        .vendorLastReadAt,
+      requestedReadAt
+    );
+
+  const nextDeliveredAt =
+    receiptMessage
+      ? laterDate(
+          conversation
+            .vendorLastDeliveredAt,
+          receiptMessage
+            .createdAt
+        )
+      : conversation
+          .vendorLastDeliveredAt;
+
+  const updated =
+    await prisma.conversation.update({
+      where: {
+        id:
+          conversation.id,
+      },
+
+      data: {
+        vendorLastReadAt:
+          nextReadAt,
+
+        vendorLastDeliveredAt:
+          nextDeliveredAt,
+      },
+
+      select: {
+        id:
+          true,
+
+        buyerLastDeliveredAt:
+          true,
+
+        vendorLastDeliveredAt:
           true,
 
         buyerLastReadAt:
@@ -1784,10 +3610,17 @@ export async function markConversationRead(
     conversationId:
       updated.id,
 
+    deliveredAt:
+      updated
+        .vendorLastDeliveredAt,
+
     readAt:
-      side ===
-      "buyer"
-        ? updated.buyerLastReadAt
-        : updated.vendorLastReadAt,
+      updated
+        .vendorLastReadAt,
+
+    readThroughMessageId:
+      receiptMessage
+        ?.id ??
+      null,
   };
 }

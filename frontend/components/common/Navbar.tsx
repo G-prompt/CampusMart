@@ -30,6 +30,46 @@ const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000";
 
+/*
+ * =======================================================
+ * MESSAGING TYPES
+ * =======================================================
+ */
+
+type InboxLatestMessage = {
+  id: string;
+
+  senderId: string;
+
+  createdAt: string;
+};
+
+type InboxConversation = {
+  id: string;
+
+  side:
+    | "buyer"
+    | "vendor";
+
+  latestMessage:
+    | InboxLatestMessage
+    | null;
+
+  buyerLastDeliveredAt?:
+    | string
+    | null;
+
+  vendorLastDeliveredAt?:
+    | string
+    | null;
+};
+
+/*
+ * =======================================================
+ * NAVIGATION
+ * =======================================================
+ */
+
 const navLinks = [
   {
     href: "/marketplace",
@@ -236,6 +276,51 @@ function SidebarUnreadBadge({
   );
 }
 
+/*
+ * =======================================================
+ * RECEIPT HELPERS
+ * =======================================================
+ */
+
+function timestampCoversMessage(
+  timestamp:
+    string | null | undefined,
+  messageCreatedAt:
+    string
+) {
+  if (
+    !timestamp
+  ) {
+    return false;
+  }
+
+  const receiptTime =
+    new Date(
+      timestamp
+    ).getTime();
+
+  const messageTime =
+    new Date(
+      messageCreatedAt
+    ).getTime();
+
+  if (
+    !Number.isFinite(
+      receiptTime
+    ) ||
+    !Number.isFinite(
+      messageTime
+    )
+  ) {
+    return false;
+  }
+
+  return (
+    receiptTime >=
+    messageTime
+  );
+}
+
 export default function Navbar() {
   const {
     user,
@@ -287,7 +372,7 @@ export default function Navbar() {
 
   /*
    * =====================================================
-   * MESSAGING UNREAD COUNT
+   * MESSAGING STATE
    * =====================================================
    */
 
@@ -297,6 +382,16 @@ export default function Navbar() {
   ] = useState(
     0
   );
+
+  /*
+   * Prevent focus, navigation and polling events from
+   * creating overlapping inbox sync requests.
+   */
+
+  const messageSyncInFlightRef =
+    useRef(
+      false
+    );
 
   const searchCloseRef =
     useRef<HTMLButtonElement>(
@@ -339,11 +434,30 @@ export default function Navbar() {
 
   /*
    * =====================================================
-   * LOAD UNREAD MESSAGES
+   * GLOBAL MESSAGING SYNC
    * =====================================================
+   *
+   * This performs two related jobs:
+   *
+   * 1. Refresh the unread badge.
+   *
+   * 2. Acknowledge genuinely received incoming messages
+   *    as Delivered.
+   *
+   * IMPORTANT:
+   *
+   * We use the inbox rather than blindly calling the
+   * delivered endpoint.
+   *
+   * The inbox response actually contains the latest
+   * message. Therefore CampusMart only acknowledges a
+   * specific incoming message after this client has
+   * genuinely received that message data.
+   *
+   * This does NOT mark anything read.
    */
 
-  const loadUnreadMessages =
+  const loadMessagingState =
     useCallback(
       async () => {
         if (
@@ -353,6 +467,12 @@ export default function Navbar() {
             0
           );
 
+          return;
+        }
+
+        if (
+          messageSyncInFlightRef.current
+        ) {
           return;
         }
 
@@ -371,10 +491,13 @@ export default function Navbar() {
           return;
         }
 
+        messageSyncInFlightRef.current =
+          true;
+
         try {
           const response =
             await fetch(
-              `${API_URL}/api/messages/unread-count`,
+              `${API_URL}/api/messages/conversations`,
               {
                 headers: {
                   Authorization:
@@ -394,8 +517,8 @@ export default function Navbar() {
             !data.success
           ) {
             /*
-             * Do not break global navigation merely
-             * because the unread-count request fails.
+             * Messaging sync must never make the global
+             * navigation unusable.
              */
 
             if (
@@ -410,9 +533,15 @@ export default function Navbar() {
             return;
           }
 
+          /*
+           * ---------------------------------------------
+           * UNREAD BADGE
+           * ---------------------------------------------
+           */
+
           const nextCount =
             Number(
-              data.unreadCount
+              data.totalUnread
             );
 
           setMessageUnreadCount(
@@ -426,13 +555,182 @@ export default function Navbar() {
                 )
               : 0
           );
+
+          /*
+           * ---------------------------------------------
+           * DELIVERY ACKNOWLEDGEMENT
+           * ---------------------------------------------
+           *
+           * Do not acknowledge delivery while this browser
+           * tab is hidden.
+           *
+           * Once it becomes visible, the visibility event
+           * below immediately runs another sync.
+           */
+
+          if (
+            document.visibilityState !==
+            "visible"
+          ) {
+            return;
+          }
+
+          const conversations:
+            InboxConversation[] =
+            Array.isArray(
+              data.conversations
+            )
+              ? data.conversations
+              : [];
+
+          const deliveryRequests =
+            conversations
+              .filter(
+                (
+                  conversation
+                ) => {
+                  const latestMessage =
+                    conversation.latestMessage;
+
+                  if (
+                    !latestMessage
+                  ) {
+                    return false;
+                  }
+
+                  /*
+                   * Only the recipient acknowledges
+                   * delivery.
+                   */
+
+                  if (
+                    latestMessage.senderId ===
+                    user.id
+                  ) {
+                    return false;
+                  }
+
+                  const currentDeliveryCursor =
+                    conversation.side ===
+                    "buyer"
+                      ? conversation
+                          .buyerLastDeliveredAt
+                      : conversation
+                          .vendorLastDeliveredAt;
+
+                  /*
+                   * Avoid repeatedly POSTing the same
+                   * acknowledgement every 15 seconds.
+                   */
+
+                  if (
+                    timestampCoversMessage(
+                      currentDeliveryCursor,
+                      latestMessage.createdAt
+                    )
+                  ) {
+                    return false;
+                  }
+
+                  return true;
+                }
+              )
+              .map(
+                async (
+                  conversation
+                ) => {
+                  const latestMessage =
+                    conversation.latestMessage;
+
+                  if (
+                    !latestMessage
+                  ) {
+                    return;
+                  }
+
+                  try {
+                    const deliveryResponse =
+                      await fetch(
+                        `${API_URL}/api/messages/conversations/${conversation.id}/delivered`,
+                        {
+                          method:
+                            "POST",
+
+                          headers: {
+                            "Content-Type":
+                              "application/json",
+
+                            Authorization:
+                              `Bearer ${token}`,
+                          },
+
+                          body:
+                            JSON.stringify({
+                              messageId:
+                                latestMessage.id,
+                            }),
+
+                          cache:
+                            "no-store",
+                        }
+                      );
+
+                    if (
+                      !deliveryResponse.ok
+                    ) {
+                      const deliveryData =
+                        await deliveryResponse
+                          .json()
+                          .catch(
+                            () =>
+                              null
+                          );
+
+                      console.warn(
+                        "Unable to acknowledge message delivery:",
+                        deliveryData
+                          ?.message ??
+                          deliveryResponse.status
+                      );
+                    }
+                  } catch (
+                    deliveryError
+                  ) {
+                    /*
+                     * Delivery acknowledgement is
+                     * best-effort.
+                     *
+                     * A temporary network problem must not
+                     * interfere with navigation or unread
+                     * badges. The next sync retries it.
+                     */
+
+                    console.warn(
+                      "Unable to acknowledge message delivery:",
+                      deliveryError
+                    );
+                  }
+                }
+              );
+
+          if (
+            deliveryRequests.length >
+            0
+          ) {
+            await Promise.allSettled(
+              deliveryRequests
+            );
+          }
         } catch (
-          unreadError
+          messagingError
         ) {
           console.warn(
-            "Unable to refresh unread messages:",
-            unreadError
+            "Unable to refresh messaging state:",
+            messagingError
           );
+        } finally {
+          messageSyncInFlightRef.current =
+            false;
         }
       },
       [
@@ -441,11 +739,20 @@ export default function Navbar() {
     );
 
   /*
-   * Initial load + light polling.
+   * =====================================================
+   * INITIAL MESSAGING LOAD + LIGHT POLLING
+   * =====================================================
    *
-   * This is deliberately polling for V1.
-   * When realtime messaging is introduced later, this can
-   * be replaced by WebSocket/SSE events.
+   * V1 remains polling-based.
+   *
+   * While the app is visible:
+   *
+   * - inbox/unread state refreshes every 15 seconds
+   * - newly received latest messages are acknowledged as
+   *   Delivered
+   *
+   * Later WebSocket/SSE can replace the polling trigger
+   * without changing receipt semantics.
    */
 
   useEffect(() => {
@@ -459,7 +766,7 @@ export default function Navbar() {
       return;
     }
 
-    void loadUnreadMessages();
+    void loadMessagingState();
 
     const interval =
       window.setInterval(
@@ -468,7 +775,7 @@ export default function Navbar() {
             document.visibilityState ===
             "visible"
           ) {
-            void loadUnreadMessages();
+            void loadMessagingState();
           }
         },
         15000
@@ -476,7 +783,12 @@ export default function Navbar() {
 
     const refreshOnFocus =
       () => {
-        void loadUnreadMessages();
+        if (
+          document.visibilityState ===
+          "visible"
+        ) {
+          void loadMessagingState();
+        }
       };
 
     const refreshOnVisibility =
@@ -485,7 +797,7 @@ export default function Navbar() {
           document.visibilityState ===
           "visible"
         ) {
-          void loadUnreadMessages();
+          void loadMessagingState();
         }
       };
 
@@ -516,15 +828,22 @@ export default function Navbar() {
     };
   }, [
     user,
-    loadUnreadMessages,
+    loadMessagingState,
   ]);
 
   /*
-   * Refresh when navigating.
+   * =====================================================
+   * REFRESH MESSAGING ON NAVIGATION
+   * =====================================================
    *
-   * This makes the badge update immediately after opening
-   * or leaving a conversation instead of waiting for the
-   * next polling cycle.
+   * This updates the unread badge quickly after:
+   *
+   * - opening a conversation
+   * - leaving a conversation
+   * - navigating elsewhere in CampusMart
+   *
+   * It also gives the visible client another chance to
+   * acknowledge newly received messages.
    */
 
   useEffect(() => {
@@ -534,11 +853,11 @@ export default function Navbar() {
       return;
     }
 
-    void loadUnreadMessages();
+    void loadMessagingState();
   }, [
     pathname,
     user,
-    loadUnreadMessages,
+    loadMessagingState,
   ]);
 
   /*

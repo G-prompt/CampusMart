@@ -13,6 +13,7 @@ import type {
 
 import {
   getConversationAccess,
+  markConversationDelivered,
   markConversationRead,
   MessagingError,
   sendConversationMessage,
@@ -28,13 +29,15 @@ import {
  * CAMPUSMART MESSAGING CONTROLLER
  * =======================================================
  *
- * Public responsibilities:
+ * Responsibilities:
  *
  * - Inbox
  * - Unread counts
  * - Thread history
  * - Start conversation
  * - Send message
+ * - Reply to message
+ * - Mark delivered
  * - Mark read
  *
  * Privacy:
@@ -48,8 +51,7 @@ import {
  * - private pickup data
  *
  * Buyer phone access after paid + seller-confirmed order
- * remains part of the protected ORDER flow, not the
- * generic messaging API.
+ * remains part of the protected ORDER flow.
  */
 
 /*
@@ -104,12 +106,6 @@ function sendMessagingError(
   res: Response,
   error: unknown
 ) {
-  /*
-   * -----------------------------------------------
-   * TEMPORARY MESSAGING RESTRICTION
-   * -----------------------------------------------
-   */
-
   if (
     error instanceof
     MessagingRestrictionError
@@ -132,12 +128,6 @@ function sendMessagingError(
           error.restrictedUntil,
       });
   }
-
-  /*
-   * -----------------------------------------------
-   * MESSAGING BUSINESS RULE
-   * -----------------------------------------------
-   */
 
   if (
     error instanceof
@@ -202,8 +192,6 @@ function sendMessagingError(
  * =======================================================
  * SAFE PARTICIPANT RESPONSE
  * =======================================================
- *
- * Do not add phone/email here.
  */
 
 function participantResponse(
@@ -217,7 +205,9 @@ function participantResponse(
     university:
       | {
           id: string;
+
           name: string;
+
           shortName: string;
         }
       | null;
@@ -357,20 +347,51 @@ function parseOptionalProductId(
 
 /*
  * =======================================================
+ * OPTIONAL RECEIPT MESSAGE ID
+ * =======================================================
+ */
+
+function parseOptionalReceiptMessageId(
+  value: unknown
+) {
+  if (
+    value ===
+      undefined ||
+    value ===
+      null ||
+    value ===
+      ""
+  ) {
+    return null;
+  }
+
+  if (
+    typeof value !==
+    "string"
+  ) {
+    throw new MessagingError(
+      "Receipt message ID must be a string.",
+      400,
+      "INVALID_RECEIPT_MESSAGE_ID"
+    );
+  }
+
+  const messageId =
+    value.trim();
+
+  if (
+    !messageId
+  ) {
+    return null;
+  }
+
+  return messageId;
+}
+
+/*
+ * =======================================================
  * GET INBOX
  * =======================================================
- *
- * GET /api/messages/conversations
- *
- * Returns conversations where the current user is either
- * the buyer side or seller side.
- *
- * Each row includes:
- *
- * - safe other-party identity
- * - context
- * - latest message
- * - unread count
  */
 
 export async function getMessagingInbox(
@@ -434,6 +455,12 @@ export async function getMessagingInbox(
             true,
 
           orderId:
+            true,
+
+          buyerLastDeliveredAt:
+            true,
+
+          vendorLastDeliveredAt:
             true,
 
           buyerLastReadAt:
@@ -745,6 +772,22 @@ export async function getMessagingInbox(
 
               unreadCount,
 
+              buyerLastDeliveredAt:
+                conversation
+                  .buyerLastDeliveredAt,
+
+              vendorLastDeliveredAt:
+                conversation
+                  .vendorLastDeliveredAt,
+
+              buyerLastReadAt:
+                conversation
+                  .buyerLastReadAt,
+
+              vendorLastReadAt:
+                conversation
+                  .vendorLastReadAt,
+
               lastMessageAt:
                 conversation.lastMessageAt,
 
@@ -792,14 +835,6 @@ export async function getMessagingInbox(
  * =======================================================
  * GET TOTAL UNREAD COUNT
  * =======================================================
- *
- * GET /api/messages/unread-count
- *
- * Useful for:
- *
- * - navigation badge
- * - account menu badge
- * - future notification indicator
  */
 
 export async function getMessagingUnreadCount(
@@ -922,14 +957,6 @@ export async function getMessagingUnreadCount(
  * =======================================================
  * GET ONE CONVERSATION
  * =======================================================
- *
- * GET /api/messages/conversations/:conversationId
- *
- * Access is checked before any content is returned.
- *
- * Reading the thread does NOT automatically mark it read.
- * The frontend should call the dedicated mark-read route
- * after successfully displaying the conversation.
  */
 
 export async function getMessagingConversation(
@@ -988,6 +1015,12 @@ export async function getMessagingConversation(
             true,
 
           orderId:
+            true,
+
+          buyerLastDeliveredAt:
+            true,
+
+          vendorLastDeliveredAt:
             true,
 
           buyerLastReadAt:
@@ -1142,7 +1175,32 @@ export async function getMessagingConversation(
               body:
                 true,
 
+              replyToMessageId:
+                true,
+
+              replyToMessage: {
+                select: {
+                  id:
+                    true,
+
+                  senderId:
+                    true,
+
+                  body:
+                    true,
+
+                  deletedAt:
+                    true,
+
+                  createdAt:
+                    true,
+                },
+              },
+
               editedAt:
+                true,
+
+              deletedAt:
                 true,
 
               createdAt:
@@ -1183,8 +1241,8 @@ export async function getMessagingConversation(
     }
 
     /*
-     * Query newest first for an efficient limit, then
-     * reverse for normal chat display.
+     * Query newest first for the database limit, then
+     * reverse into normal chronological chat order.
      */
 
     const messages =
@@ -1203,8 +1261,58 @@ export async function getMessagingConversation(
             body:
               message.body,
 
+            replyToMessageId:
+              message
+                .replyToMessageId,
+
+            /*
+             * Only sanitized stored message bodies are
+             * ever returned here.
+             *
+             * If the original message was later
+             * soft-deleted, don't expose its old body in
+             * the reply preview.
+             */
+
+            replyToMessage:
+              message.replyToMessage
+                ? {
+                    id:
+                      message
+                        .replyToMessage
+                        .id,
+
+                    senderId:
+                      message
+                        .replyToMessage
+                        .senderId,
+
+                    body:
+                      message
+                        .replyToMessage
+                        .deletedAt
+                        ? null
+                        : message
+                            .replyToMessage
+                            .body,
+
+                    deletedAt:
+                      message
+                        .replyToMessage
+                        .deletedAt,
+
+                    createdAt:
+                      message
+                        .replyToMessage
+                        .createdAt,
+                  }
+                : null,
+
             editedAt:
               message.editedAt,
+
+            deletedAt:
+              message.deletedAt,
 
             createdAt:
               message.createdAt,
@@ -1307,15 +1415,23 @@ export async function getMessagingConversation(
                     .product
                     .title,
 
-                description:
+                image:
                   conversation
                     .product
-                    .description,
+                    .images[
+                    0
+                  ] ??
+                  null,
 
                 images:
                   conversation
                     .product
                     .images,
+
+                description:
+                  conversation
+                    .product
+                    .description,
 
                 price:
                   conversation
@@ -1366,6 +1482,22 @@ export async function getMessagingConversation(
 
         unreadCount,
 
+        buyerLastDeliveredAt:
+          conversation
+            .buyerLastDeliveredAt,
+
+        vendorLastDeliveredAt:
+          conversation
+            .vendorLastDeliveredAt,
+
+        buyerLastReadAt:
+          conversation
+            .buyerLastReadAt,
+
+        vendorLastReadAt:
+          conversation
+            .vendorLastReadAt,
+
         lastMessageAt:
           conversation.lastMessageAt,
 
@@ -1392,37 +1524,6 @@ export async function getMessagingConversation(
  * =======================================================
  * START CONVERSATION
  * =======================================================
- *
- * POST /api/messages/conversations
- *
- * Body examples:
- *
- * LISTING:
- *
- * {
- *   "contextType": "listing",
- *   "productId": 42,
- *   "body": "Is this still available?"
- * }
- *
- * GENERAL:
- *
- * {
- *   "contextType": "general",
- *   "vendorId": "<seller uuid>",
- *   "body": "Hi, I wanted to ask about your shop."
- * }
- *
- * ORDER:
- *
- * {
- *   "contextType": "order",
- *   "orderId": "<order uuid>",
- *   "vendorId": "<seller uuid>",
- *   "body": "What time should we meet?"
- * }
- *
- * For a single-seller order, vendorId can be omitted.
  */
 
 export async function startMessagingConversation(
@@ -1522,11 +1623,30 @@ export async function startMessagingConversation(
 
 /*
  * =======================================================
- * SEND MESSAGE
+ * SEND MESSAGE / REPLY
  * =======================================================
  *
  * POST
  * /api/messages/conversations/:conversationId/messages
+ *
+ * Normal message:
+ *
+ * {
+ *   "body": "Is this still available?"
+ * }
+ *
+ * Reply:
+ *
+ * {
+ *   "body": "Yes, that's the one I mean.",
+ *   "replyToMessageId": "<message uuid>"
+ * }
+ *
+ * Reply-target validation happens in messaging.service:
+ *
+ * - target must exist
+ * - target must be in this conversation
+ * - target must not be deleted
  */
 
 export async function sendMessagingMessage(
@@ -1572,6 +1692,10 @@ export async function sendMessagingMessage(
 
         body:
           req.body?.body,
+
+        replyToMessageId:
+          req.body
+            ?.replyToMessageId,
       });
 
     return res
@@ -1608,11 +1732,84 @@ export async function sendMessagingMessage(
 
 /*
  * =======================================================
+ * MARK DELIVERED
+ * =======================================================
+ */
+
+export async function markMessagingConversationDelivered(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  const user =
+    requireControllerUser(
+      req,
+      res
+    );
+
+  if (
+    !user
+  ) {
+    return;
+  }
+
+  try {
+    const conversationId =
+      String(
+        req.params
+          .conversationId ??
+          ""
+      ).trim();
+
+    if (
+      !conversationId
+    ) {
+      throw new MessagingError(
+        "Conversation ID is required.",
+        400,
+        "CONVERSATION_ID_REQUIRED"
+      );
+    }
+
+    const messageId =
+      parseOptionalReceiptMessageId(
+        req.body
+          ?.messageId
+      );
+
+    const result =
+      await markConversationDelivered(
+        conversationId,
+        user.id,
+        messageId
+      );
+
+    return res.json({
+      success:
+        true,
+
+      conversationId:
+        result.conversationId,
+
+      deliveredAt:
+        result.deliveredAt,
+
+      deliveredThroughMessageId:
+        result.deliveredThroughMessageId,
+    });
+  } catch (
+    error
+  ) {
+    return sendMessagingError(
+      res,
+      error
+    );
+  }
+}
+
+/*
+ * =======================================================
  * MARK READ
  * =======================================================
- *
- * POST
- * /api/messages/conversations/:conversationId/read
  */
 
 export async function markMessagingConversationRead(
@@ -1649,10 +1846,17 @@ export async function markMessagingConversationRead(
       );
     }
 
+    const messageId =
+      parseOptionalReceiptMessageId(
+        req.body
+          ?.messageId
+      );
+
     const result =
       await markConversationRead(
         conversationId,
-        user.id
+        user.id,
+        messageId
       );
 
     return res.json({
@@ -1662,8 +1866,14 @@ export async function markMessagingConversationRead(
       conversationId:
         result.conversationId,
 
+      deliveredAt:
+        result.deliveredAt,
+
       readAt:
         result.readAt,
+
+      readThroughMessageId:
+        result.readThroughMessageId,
     });
   } catch (
     error

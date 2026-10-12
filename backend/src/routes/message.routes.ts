@@ -4,6 +4,7 @@ import {
   getMessagingConversation,
   getMessagingInbox,
   getMessagingUnreadCount,
+  markMessagingConversationDelivered,
   markMessagingConversationRead,
   sendMessagingMessage,
   startMessagingConversation,
@@ -23,7 +24,8 @@ const router =
  *
  * All messaging routes require authentication.
  *
- * Individual conversation membership and messaging
+ * Individual conversation membership, moderation,
+ * delivery receipts, read receipts and messaging
  * restrictions are enforced deeper in the messaging
  * service/controller layer.
  */
@@ -52,11 +54,11 @@ router.get(
  *
  * Keep this ABOVE any dynamic conversation route.
  *
- * Used later for:
+ * Used for:
  *
  * - navbar badge
  * - account menu
- * - notification indicators
+ * - future notification indicators
  */
 router.get(
   "/unread-count",
@@ -107,8 +109,45 @@ router.post(
 
 /*
  * -------------------------------------------------------
+ * MARK DELIVERED
+ * -------------------------------------------------------
+ *
+ * The recipient's CampusMart client calls this after it
+ * has actually received the newest incoming message.
+ *
+ * Optional body:
+ *
+ * {
+ *   "messageId": "<newest incoming message id>"
+ * }
+ *
+ * This gives us a genuine distinction between:
+ *
+ * Sent
+ * Delivered
+ * Viewed
+ *
+ * Delivery acknowledgement remains available even if the
+ * user is temporarily restricted from sending.
+ */
+router.post(
+  "/conversations/:conversationId/delivered",
+  requireAuth,
+  markMessagingConversationDelivered
+);
+
+/*
+ * -------------------------------------------------------
  * MARK READ
  * -------------------------------------------------------
+ *
+ * Optional body:
+ *
+ * {
+ *   "messageId": "<newest incoming message id>"
+ * }
+ *
+ * Reading implies delivery.
  *
  * Reading remains available even when the user is
  * temporarily restricted from sending.

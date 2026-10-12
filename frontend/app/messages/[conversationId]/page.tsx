@@ -33,6 +33,9 @@ const API_URL =
 const MESSAGE_MAX_LENGTH =
   2000;
 
+const NEAR_BOTTOM_DISTANCE =
+  120;
+
 type ConversationContextType =
   | "general"
   | "listing"
@@ -112,6 +115,14 @@ type ConversationDetails = {
   otherParty:
     ConversationParticipant;
 
+  buyerLastDeliveredAt?:
+    | string
+    | null;
+
+  vendorLastDeliveredAt?:
+    | string
+    | null;
+
   buyerLastReadAt?:
     | string
     | null;
@@ -127,6 +138,22 @@ type ConversationDetails = {
   updatedAt: string;
 };
 
+type ReplyPreview = {
+  id: string;
+
+  senderId: string;
+
+  body:
+    | string
+    | null;
+
+  deletedAt?:
+    | string
+    | null;
+
+  createdAt: string;
+};
+
 type Message = {
   id: string;
 
@@ -137,9 +164,18 @@ type Message = {
 
   body: string;
 
+  replyToMessageId?:
+    | string
+    | null;
+
+  replyToMessage?:
+    | ReplyPreview
+    | null;
+
   createdAt: string;
 
-  updatedAt?: string;
+  updatedAt?:
+    string;
 
   editedAt:
     | string
@@ -180,6 +216,17 @@ type Feedback = {
 
   message: string;
 };
+
+type MessageReceiptStatus =
+  | "sent"
+  | "received"
+  | "viewed";
+
+/*
+ * =======================================================
+ * GENERAL HELPERS
+ * =======================================================
+ */
 
 function shortOrderId(
   value: string
@@ -436,6 +483,145 @@ function getFeedbackClasses(
   }
 }
 
+function getReplyBody(
+  body:
+    string | null | undefined
+) {
+  if (
+    !body
+  ) {
+    return "Original message unavailable.";
+  }
+
+  return body;
+}
+
+/*
+ * =======================================================
+ * RECEIPT HELPERS
+ * =======================================================
+ */
+
+function receiptCoversMessage(
+  receiptTimestamp:
+    string | null | undefined,
+  messageTimestamp:
+    string
+) {
+  if (
+    !receiptTimestamp
+  ) {
+    return false;
+  }
+
+  const receiptTime =
+    new Date(
+      receiptTimestamp
+    ).getTime();
+
+  const messageTime =
+    new Date(
+      messageTimestamp
+    ).getTime();
+
+  if (
+    !Number.isFinite(
+      receiptTime
+    ) ||
+    !Number.isFinite(
+      messageTime
+    )
+  ) {
+    return false;
+  }
+
+  return (
+    receiptTime >=
+    messageTime
+  );
+}
+
+function getMessageReceiptStatus(
+  message:
+    Message,
+  conversation:
+    ConversationDetails
+): MessageReceiptStatus {
+  const recipientDeliveredAt =
+    conversation.side ===
+    "buyer"
+      ? conversation
+          .vendorLastDeliveredAt
+      : conversation
+          .buyerLastDeliveredAt;
+
+  const recipientReadAt =
+    conversation.side ===
+    "buyer"
+      ? conversation
+          .vendorLastReadAt
+      : conversation
+          .buyerLastReadAt;
+
+  if (
+    receiptCoversMessage(
+      recipientReadAt,
+      message.createdAt
+    )
+  ) {
+    return "viewed";
+  }
+
+  if (
+    receiptCoversMessage(
+      recipientDeliveredAt,
+      message.createdAt
+    )
+  ) {
+    return "received";
+  }
+
+  return "sent";
+}
+
+function getLatestIncomingMessage(
+  messages:
+    Message[],
+  currentUserId:
+    string
+) {
+  for (
+    let index =
+      messages.length -
+      1;
+    index >=
+    0;
+    index -=
+      1
+  ) {
+    const message =
+      messages[
+        index
+      ];
+
+    if (
+      message &&
+      message.senderId !==
+        currentUserId
+    ) {
+      return message;
+    }
+  }
+
+  return null;
+}
+
+/*
+ * =======================================================
+ * PAGE
+ * =======================================================
+ */
+
 export default function Page() {
   const params =
     useParams();
@@ -448,6 +634,10 @@ export default function Page() {
     openAuth,
   } =
     useAuth();
+
+  const currentUserId =
+    user?.id ??
+    null;
 
   const conversationId =
     typeof params
@@ -482,6 +672,26 @@ export default function Page() {
   ] =
     useState(
       ""
+    );
+
+  const [
+    replyingTo,
+    setReplyingTo,
+  ] =
+    useState<
+      Message | null
+    >(
+      null
+    );
+
+  const [
+    highlightedMessageId,
+    setHighlightedMessageId,
+  ] =
+    useState<
+      string | null
+    >(
+      null
     );
 
   const [
@@ -528,15 +738,341 @@ export default function Page() {
       null
     );
 
-  const messageEndRef =
+  const [
+    newMessagesBelow,
+    setNewMessagesBelow,
+  ] =
+    useState(
+      false
+    );
+
+  /*
+   * =====================================================
+   * REFS
+   * =====================================================
+   */
+
+  const messageListRef =
     useRef<HTMLDivElement | null>(
       null
     );
 
-  const initialLoadCompleteRef =
+  const textareaRef =
+    useRef<HTMLTextAreaElement | null>(
+      null
+    );
+
+  const initialScrollDoneRef =
     useRef(
       false
     );
+
+  const lastRenderedMessageIdRef =
+    useRef<
+      string | null
+    >(
+      null
+    );
+
+  const nearBottomRef =
+    useRef(
+      true
+    );
+
+  const forceScrollToBottomRef =
+    useRef(
+      false
+    );
+
+  const lastReadAckMessageIdRef =
+    useRef<
+      string | null
+    >(
+      null
+    );
+
+  const highlightTimerRef =
+    useRef<
+      ReturnType<
+        typeof setTimeout
+      > | null
+    >(
+      null
+    );
+
+  /*
+   * =====================================================
+   * RESET THREAD-LOCAL STATE
+   * =====================================================
+   */
+
+  useEffect(() => {
+    initialScrollDoneRef.current =
+      false;
+
+    lastRenderedMessageIdRef.current =
+      null;
+
+    nearBottomRef.current =
+      true;
+
+    forceScrollToBottomRef.current =
+      false;
+
+    lastReadAckMessageIdRef.current =
+      null;
+
+    setNewMessagesBelow(
+      false
+    );
+
+    setReplyingTo(
+      null
+    );
+
+    setHighlightedMessageId(
+      null
+    );
+  }, [
+    conversationId,
+  ]);
+
+  /*
+   * =====================================================
+   * CLEAN HIGHLIGHT TIMER
+   * =====================================================
+   */
+
+  useEffect(() => {
+    return () => {
+      if (
+        highlightTimerRef.current
+      ) {
+        clearTimeout(
+          highlightTimerRef.current
+        );
+      }
+    };
+  }, []);
+
+  /*
+   * =====================================================
+   * KEEP REPLY SELECTION VALID
+   * =====================================================
+   */
+
+  useEffect(() => {
+    if (
+      !replyingTo
+    ) {
+      return;
+    }
+
+    const stillExists =
+      messages.some(
+        (
+          message
+        ) =>
+          message.id ===
+          replyingTo.id &&
+          !message.deletedAt
+      );
+
+    if (
+      !stillExists
+    ) {
+      setReplyingTo(
+        null
+      );
+    }
+  }, [
+    messages,
+    replyingTo,
+  ]);
+
+  /*
+   * =====================================================
+   * SCROLL HELPERS
+   * =====================================================
+   */
+
+  const scrollToLatest =
+    useCallback(
+      (
+        behavior:
+          ScrollBehavior =
+          "smooth"
+      ) => {
+        const element =
+          messageListRef.current;
+
+        if (
+          !element
+        ) {
+          return;
+        }
+
+        element.scrollTo({
+          top:
+            element.scrollHeight,
+
+          behavior,
+        });
+
+        nearBottomRef.current =
+          true;
+
+        setNewMessagesBelow(
+          false
+        );
+      },
+      []
+    );
+
+  const scrollToMessage =
+    useCallback(
+      (
+        messageId:
+          string
+      ) => {
+        const container =
+          messageListRef.current;
+
+        const target =
+          document.getElementById(
+            `message-${messageId}`
+          );
+
+        if (
+          !container ||
+          !target
+        ) {
+          return;
+        }
+
+        const containerRect =
+          container.getBoundingClientRect();
+
+        const targetRect =
+          target.getBoundingClientRect();
+
+        const targetTop =
+          container.scrollTop +
+          (
+            targetRect.top -
+            containerRect.top
+          ) -
+          (
+            container.clientHeight /
+            2
+          ) +
+          (
+            targetRect.height /
+            2
+          );
+
+        container.scrollTo({
+          top:
+            Math.max(
+              0,
+              targetTop
+            ),
+
+          behavior:
+            "smooth",
+        });
+
+        setHighlightedMessageId(
+          messageId
+        );
+
+        if (
+          highlightTimerRef.current
+        ) {
+          clearTimeout(
+            highlightTimerRef.current
+          );
+        }
+
+        highlightTimerRef.current =
+          setTimeout(
+            () => {
+              setHighlightedMessageId(
+                null
+              );
+
+              highlightTimerRef.current =
+                null;
+            },
+            1500
+          );
+      },
+      []
+    );
+
+  /*
+   * =====================================================
+   * REPLY HELPERS
+   * =====================================================
+   */
+
+  const startReply =
+    (
+      message:
+        Message
+    ) => {
+      setReplyingTo(
+        message
+      );
+
+      setFeedback(
+        null
+      );
+
+      window.requestAnimationFrame(
+        () => {
+          textareaRef.current
+            ?.focus();
+        }
+      );
+    };
+
+  const cancelReply =
+    () => {
+      setReplyingTo(
+        null
+      );
+
+      window.requestAnimationFrame(
+        () => {
+          textareaRef.current
+            ?.focus();
+        }
+      );
+    };
+
+  const getReplyAuthorName =
+    (
+      senderId:
+        string
+    ) => {
+      if (
+        senderId ===
+        currentUserId
+      ) {
+        return "You";
+      }
+
+      if (
+        conversation
+      ) {
+        return getConversationName(
+          conversation
+        );
+      }
+
+      return "Message";
+    };
 
   /*
    * =====================================================
@@ -546,10 +1082,21 @@ export default function Page() {
 
   const markConversationRead =
     useCallback(
-      async () => {
+      async (
+        messageId?:
+          string | null
+      ) => {
         if (
           !conversationId ||
-          !user
+          !currentUserId
+        ) {
+          return;
+        }
+
+        if (
+          messageId &&
+          lastReadAckMessageIdRef.current ===
+            messageId
         ) {
           return;
         }
@@ -566,19 +1113,99 @@ export default function Page() {
         }
 
         try {
-          await fetch(
-            `${API_URL}/api/messages/conversations/${conversationId}/read`,
-            {
-              method:
-                "POST",
+          const response =
+            await fetch(
+              `${API_URL}/api/messages/conversations/${conversationId}/read`,
+              {
+                method:
+                  "POST",
 
-              headers: {
-                Authorization:
-                  `Bearer ${token}`,
-              },
+                headers: {
+                  "Content-Type":
+                    "application/json",
 
-              cache:
-                "no-store",
+                  Authorization:
+                    `Bearer ${token}`,
+                },
+
+                body:
+                  JSON.stringify(
+                    messageId
+                      ? {
+                          messageId,
+                        }
+                      : {}
+                  ),
+
+                cache:
+                  "no-store",
+              }
+            );
+
+          if (
+            !response.ok
+          ) {
+            return;
+          }
+
+          const data =
+            await response.json();
+
+          if (
+            !data.success
+          ) {
+            return;
+          }
+
+          if (
+            messageId
+          ) {
+            lastReadAckMessageIdRef.current =
+              messageId;
+          }
+
+          setConversation(
+            (
+              current
+            ) => {
+              if (
+                !current
+              ) {
+                return current;
+              }
+
+              if (
+                current.side ===
+                "buyer"
+              ) {
+                return {
+                  ...current,
+
+                  buyerLastDeliveredAt:
+                    data.deliveredAt ??
+                    current
+                      .buyerLastDeliveredAt,
+
+                  buyerLastReadAt:
+                    data.readAt ??
+                    current
+                      .buyerLastReadAt,
+                };
+              }
+
+              return {
+                ...current,
+
+                vendorLastDeliveredAt:
+                  data.deliveredAt ??
+                  current
+                    .vendorLastDeliveredAt,
+
+                vendorLastReadAt:
+                  data.readAt ??
+                  current
+                    .vendorLastReadAt,
+              };
             }
           );
         } catch (
@@ -592,7 +1219,90 @@ export default function Page() {
       },
       [
         conversationId,
-        user,
+        currentUserId,
+      ]
+    );
+
+  /*
+   * =====================================================
+   * MARK LATEST INCOMING AS VIEWED
+   * =====================================================
+   */
+
+  const markLatestIncomingAsRead =
+    useCallback(
+      () => {
+        if (
+          !currentUserId
+        ) {
+          return;
+        }
+
+        const latestIncoming =
+          getLatestIncomingMessage(
+            messages,
+            currentUserId
+          );
+
+        if (
+          !latestIncoming
+        ) {
+          return;
+        }
+
+        void markConversationRead(
+          latestIncoming.id
+        );
+      },
+      [
+        messages,
+        currentUserId,
+        markConversationRead,
+      ]
+    );
+
+  /*
+   * =====================================================
+   * SCROLL EVENT
+   * =====================================================
+   */
+
+  const handleMessageListScroll =
+    useCallback(
+      () => {
+        const element =
+          messageListRef.current;
+
+        if (
+          !element
+        ) {
+          return;
+        }
+
+        const distanceFromBottom =
+          element.scrollHeight -
+          element.scrollTop -
+          element.clientHeight;
+
+        const nearBottom =
+          distanceFromBottom <=
+          NEAR_BOTTOM_DISTANCE;
+
+        nearBottomRef.current =
+          nearBottom;
+
+        if (
+          nearBottom
+        ) {
+          setNewMessagesBelow(
+            false
+          );
+
+          markLatestIncomingAsRead();
+        }
+      },
+      [
+        markLatestIncomingAsRead,
       ]
     );
 
@@ -615,7 +1325,7 @@ export default function Page() {
       ) => {
         if (
           !conversationId ||
-          !user
+          !currentUserId
         ) {
           return;
         }
@@ -681,17 +1391,25 @@ export default function Page() {
           );
         }
 
-        setConversation(
+        const nextConversation:
+          ConversationDetails | null =
           data.conversation ??
-            null
-        );
+          null;
 
-        setMessages(
+        const nextMessages:
+          Message[] =
           Array.isArray(
             data.messages
           )
             ? data.messages
-            : []
+            : [];
+
+        setConversation(
+          nextConversation
+        );
+
+        setMessages(
+          nextMessages
         );
 
         if (
@@ -702,11 +1420,40 @@ export default function Page() {
           );
         }
 
-        await markConversationRead();
+        /*
+         * Initial thread open:
+         * mark latest incoming viewed.
+         *
+         * Silent polling:
+         * only mark viewed if the user is already near
+         * the newest messages.
+         */
+
+        const shouldMarkRead =
+          !options?.silent ||
+          nearBottomRef.current;
+
+        if (
+          shouldMarkRead
+        ) {
+          const latestIncoming =
+            getLatestIncomingMessage(
+              nextMessages,
+              currentUserId
+            );
+
+          if (
+            latestIncoming
+          ) {
+            await markConversationRead(
+              latestIncoming.id
+            );
+          }
+        }
       },
       [
         conversationId,
-        user,
+        currentUserId,
         markConversationRead,
       ]
     );
@@ -719,7 +1466,7 @@ export default function Page() {
 
   useEffect(() => {
     if (
-      !user
+      !currentUserId
     ) {
       setLoading(
         false
@@ -760,9 +1507,6 @@ export default function Page() {
             signal:
               controller.signal,
           });
-
-          initialLoadCompleteRef.current =
-            true;
         } catch (
           loadError
         ) {
@@ -804,99 +1548,225 @@ export default function Page() {
       controller.abort();
     };
   }, [
-    user,
+    currentUserId,
     conversationId,
     loadConversation,
   ]);
 
   /*
    * =====================================================
-   * SIMPLE V1 POLLING
+   * AUTOMATIC V1 SYNC
    * =====================================================
-   *
-   * This is intentionally polling, not fake realtime.
-   *
-   * Later we can replace this with WebSockets or SSE
-   * without changing the chat UI.
    */
 
   useEffect(() => {
     if (
-      !user ||
+      !currentUserId ||
       !conversationId
     ) {
       return;
     }
 
+    const refreshSilently =
+      () => {
+        if (
+          document.visibilityState !==
+            "visible"
+        ) {
+          return;
+        }
+
+        void loadConversation({
+          silent:
+            true,
+        }).catch(
+          (
+            pollingError
+          ) => {
+            console.warn(
+              "Conversation sync error:",
+              pollingError
+            );
+          }
+        );
+      };
+
     const interval =
       window.setInterval(
-        () => {
-          if (
-            document.visibilityState !==
-            "visible"
-          ) {
-            return;
-          }
-
-          void loadConversation({
-            silent:
-              true,
-          }).catch(
-            (
-              pollingError
-            ) => {
-              console.warn(
-                "Conversation polling error:",
-                pollingError
-              );
-            }
-          );
-        },
+        refreshSilently,
         5000
       );
+
+    const handleFocus =
+      () => {
+        refreshSilently();
+      };
+
+    const handleVisibilityChange =
+      () => {
+        if (
+          document.visibilityState ===
+          "visible"
+        ) {
+          refreshSilently();
+        }
+      };
+
+    window.addEventListener(
+      "focus",
+      handleFocus
+    );
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
 
     return () => {
       window.clearInterval(
         interval
       );
+
+      window.removeEventListener(
+        "focus",
+        handleFocus
+      );
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
     };
   }, [
-    user,
+    currentUserId,
     conversationId,
     loadConversation,
   ]);
 
   /*
    * =====================================================
-   * SCROLL TO LATEST
+   * SMART AUTO-SCROLL
    * =====================================================
    */
 
   useEffect(() => {
     if (
+      loading ||
+      !conversation ||
+      !currentUserId ||
       messages.length ===
-      0
+        0
     ) {
       return;
     }
 
-    messageEndRef.current
-      ?.scrollIntoView({
-        behavior:
-          initialLoadCompleteRef.current
-            ? "smooth"
-            : "auto",
+    const latestMessage =
+      messages[
+        messages.length -
+          1
+      ];
 
-        block:
-          "end",
-      });
+    if (
+      !latestMessage
+    ) {
+      return;
+    }
+
+    const latestMessageId =
+      latestMessage.id;
+
+    if (
+      !initialScrollDoneRef.current
+    ) {
+      initialScrollDoneRef.current =
+        true;
+
+      lastRenderedMessageIdRef.current =
+        latestMessageId;
+
+      window.requestAnimationFrame(
+        () => {
+          scrollToLatest(
+            "auto"
+          );
+        }
+      );
+
+      return;
+    }
+
+    const previousLatestMessageId =
+      lastRenderedMessageIdRef.current;
+
+    lastRenderedMessageIdRef.current =
+      latestMessageId;
+
+    if (
+      previousLatestMessageId ===
+      latestMessageId
+    ) {
+      return;
+    }
+
+    const ownMessage =
+      latestMessage.senderId ===
+      currentUserId;
+
+    const shouldAutoScroll =
+      forceScrollToBottomRef.current ||
+      ownMessage ||
+      nearBottomRef.current;
+
+    forceScrollToBottomRef.current =
+      false;
+
+    if (
+      shouldAutoScroll
+    ) {
+      window.requestAnimationFrame(
+        () => {
+          scrollToLatest(
+            "smooth"
+          );
+        }
+      );
+
+      return;
+    }
+
+    setNewMessagesBelow(
+      true
+    );
   }, [
     messages,
+    loading,
+    conversation,
+    currentUserId,
+    scrollToLatest,
   ]);
 
   /*
    * =====================================================
-   * SEND MESSAGE
+   * JUMP TO NEW MESSAGES
+   * =====================================================
+   */
+
+  const handleJumpToLatest =
+    () => {
+      scrollToLatest(
+        "smooth"
+      );
+
+      window.requestAnimationFrame(
+        () => {
+          markLatestIncomingAsRead();
+        }
+      );
+    };
+
+  /*
+   * =====================================================
+   * SEND MESSAGE / REPLY
    * =====================================================
    */
 
@@ -908,7 +1778,7 @@ export default function Page() {
       event.preventDefault();
 
       if (
-        !user ||
+        !currentUserId ||
         !conversationId ||
         sending
       ) {
@@ -985,6 +1855,13 @@ export default function Page() {
               body:
                 JSON.stringify({
                   body,
+
+                  ...(replyingTo
+                    ? {
+                        replyToMessageId:
+                          replyingTo.id,
+                      }
+                    : {}),
                 }),
             }
           );
@@ -1024,6 +1901,25 @@ export default function Page() {
                   ? `Messaging is temporarily restricted until ${formattedUntil}. You can still read your conversations.`
                   : data.message ||
                     "Messaging is temporarily restricted. You can still read your conversations.",
+            });
+
+            return;
+          }
+
+          if (
+            data.code ===
+            "REPLY_MESSAGE_NOT_FOUND"
+          ) {
+            setReplyingTo(
+              null
+            );
+
+            setFeedback({
+              type:
+                "warning",
+
+              message:
+                "The message you were replying to is no longer available. Please choose another message.",
             });
 
             return;
@@ -1096,6 +1992,17 @@ export default function Page() {
           ""
         );
 
+        setReplyingTo(
+          null
+        );
+
+        forceScrollToBottomRef.current =
+          true;
+
+        setNewMessagesBelow(
+          false
+        );
+
         if (
           data.sentMessage
         ) {
@@ -1125,11 +2032,6 @@ export default function Page() {
             }
           );
         }
-
-        /*
-         * Refresh from the canonical backend state after
-         * sending. This also picks up any sanitized body.
-         */
 
         await loadConversation({
           silent:
@@ -1373,14 +2275,14 @@ export default function Page() {
       title="Messages"
       description="Private CampusMart conversation."
     >
-      <section className="mx-auto flex min-h-[70vh] max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section className="mx-auto flex h-[calc(100dvh-11rem)] min-h-[500px] max-h-[820px] max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {/*
          * =================================================
          * HEADER
          * =================================================
          */}
 
-        <header className="border-b border-slate-200 bg-white p-4 sm:p-5">
+        <header className="shrink-0 border-b border-slate-200 bg-white p-4 sm:p-5">
           <div className="flex items-center gap-3">
             <Link
               href="/messages"
@@ -1435,12 +2337,6 @@ export default function Page() {
               </p>
             </div>
           </div>
-
-          {/*
-           * ===============================================
-           * CONTEXT CARD
-           * ===============================================
-           */}
 
           {conversation.contextType ===
             "listing" &&
@@ -1550,122 +2446,275 @@ export default function Page() {
          * =================================================
          */}
 
-        <div className="flex-1 overflow-y-auto bg-slate-50/60 px-4 py-5 sm:px-6">
-          {messages.length ===
-          0 ? (
-            <div className="flex min-h-72 items-center justify-center text-center">
-              <div>
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">
-                  CM
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={
+              messageListRef
+            }
+            onScroll={
+              handleMessageListScroll
+            }
+            className="h-full overflow-y-auto overscroll-contain bg-slate-50/60 px-4 py-5 sm:px-6"
+          >
+            {messages.length ===
+            0 ? (
+              <div className="flex min-h-full items-center justify-center text-center">
+                <div>
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-xs font-black text-white">
+                    CM
+                  </div>
+
+                  <h2 className="mt-4 text-lg font-black text-slate-950">
+                    Start the conversation
+                  </h2>
+
+                  <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
+                    Ask about the
+                    product, order or
+                    campus handoff here.
+                  </p>
                 </div>
-
-                <h2 className="mt-4 text-lg font-black text-slate-950">
-                  Start the conversation
-                </h2>
-
-                <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
-                  Ask about the
-                  product, order or
-                  campus handoff here.
-                </p>
               </div>
-            </div>
-          ) : (
-            <div>
-              {messageRows.map(
-                (
-                  row
-                ) => {
-                  const ownMessage =
-                    row.message
-                      .senderId ===
-                    user.id;
+            ) : (
+              <div>
+                {messageRows.map(
+                  (
+                    row
+                  ) => {
+                    const ownMessage =
+                      row.message
+                        .senderId ===
+                      user.id;
 
-                  return (
-                    <div
-                      key={
-                        row.message.id
-                      }
-                    >
-                      {row.showDate ? (
-                        <div className="my-5 flex items-center gap-3">
-                          <div className="h-px flex-1 bg-slate-200" />
+                    const receiptStatus =
+                      ownMessage
+                        ? getMessageReceiptStatus(
+                            row.message,
+                            conversation
+                          )
+                        : null;
 
-                          <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                            {
-                              row.dateLabel
-                            }
-                          </span>
+                    const quotedMessage =
+                      row.message
+                        .replyToMessage;
 
-                          <div className="h-px flex-1 bg-slate-200" />
-                        </div>
-                      ) : null}
-
+                    return (
                       <div
-                        className={`mb-3 flex ${
-                          ownMessage
-                            ? "justify-end"
-                            : "justify-start"
+                        id={`message-${row.message.id}`}
+                        key={
+                          row.message.id
+                        }
+                        className={`rounded-xl transition duration-500 ${
+                          highlightedMessageId ===
+                          row.message.id
+                            ? "bg-amber-100/70 ring-2 ring-amber-200"
+                            : ""
                         }`}
                       >
-                        <div
-                          className={`max-w-[85%] rounded-2xl px-4 py-3 sm:max-w-[72%] ${
-                            ownMessage
-                              ? "rounded-br-md bg-slate-950 text-white"
-                              : "rounded-bl-md border border-slate-200 bg-white text-slate-900"
-                          }`}
-                        >
-                          <p className="whitespace-pre-wrap break-words text-sm leading-6">
-                            {
-                              row.message.body
-                            }
-                          </p>
+                        {row.showDate ? (
+                          <div className="my-5 flex items-center gap-3">
+                            <div className="h-px flex-1 bg-slate-200" />
 
-                          <div
-                            className={`mt-1.5 flex items-center gap-1 text-[10px] ${
-                              ownMessage
-                                ? "justify-end text-slate-400"
-                                : "text-slate-400"
-                            }`}
-                          >
-                            <span>
-                              {formatMessageTime(
-                                row.message
-                                  .createdAt
-                              )}
+                            <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                              {
+                                row.dateLabel
+                              }
                             </span>
 
-                            {row.message
-                              .editedAt ? (
-                              <span>
-                                · edited
-                              </span>
-                            ) : null}
+                            <div className="h-px flex-1 bg-slate-200" />
+                          </div>
+                        ) : null}
+
+                        <div
+                          className={`group mb-3 flex ${
+                            ownMessage
+                              ? "justify-end"
+                              : "justify-start"
+                          }`}
+                        >
+                          <div
+                            className={`flex max-w-[85%] flex-col sm:max-w-[72%] ${
+                              ownMessage
+                                ? "items-end"
+                                : "items-start"
+                            }`}
+                          >
+                            <div
+                              className={`w-full rounded-2xl px-4 py-3 ${
+                                ownMessage
+                                  ? "rounded-br-md bg-slate-950 text-white"
+                                  : "rounded-bl-md border border-slate-200 bg-white text-slate-900"
+                              }`}
+                            >
+                              {row.message
+                                .replyToMessageId ? (
+                                quotedMessage ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      scrollToMessage(
+                                        quotedMessage.id
+                                      )
+                                    }
+                                    className={`mb-2 block w-full rounded-xl border-l-4 px-3 py-2 text-left transition ${
+                                      ownMessage
+                                        ? "border-accent-400 bg-white/10 hover:bg-white/15"
+                                        : "border-slate-400 bg-slate-50 hover:bg-slate-100"
+                                    }`}
+                                  >
+                                    <span
+                                      className={`block text-[10px] font-black ${
+                                        ownMessage
+                                          ? "text-accent-300"
+                                          : "text-slate-600"
+                                      }`}
+                                    >
+                                      {getReplyAuthorName(
+                                        quotedMessage
+                                          .senderId
+                                      )}
+                                    </span>
+
+                                    <span
+                                      className={`mt-0.5 line-clamp-2 block text-xs leading-5 ${
+                                        ownMessage
+                                          ? "text-slate-300"
+                                          : "text-slate-600"
+                                      }`}
+                                    >
+                                      {getReplyBody(
+                                        quotedMessage
+                                          .body
+                                      )}
+                                    </span>
+                                  </button>
+                                ) : (
+                                  <div
+                                    className={`mb-2 rounded-xl border-l-4 px-3 py-2 text-xs ${
+                                      ownMessage
+                                        ? "border-slate-500 bg-white/10 text-slate-400"
+                                        : "border-slate-300 bg-slate-50 text-slate-500"
+                                    }`}
+                                  >
+                                    Original
+                                    message
+                                    unavailable.
+                                  </div>
+                                )
+                              ) : null}
+
+                              <p className="whitespace-pre-wrap break-words text-sm leading-6">
+                                {
+                                  row.message.body
+                                }
+                              </p>
+
+                              <div
+                                className={`mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] ${
+                                  ownMessage
+                                    ? "justify-end text-slate-400"
+                                    : "text-slate-400"
+                                }`}
+                              >
+                                <span>
+                                  {formatMessageTime(
+                                    row.message
+                                      .createdAt
+                                  )}
+                                </span>
+
+                                {row.message
+                                  .editedAt ? (
+                                  <span>
+                                    · edited
+                                  </span>
+                                ) : null}
+
+                                {ownMessage &&
+                                receiptStatus ? (
+                                  <>
+                                    <span>
+                                      ·
+                                    </span>
+
+                                    {receiptStatus ===
+                                    "viewed" ? (
+                                      <span
+                                        className="font-bold text-sky-400"
+                                        title="Viewed"
+                                        aria-label="Viewed"
+                                      >
+                                        ✓✓ Viewed
+                                      </span>
+                                    ) : receiptStatus ===
+                                      "received" ? (
+                                      <span
+                                        className="font-bold text-slate-300"
+                                        title="Received"
+                                        aria-label="Received"
+                                      >
+                                        ✓✓ Received
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className="font-bold text-slate-400"
+                                        title="Sent"
+                                        aria-label="Sent"
+                                      >
+                                        ✓ Sent
+                                      </span>
+                                    )}
+                                  </>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                startReply(
+                                  row.message
+                                )
+                              }
+                              className={`mt-1 px-1 text-[10px] font-bold text-slate-400 transition hover:text-slate-700 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100 ${
+                                ownMessage
+                                  ? "text-right"
+                                  : "text-left"
+                              }`}
+                            >
+                              ↩ Reply
+                            </button>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                }
-              )}
+                    );
+                  }
+                )}
+              </div>
+            )}
+          </div>
 
-              <div
-                ref={
-                  messageEndRef
-                }
-              />
-            </div>
-          )}
+          {newMessagesBelow ? (
+            <button
+              type="button"
+              onClick={
+                handleJumpToLatest
+              }
+              className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-800 shadow-lg transition hover:bg-slate-50"
+            >
+              New messages ↓
+            </button>
+          ) : null}
         </div>
 
         {/*
          * =================================================
-         * MODERATION / RESTRICTION FEEDBACK
+         * FEEDBACK
          * =================================================
          */}
 
         {feedback ? (
-          <div className="border-t border-slate-200 bg-white px-4 pt-3 sm:px-5">
+          <div className="shrink-0 border-t border-slate-200 bg-white px-4 pt-3 sm:px-5">
             <div
               role="alert"
               className={`rounded-xl border px-4 py-3 text-xs font-semibold leading-5 ${getFeedbackClasses(
@@ -1685,7 +2734,7 @@ export default function Page() {
          * =================================================
          */}
 
-        <footer className="border-t border-slate-200 bg-white p-4 sm:p-5">
+        <footer className="shrink-0 border-t border-slate-200 bg-white p-4 sm:p-5">
           {restricted ? (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4">
               <p className="text-sm font-black text-red-800">
@@ -1710,105 +2759,167 @@ export default function Page() {
                 sendMessage
               }
             >
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2 transition focus-within:border-slate-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-100">
-                <textarea
-                  value={
-                    draft
-                  }
-                  onChange={(
-                    event
-                  ) => {
-                    setDraft(
-                      event.target.value
-                    );
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 transition focus-within:border-slate-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-100">
+                {replyingTo ? (
+                  <div className="flex items-start gap-3 border-b border-slate-200 bg-white px-4 py-3">
+                    <div className="min-w-0 flex-1 border-l-4 border-accent-400 pl-3">
+                      <p className="text-[10px] font-black text-slate-700">
+                        Replying
+                        to{" "}
+                        {getReplyAuthorName(
+                          replyingTo
+                            .senderId
+                        )}
+                      </p>
 
-                    if (
-                      feedback
-                    ) {
-                      setFeedback(
-                        null
-                      );
-                    }
-                  }}
-                  onKeyDown={(
-                    event
-                  ) => {
-                    if (
-                      event.key ===
-                        "Enter" &&
-                      !event.shiftKey
-                    ) {
-                      event.preventDefault();
-
-                      if (
-                        draft
-                          .trim()
-                          .length >
-                          0 &&
-                        !sending
-                      ) {
-                        event.currentTarget
-                          .form
-                          ?.requestSubmit();
-                      }
-                    }
-                  }}
-                  maxLength={
-                    MESSAGE_MAX_LENGTH
-                  }
-                  rows={
-                    2
-                  }
-                  disabled={
-                    sending
-                  }
-                  placeholder={`Message ${conversationName}`}
-                  aria-label="Message"
-                  className="max-h-40 min-h-14 w-full resize-none bg-transparent px-3 py-2 text-sm leading-6 text-slate-950 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-
-                <div className="flex items-center justify-between gap-3 px-2 pb-1">
-                  <div>
-                    <p className="text-[10px] font-medium text-slate-400">
-                      Enter to send ·
-                      Shift + Enter for
-                      a new line
-                    </p>
-
-                    {draft.length >
-                    MESSAGE_MAX_LENGTH -
-                      200 ? (
-                      <p
-                        className={`mt-1 text-[10px] font-bold ${
-                          draft.length >=
-                          MESSAGE_MAX_LENGTH
-                            ? "text-red-600"
-                            : "text-amber-600"
-                        }`}
-                      >
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
                         {
-                          draft.length
-                        }
-                        /
-                        {
-                          MESSAGE_MAX_LENGTH
+                          replyingTo.body
                         }
                       </p>
-                    ) : null}
-                  </div>
+                    </div>
 
-                  <button
-                    type="submit"
-                    disabled={
-                      sending ||
-                      !draft.trim()
+                    <button
+                      type="button"
+                      onClick={
+                        cancelReply
+                      }
+                      aria-label="Cancel reply"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-lg font-bold text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="p-2">
+                  <textarea
+                    ref={
+                      textareaRef
                     }
-                    className="shrink-0 rounded-[10px] bg-accent-400 px-5 py-2.5 text-sm font-black text-black transition hover:bg-accent-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {sending
-                      ? "Sending..."
-                      : "Send"}
-                  </button>
+                    value={
+                      draft
+                    }
+                    onChange={(
+                      event
+                    ) => {
+                      setDraft(
+                        event.target.value
+                      );
+
+                      if (
+                        feedback
+                      ) {
+                        setFeedback(
+                          null
+                        );
+                      }
+                    }}
+                    onKeyDown={(
+                      event
+                    ) => {
+                      if (
+                        event.key ===
+                          "Escape" &&
+                        replyingTo
+                      ) {
+                        event.preventDefault();
+
+                        cancelReply();
+
+                        return;
+                      }
+
+                      if (
+                        event.key ===
+                          "Enter" &&
+                        !event.shiftKey
+                      ) {
+                        event.preventDefault();
+
+                        if (
+                          draft
+                            .trim()
+                            .length >
+                            0 &&
+                          !sending
+                        ) {
+                          event.currentTarget
+                            .form
+                            ?.requestSubmit();
+                        }
+                      }
+                    }}
+                    maxLength={
+                      MESSAGE_MAX_LENGTH
+                    }
+                    rows={
+                      2
+                    }
+                    disabled={
+                      sending
+                    }
+                    placeholder={
+                      replyingTo
+                        ? "Write a reply..."
+                        : `Message ${conversationName}`
+                    }
+                    aria-label="Message"
+                    className="max-h-40 min-h-14 w-full resize-none bg-transparent px-3 py-2 text-sm leading-6 text-slate-950 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+
+                  <div className="flex items-center justify-between gap-3 px-2 pb-1">
+                    <div>
+                      <p className="text-[10px] font-medium text-slate-400">
+                        Enter to send ·
+                        Shift + Enter for
+                        a new line
+                      </p>
+
+                      {replyingTo ? (
+                        <p className="mt-1 text-[10px] font-medium text-slate-400">
+                          Esc to cancel
+                          reply
+                        </p>
+                      ) : null}
+
+                      {draft.length >
+                      MESSAGE_MAX_LENGTH -
+                        200 ? (
+                        <p
+                          className={`mt-1 text-[10px] font-bold ${
+                            draft.length >=
+                            MESSAGE_MAX_LENGTH
+                              ? "text-red-600"
+                              : "text-amber-600"
+                          }`}
+                        >
+                          {
+                            draft.length
+                          }
+                          /
+                          {
+                            MESSAGE_MAX_LENGTH
+                          }
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={
+                        sending ||
+                        !draft.trim()
+                      }
+                      className="shrink-0 rounded-[10px] bg-accent-400 px-5 py-2.5 text-sm font-black text-black transition hover:bg-accent-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {sending
+                        ? "Sending..."
+                        : replyingTo
+                          ? "Reply"
+                          : "Send"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </form>
