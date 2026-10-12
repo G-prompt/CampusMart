@@ -1,11 +1,16 @@
-import type { Response } from "express";
+import type {
+  Response,
+} from "express";
 
 import {
   ConversationContextType,
+  Prisma,
   UserRole,
 } from "../generated/prisma/client";
 
-import { prisma } from "../lib/prisma";
+import {
+  prisma,
+} from "../lib/prisma";
 
 import type {
   AuthenticatedRequest,
@@ -24,6 +29,11 @@ import {
   MessagingRestrictionError,
 } from "../services/messagingEnforcement.service";
 
+import {
+  enforceConversationMessageLimit,
+  startMessagingRetentionWorker,
+} from "../services/messagingRetention.service";
+
 /*
  * =======================================================
  * CAMPUSMART MESSAGING CONTROLLER
@@ -40,19 +50,19 @@ import {
  * - Mark delivered
  * - Mark read
  *
- * Privacy:
- *
- * Messaging responses deliberately do NOT expose:
- *
- * - email
- * - phone
- * - matric number
- * - private verification evidence
- * - private pickup data
- *
- * Buyer phone access after paid + seller-confirmed order
- * remains part of the protected ORDER flow.
+ * Storage policy is handled by
+ * messagingRetention.service.ts.
  */
+
+/*
+ * Start the lightweight hourly retention worker whenever
+ * the messaging controller is loaded by the application.
+ *
+ * The timer is unref()'d, so it does not keep tests or
+ * shutdown processes alive.
+ */
+
+startMessagingRetentionWorker();
 
 /*
  * =======================================================
@@ -65,6 +75,24 @@ const MESSAGE_PAGE_SIZE =
 
 const INBOX_PAGE_SIZE =
   100;
+
+/*
+ * =======================================================
+ * TYPES
+ * =======================================================
+ */
+
+type ConversationReadState = {
+  id: string;
+
+  buyerId: string;
+
+  buyerLastReadAt:
+    Date | null;
+
+  vendorLastReadAt:
+    Date | null;
+};
 
 /*
  * =======================================================
@@ -390,6 +418,143 @@ function parseOptionalReceiptMessageId(
 
 /*
  * =======================================================
+ * BATCHED UNREAD COUNTS
+ * =======================================================
+ *
+ * Old implementation:
+ *
+ *   one message.count() per conversation
+ *
+ * This implementation:
+ *
+ *   one grouped message query for the entire supplied
+ *   conversation set.
+ *
+ * That removes the inbox/navbar N+1 query pattern.
+ */
+
+async function getUnreadCountMap(
+  userId: string,
+  conversations:
+    ConversationReadState[]
+) {
+  const unreadMap =
+    new Map<
+      string,
+      number
+    >();
+
+  if (
+    conversations.length ===
+    0
+  ) {
+    return unreadMap;
+  }
+
+  const unreadFilters:
+    Prisma.MessageWhereInput[] =
+    conversations.map(
+      (
+        conversation
+      ) => {
+        const lastReadAt =
+          conversation.buyerId ===
+          userId
+            ? conversation
+                .buyerLastReadAt
+            : conversation
+                .vendorLastReadAt;
+
+        return {
+          conversationId:
+            conversation.id,
+
+          senderId: {
+            not:
+              userId,
+          },
+
+          deletedAt:
+            null,
+
+          ...(lastReadAt
+            ? {
+                createdAt: {
+                  gt:
+                    lastReadAt,
+                },
+              }
+            : {}),
+        };
+      }
+    );
+
+  const grouped =
+    await prisma.message.groupBy({
+      by: [
+        "conversationId",
+      ],
+
+      where: {
+        OR:
+          unreadFilters,
+      },
+
+      _count: {
+        _all:
+          true,
+      },
+    });
+
+  for (
+    const row
+    of grouped
+  ) {
+    unreadMap.set(
+      row.conversationId,
+      row._count._all
+    );
+  }
+
+  return unreadMap;
+}
+
+/*
+ * =======================================================
+ * SAFE MESSAGE-CAP ENFORCEMENT
+ * =======================================================
+ *
+ * Message creation has already succeeded at this point.
+ *
+ * A cleanup failure must therefore never turn a
+ * successfully-sent message into a fake HTTP failure.
+ *
+ * The next send can self-heal the cap, and the failure is
+ * logged for investigation.
+ */
+
+async function safelyEnforceConversationMessageLimit(
+  conversationId: string,
+  contextType?:
+    ConversationContextType
+) {
+  try {
+    await enforceConversationMessageLimit(
+      conversationId,
+      contextType
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      "Failed to enforce conversation message limit:",
+      error
+    );
+  }
+}
+
+/*
+ * =======================================================
  * GET INBOX
  * =======================================================
  */
@@ -411,404 +576,444 @@ export async function getMessagingInbox(
   }
 
   try {
-    const conversations =
-      await prisma.conversation.findMany({
-        where: {
-          OR: [
-            {
-              buyerId:
-                user.id,
-            },
-
-            {
-              vendorId:
-                user.id,
-            },
-          ],
-        },
-
-        orderBy: {
-          lastMessageAt:
-            "desc",
-        },
-
-        take:
-          INBOX_PAGE_SIZE,
-
-        select: {
-          id:
-            true,
-
+    const participantWhere = {
+      OR: [
+        {
           buyerId:
-            true,
+            user.id,
+        },
 
+        {
           vendorId:
-            true,
+            user.id,
+        },
+      ],
 
-          contextType:
-            true,
+      /*
+       * Once retention cleanup removes every visible
+       * message, don't leave an empty dead conversation
+       * sitting in the inbox.
+       */
 
-          contextKey:
-            true,
+      messages: {
+        some: {
+          deletedAt:
+            null,
+        },
+      },
+    };
 
-          productId:
-            true,
+    /*
+     * Fetch the visible inbox and the complete read-state
+     * set in parallel.
+     *
+     * The complete set allows totalUnread to remain
+     * correct even if the user has more than 100
+     * conversations.
+     */
 
-          orderId:
-            true,
+    const [
+      conversations,
+      allReadStates,
+    ] =
+      await Promise.all([
+        prisma.conversation.findMany({
+          where:
+            participantWhere,
 
-          buyerLastDeliveredAt:
-            true,
-
-          vendorLastDeliveredAt:
-            true,
-
-          buyerLastReadAt:
-            true,
-
-          vendorLastReadAt:
-            true,
-
-          lastMessageAt:
-            true,
-
-          createdAt:
-            true,
-
-          updatedAt:
-            true,
-
-          buyer: {
-            select: {
-              id:
-                true,
-
-              name:
-                true,
-
-              role:
-                true,
-
-              university: {
-                select: {
-                  id:
-                    true,
-
-                  name:
-                    true,
-
-                  shortName:
-                    true,
-                },
-              },
-
-              vendorProfile: {
-                select: {
-                  businessName:
-                    true,
-                },
-              },
-            },
-          },
-
-          vendor: {
-            select: {
-              id:
-                true,
-
-              name:
-                true,
-
-              role:
-                true,
-
-              university: {
-                select: {
-                  id:
-                    true,
-
-                  name:
-                    true,
-
-                  shortName:
-                    true,
-                },
-              },
-
-              vendorProfile: {
-                select: {
-                  businessName:
-                    true,
-                },
-              },
-            },
-          },
-
-          product: {
-            select: {
-              id:
-                true,
-
-              slug:
-                true,
-
-              title:
-                true,
-
-              images:
-                true,
-
-              price:
-                true,
-
-              isArchived:
-                true,
-            },
-          },
-
-          order: {
-            select: {
-              id:
-                true,
-
-              status:
-                true,
-
-              paymentStatus:
-                true,
-
-              createdAt:
-                true,
-            },
-          },
-
-          messages: {
-            where: {
-              deletedAt:
-                null,
-            },
-
-            orderBy: {
-              createdAt:
+          orderBy: [
+            {
+              lastMessageAt:
                 "desc",
             },
 
-            take:
-              1,
-
-            select: {
+            {
               id:
-                true,
+                "desc",
+            },
+          ],
 
-              senderId:
-                true,
+          take:
+            INBOX_PAGE_SIZE,
 
-              body:
-                true,
+          select: {
+            id:
+              true,
 
-              createdAt:
-                true,
+            buyerId:
+              true,
 
-              editedAt:
-                true,
+            vendorId:
+              true,
+
+            contextType:
+              true,
+
+            contextKey:
+              true,
+
+            productId:
+              true,
+
+            orderId:
+              true,
+
+            buyerLastDeliveredAt:
+              true,
+
+            vendorLastDeliveredAt:
+              true,
+
+            buyerLastReadAt:
+              true,
+
+            vendorLastReadAt:
+              true,
+
+            lastMessageAt:
+              true,
+
+            createdAt:
+              true,
+
+            updatedAt:
+              true,
+
+            buyer: {
+              select: {
+                id:
+                  true,
+
+                name:
+                  true,
+
+                role:
+                  true,
+
+                university: {
+                  select: {
+                    id:
+                      true,
+
+                    name:
+                      true,
+
+                    shortName:
+                      true,
+                  },
+                },
+
+                vendorProfile: {
+                  select: {
+                    businessName:
+                      true,
+                  },
+                },
+              },
+            },
+
+            vendor: {
+              select: {
+                id:
+                  true,
+
+                name:
+                  true,
+
+                role:
+                  true,
+
+                university: {
+                  select: {
+                    id:
+                      true,
+
+                    name:
+                      true,
+
+                    shortName:
+                      true,
+                  },
+                },
+
+                vendorProfile: {
+                  select: {
+                    businessName:
+                      true,
+                  },
+                },
+              },
+            },
+
+            product: {
+              select: {
+                id:
+                  true,
+
+                slug:
+                  true,
+
+                title:
+                  true,
+
+                images:
+                  true,
+
+                price:
+                  true,
+
+                isArchived:
+                  true,
+              },
+            },
+
+            order: {
+              select: {
+                id:
+                  true,
+
+                status:
+                  true,
+
+                paymentStatus:
+                  true,
+
+                createdAt:
+                  true,
+              },
+            },
+
+            messages: {
+              where: {
+                deletedAt:
+                  null,
+              },
+
+              orderBy: [
+                {
+                  createdAt:
+                    "desc",
+                },
+
+                {
+                  id:
+                    "desc",
+                },
+              ],
+
+              take:
+                1,
+
+              select: {
+                id:
+                  true,
+
+                senderId:
+                  true,
+
+                body:
+                  true,
+
+                createdAt:
+                  true,
+
+                editedAt:
+                  true,
+              },
             },
           },
-        },
-      });
+        }),
+
+        prisma.conversation.findMany({
+          where:
+            participantWhere,
+
+          select: {
+            id:
+              true,
+
+            buyerId:
+              true,
+
+            buyerLastReadAt:
+              true,
+
+            vendorLastReadAt:
+              true,
+          },
+        }),
+      ]);
+
+    const unreadMap =
+      await getUnreadCountMap(
+        user.id,
+        allReadStates
+      );
 
     const inbox =
-      await Promise.all(
-        conversations.map(
-          async (
-            conversation
-          ) => {
-            const side =
-              conversation.buyerId ===
-              user.id
-                ? "buyer"
-                : "vendor";
+      conversations.map(
+        (
+          conversation
+        ) => {
+          const side =
+            conversation.buyerId ===
+            user.id
+              ? "buyer"
+              : "vendor";
 
-            const lastReadAt =
-              side ===
-              "buyer"
-                ? conversation
-                    .buyerLastReadAt
-                : conversation
-                    .vendorLastReadAt;
+          const otherParty =
+            side ===
+            "buyer"
+              ? conversation.vendor
+              : conversation.buyer;
 
-            const unreadCount =
-              await prisma.message.count({
-                where: {
-                  conversationId:
-                    conversation.id,
+          const latestMessage =
+            conversation.messages[
+              0
+            ] ??
+            null;
 
-                  senderId: {
-                    not:
-                      user.id,
-                  },
+          return {
+            id:
+              conversation.id,
 
-                  deletedAt:
-                    null,
+            side,
 
-                  ...(lastReadAt
-                    ? {
-                        createdAt: {
-                          gt:
-                            lastReadAt,
-                        },
-                      }
-                    : {}),
-                },
-              });
+            contextType:
+              conversation.contextType,
 
-            const otherParty =
-              side ===
-              "buyer"
-                ? conversation.vendor
-                : conversation.buyer;
+            product:
+              conversation.product
+                ? {
+                    id:
+                      conversation
+                        .product
+                        .id,
 
-            const latestMessage =
-              conversation.messages[
-                0
-              ] ??
-              null;
+                    slug:
+                      conversation
+                        .product
+                        .slug,
 
-            return {
-              id:
-                conversation.id,
+                    title:
+                      conversation
+                        .product
+                        .title,
 
-              side,
+                    image:
+                      conversation
+                        .product
+                        .images[
+                        0
+                      ] ??
+                      null,
 
-              contextType:
-                conversation.contextType,
+                    price:
+                      conversation
+                        .product
+                        .price,
 
-              product:
-                conversation.product
-                  ? {
-                      id:
-                        conversation
-                          .product
-                          .id,
+                    isArchived:
+                      conversation
+                        .product
+                        .isArchived,
+                  }
+                : null,
 
-                      slug:
-                        conversation
-                          .product
-                          .slug,
+            order:
+              conversation.order
+                ? {
+                    id:
+                      conversation
+                        .order
+                        .id,
 
-                      title:
-                        conversation
-                          .product
-                          .title,
+                    status:
+                      conversation
+                        .order
+                        .status,
 
-                      image:
-                        conversation
-                          .product
-                          .images[
-                          0
-                        ] ??
-                        null,
+                    paymentStatus:
+                      conversation
+                        .order
+                        .paymentStatus,
 
-                      price:
-                        conversation
-                          .product
-                          .price,
+                    createdAt:
+                      conversation
+                        .order
+                        .createdAt,
+                  }
+                : null,
 
-                      isArchived:
-                        conversation
-                          .product
-                          .isArchived,
-                    }
-                  : null,
+            otherParty:
+              participantResponse(
+                otherParty
+              ),
 
-              order:
-                conversation.order
-                  ? {
-                      id:
-                        conversation
-                          .order
-                          .id,
+            latestMessage:
+              latestMessage
+                ? {
+                    id:
+                      latestMessage.id,
 
-                      status:
-                        conversation
-                          .order
-                          .status,
+                    senderId:
+                      latestMessage.senderId,
 
-                      paymentStatus:
-                        conversation
-                          .order
-                          .paymentStatus,
+                    body:
+                      latestMessage.body,
 
-                      createdAt:
-                        conversation
-                          .order
-                          .createdAt,
-                    }
-                  : null,
+                    createdAt:
+                      latestMessage.createdAt,
 
-              otherParty:
-                participantResponse(
-                  otherParty
-                ),
+                    editedAt:
+                      latestMessage.editedAt,
+                  }
+                : null,
 
-              latestMessage:
-                latestMessage
-                  ? {
-                      id:
-                        latestMessage.id,
+            unreadCount:
+              unreadMap.get(
+                conversation.id
+              ) ??
+              0,
 
-                      senderId:
-                        latestMessage.senderId,
+            buyerLastDeliveredAt:
+              conversation
+                .buyerLastDeliveredAt,
 
-                      body:
-                        latestMessage.body,
+            vendorLastDeliveredAt:
+              conversation
+                .vendorLastDeliveredAt,
 
-                      createdAt:
-                        latestMessage.createdAt,
+            buyerLastReadAt:
+              conversation
+                .buyerLastReadAt,
 
-                      editedAt:
-                        latestMessage.editedAt,
-                    }
-                  : null,
+            vendorLastReadAt:
+              conversation
+                .vendorLastReadAt,
 
-              unreadCount,
+            lastMessageAt:
+              conversation.lastMessageAt,
 
-              buyerLastDeliveredAt:
-                conversation
-                  .buyerLastDeliveredAt,
+            createdAt:
+              conversation.createdAt,
 
-              vendorLastDeliveredAt:
-                conversation
-                  .vendorLastDeliveredAt,
-
-              buyerLastReadAt:
-                conversation
-                  .buyerLastReadAt,
-
-              vendorLastReadAt:
-                conversation
-                  .vendorLastReadAt,
-
-              lastMessageAt:
-                conversation.lastMessageAt,
-
-              createdAt:
-                conversation.createdAt,
-
-              updatedAt:
-                conversation.updatedAt,
-            };
-          }
-        )
+            updatedAt:
+              conversation.updatedAt,
+          };
+        }
       );
 
     const totalUnread =
-      inbox.reduce(
+      Array.from(
+        unreadMap.values()
+      ).reduce(
         (
           total,
-          conversation
+          count
         ) =>
           total +
-          conversation.unreadCount,
+          count,
         0
       );
 
@@ -868,6 +1073,13 @@ export async function getMessagingUnreadCount(
                 user.id,
             },
           ],
+
+          messages: {
+            some: {
+              deletedAt:
+                null,
+            },
+          },
         },
 
         select: {
@@ -885,49 +1097,16 @@ export async function getMessagingUnreadCount(
         },
       });
 
-    const unreadCounts =
-      await Promise.all(
-        conversations.map(
-          (
-            conversation
-          ) => {
-            const lastReadAt =
-              conversation.buyerId ===
-              user.id
-                ? conversation
-                    .buyerLastReadAt
-                : conversation
-                    .vendorLastReadAt;
-
-            return prisma.message.count({
-              where: {
-                conversationId:
-                  conversation.id,
-
-                senderId: {
-                  not:
-                    user.id,
-                },
-
-                deletedAt:
-                  null,
-
-                ...(lastReadAt
-                  ? {
-                      createdAt: {
-                        gt:
-                          lastReadAt,
-                      },
-                    }
-                  : {}),
-              },
-            });
-          }
-        )
+    const unreadMap =
+      await getUnreadCountMap(
+        user.id,
+        conversations
       );
 
     const unreadCount =
-      unreadCounts.reduce(
+      Array.from(
+        unreadMap.values()
+      ).reduce(
         (
           total,
           count
@@ -984,12 +1163,24 @@ export async function getMessagingConversation(
       ).trim();
 
     const {
+      conversation:
+        accessConversation,
       side,
     } =
       await getConversationAccess(
         conversationId,
         user.id
       );
+
+    /*
+     * This also cleans up any legacy thread which existed
+     * before the 50/100 cap was introduced.
+     */
+
+    await safelyEnforceConversationMessageLimit(
+      accessConversation.id,
+      accessConversation.contextType
+    );
 
     const conversation =
       await prisma.conversation.findUnique({
@@ -1157,10 +1348,17 @@ export async function getMessagingConversation(
                 null,
             },
 
-            orderBy: {
-              createdAt:
-                "desc",
-            },
+            orderBy: [
+              {
+                createdAt:
+                  "desc",
+              },
+
+              {
+                id:
+                  "desc",
+              },
+            ],
 
             take:
               MESSAGE_PAGE_SIZE,
@@ -1240,13 +1438,10 @@ export async function getMessagingConversation(
       );
     }
 
-    /*
-     * Query newest first for the database limit, then
-     * reverse into normal chronological chat order.
-     */
-
     const messages =
-      [...conversation.messages]
+      [
+        ...conversation.messages,
+      ]
         .reverse()
         .map(
           (
@@ -1264,15 +1459,6 @@ export async function getMessagingConversation(
             replyToMessageId:
               message
                 .replyToMessageId,
-
-            /*
-             * Only sanitized stored message bodies are
-             * ever returned here.
-             *
-             * If the original message was later
-             * soft-deleted, don't expose its old body in
-             * the reply preview.
-             */
 
             replyToMessage:
               message.replyToMessage
@@ -1589,6 +1775,15 @@ export async function startMessagingConversation(
           req.body?.body,
       });
 
+    /*
+     * Immediately enforce 50/100 storage limits.
+     */
+
+    await safelyEnforceConversationMessageLimit(
+      result.conversation.id,
+      result.conversation.contextType
+    );
+
     return res
       .status(201)
       .json({
@@ -1625,28 +1820,6 @@ export async function startMessagingConversation(
  * =======================================================
  * SEND MESSAGE / REPLY
  * =======================================================
- *
- * POST
- * /api/messages/conversations/:conversationId/messages
- *
- * Normal message:
- *
- * {
- *   "body": "Is this still available?"
- * }
- *
- * Reply:
- *
- * {
- *   "body": "Yes, that's the one I mean.",
- *   "replyToMessageId": "<message uuid>"
- * }
- *
- * Reply-target validation happens in messaging.service:
- *
- * - target must exist
- * - target must be in this conversation
- * - target must not be deleted
  */
 
 export async function sendMessagingMessage(
@@ -1697,6 +1870,16 @@ export async function sendMessagingMessage(
           req.body
             ?.replyToMessageId,
       });
+
+    /*
+     * Context type is resolved internally here because
+     * sendConversationMessage intentionally keeps its
+     * existing response contract unchanged.
+     */
+
+    await safelyEnforceConversationMessageLimit(
+      result.conversationId
+    );
 
     return res
       .status(201)
