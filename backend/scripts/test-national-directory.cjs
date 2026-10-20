@@ -1,0 +1,15 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {parseNUC,csv,htmlText}=require('./build-nigerian-institution-directory.cjs');
+const mk=(n,name,state)=>`<tr><td>${n}</td><td>${name}</td><td>2025</td><td>Federal</td><td>${state}</td><td>Explore</td></tr>`;
+const states=['Rivers','Cross River','Lagos','Abia','Ogun','Oyo','FCT Abuja'];
+const good='<table>'+Array.from({length:328},(_,i)=>mk(i+1, i===0?'University of Port-Harcourt, Port-Harcourt':i===1?'University of Calabar, Calabar':`University ${i+1}, Example City`,states[i%states.length])).join('')+'</table>';
+assert.equal(parseNUC(good).length,328);
+assert.equal(parseNUC(good)[0].city,'Port-Harcourt');
+assert.equal(parseNUC(good)[6].state,'FCT');
+assert.equal(parseNUC(good).filter(x=>x.state==='Rivers').every(x=>x.featuredInSignup),true);
+assert.ok(csv(parseNUC(good)).includes('sourceAuthority,sourceUrl'));
+assert.equal(htmlText('&amp; &#43;'),'& +');
+assert.throws(()=>parseNUC('<table>'+mk(1,'Sample University','Lagos')+'</table>'),/expected/);
+assert.throws(()=>parseNUC(good.replace('FCT Abuja','Invalid-State')),/unrecognised state/);
+console.log('PASS 7/0: official source table parser, state normalisation, featured campus, CSV, entities, count protection, state validation.');

@@ -1,4 +1,6 @@
-import { Router } from "express";
+import {
+  Router,
+} from "express";
 
 import {
   createProduct,
@@ -6,54 +8,96 @@ import {
   getProductById,
   getProducts,
   getVendorProducts,
+  restoreProduct,
   updateProduct,
 } from "../controllers/product.controller";
 
+import {
+  createProductReview,
+  getProductReviewEligibility,
+  getProductReviews,
+} from "../controllers/productReview.controller";
 
 import {
   requireAuth,
-  requireVendor,
+  requireSellerEligibility,
+  requireVendorAccount,
 } from "../middleware/auth.middleware";
 
-import { productImageUpload } from "../middleware/upload.middleware";
+import {
+  productImageUpload,
+} from "../middleware/upload.middleware";
 
-const router = Router();
+const router =
+  Router();
 
-// Public marketplace routes
-router.get("/", getProducts);
+router.get(
+  "/",
+  getProducts
+);
 
-// Logged-in vendor's own listings
 router.get(
   "/mine",
   requireAuth,
-  requireVendor,
+  requireVendorAccount,
   getVendorProducts
 );
 
-// Individual public product
-router.get("/:id", getProductById);
+router.get(
+  "/:id/reviews",
+  getProductReviews
+);
 
-// Vendor-only routes
+router.get(
+  "/:id/reviews/eligibility",
+  requireAuth,
+  getProductReviewEligibility
+);
+
+router.post(
+  "/:id/reviews",
+  requireAuth,
+  createProductReview
+);
+
+router.get(
+  "/:id",
+  getProductById
+);
+
 router.post(
   "/",
   requireAuth,
-  requireVendor,
-  productImageUpload.array("images", 5),
+  requireSellerEligibility,
+  productImageUpload.array(
+    "images",
+    6
+  ),
   createProduct
 );
 
 router.patch(
   "/:id",
   requireAuth,
-  requireVendor,
-  productImageUpload.array("images", 5),
+  requireSellerEligibility,
+  productImageUpload.array(
+    "images",
+    6
+  ),
   updateProduct
+);
+
+router.patch(
+  "/:id/restore",
+  requireAuth,
+  requireSellerEligibility,
+  restoreProduct
 );
 
 router.delete(
   "/:id",
   requireAuth,
-  requireVendor,
+  requireVendorAccount,
   deleteProduct
 );
 

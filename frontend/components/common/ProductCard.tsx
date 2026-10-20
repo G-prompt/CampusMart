@@ -1,87 +1,201 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
+import Link from "next/link";
+
 import {
   useState,
   type MouseEvent,
 } from "react";
 
-import type { Product } from "@/lib/products";
-import { formatNaira } from "@/lib/products";
+import type {
+  Product,
+} from "@/lib/products";
 
-import { useSaved } from "./SavedContext";
+import {
+  formatNaira,
+} from "@/lib/products";
+
+import {
+  useSaved,
+} from "./SavedContext";
+
+import {
+  useCart,
+} from "./CartContext";
+
+import {
+  useAuth,
+} from "./AuthContext";
 
 export default function ProductCard({
   product,
+  compact = true,
 }: {
   product: Product;
+  compact?: boolean;
 }) {
   const {
     isSaved,
     toggleSaved,
-  } = useSaved();
+  } =
+    useSaved();
+
+  const {
+    addToCart,
+  } =
+    useCart();
+
+  const {
+    user,
+  } =
+    useAuth();
 
   const [
     imageFailed,
     setImageFailed,
-  ] = useState(false);
+  ] =
+    useState(
+      false
+    );
 
   const saved =
-    isSaved(product.id);
-
-  const handleToggleSaved = (
-    event: MouseEvent<HTMLButtonElement>
-  ) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const nowSaved =
-      toggleSaved(
-        product.id
-      );
-
-    window.dispatchEvent(
-      new CustomEvent(
-        "campusmart-toast",
-        {
-          detail: {
-            message:
-              nowSaved
-                ? "Saved to your wishlist"
-                : "Removed from saved listings",
-          },
-        }
-      )
+    isSaved(
+      product.id
     );
-  };
+
+  const primaryImage =
+    product.images?.[0];
+
+  const sellerHref =
+    product.vendorId
+      ? `/seller/${product.vendorId}`
+      : null;
+
+  const ownListing =
+    Boolean(
+      user &&
+      product.vendorId &&
+      user.id ===
+        product.vendorId
+    );
+
+  const hasRating =
+    typeof product.rating ===
+      "number" &&
+    product.rating >
+      0;
+
+  const sizes =
+    product.sizes ??
+    [];
+
+  const colors =
+    product.colors ??
+    [];
+
+  const needsOptionSelection =
+    sizes.length >
+      1 ||
+    colors.length >
+      1;
+
+  const handleToggleSaved =
+    (
+      event:
+        MouseEvent<HTMLButtonElement>
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const nowSaved =
+        toggleSaved(
+          product.id
+        );
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "campusmart-toast",
+          {
+            detail: {
+              message:
+                nowSaved
+                  ? "Saved to your wishlist"
+                  : "Removed from saved listings",
+            },
+          }
+        )
+      );
+    };
+
+  const handleAddToCart =
+    (
+      event:
+        MouseEvent<HTMLButtonElement>
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (
+        ownListing
+      ) {
+        return;
+      }
+
+      addToCart(
+        product,
+        1,
+        {
+          selectedSize:
+            sizes.length ===
+            1
+              ? sizes[0]
+              : undefined,
+
+          selectedColor:
+            colors.length ===
+            1
+              ? colors[0]
+              : undefined,
+        }
+      );
+    };
 
   return (
-    <article className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+    <article
+      className={`group overflow-hidden border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+        compact
+          ? "rounded-xl"
+          : "rounded-2xl"
+      }`}
+    >
       <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
         <Link
           href={`/marketplace/products/${product.id}`}
           aria-label={`View ${product.title}`}
           className="relative block h-full"
         >
-          {imageFailed ? (
-            <div className="flex h-full items-center justify-center bg-slate-900 p-6 text-center text-sm font-bold text-white">
-              CampusMart listing image
+          {imageFailed ||
+          !primaryImage ? (
+            <div className="flex h-full items-center justify-center bg-slate-900 p-4 text-center text-[10px] font-bold text-white">
+              CampusMart listing
             </div>
           ) : (
             <Image
               src={
-                product.images[0]
+                primaryImage
               }
-              alt={product.title}
+              alt={
+                product.title
+              }
               fill
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
               onError={() =>
                 setImageFailed(
                   true
                 )
               }
-              className="object-cover transition duration-500 group-hover:scale-105"
+              className="object-cover transition duration-300 group-hover:scale-[1.025]"
             />
           )}
         </Link>
@@ -91,23 +205,11 @@ export default function ProductCard({
           onClick={
             handleToggleSaved
           }
-          className={`absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center rounded-[10px] bg-white/90 shadow-sm backdrop-blur transition ${
-            saved
-              ? "text-[#8A3D48]"
-              : "text-black hover:text-[#8A3D48]"
-          }`}
+          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-sm backdrop-blur-md transition hover:text-[#8A3D48]"
           aria-label={
             saved
-              ? `Remove ${product.title} from wishlist`
-              : `Save ${product.title} to wishlist`
-          }
-          aria-pressed={
-            saved
-          }
-          title={
-            saved
-              ? "Remove from wishlist"
-              : "Save to wishlist"
+              ? `Remove ${product.title} from saved listings`
+              : `Save ${product.title}`
           }
         >
           <svg
@@ -118,9 +220,8 @@ export default function ProductCard({
                 : "none"
             }
             stroke="currentColor"
-            strokeWidth="2.2"
-            className="h-5 w-5"
-            aria-hidden="true"
+            strokeWidth="2"
+            className="h-3.5 w-3.5"
           >
             <path
               strokeLinecap="round"
@@ -131,58 +232,91 @@ export default function ProductCard({
         </button>
       </div>
 
-      <Link
-        href={`/marketplace/products/${product.id}`}
-        className="block p-4"
-      >
-        <p className="text-sm font-semibold text-slate-500">
+      <div className="p-2.5 sm:p-3">
+        <p className="truncate text-[8px] font-black uppercase tracking-[0.14em] text-slate-400 sm:text-[9px]">
           {
             product.category
           }
         </p>
 
-        <h3 className="mt-2 min-h-12 text-lg font-bold leading-6 text-black">
-          {
-            product.title
-          }
-        </h3>
-
-        <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-500">
-          <span className="truncate">
+        <Link
+          href={`/marketplace/products/${product.id}`}
+          className="mt-1 block"
+        >
+          <h3 className="line-clamp-2 min-h-[2.15rem] text-[12px] font-black leading-[1.35] text-slate-950 sm:text-[13px]">
             {
-              product.seller
+              product.title
             }
-          </span>
+          </h3>
+        </Link>
 
-          <span className="shrink-0 font-semibold text-slate-700">
-            ★{" "}
-            {
-              product.rating
-            }
+        <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
+          {sellerHref ? (
+            <Link
+              href={
+                sellerHref
+              }
+              className="min-w-0 truncate text-[9px] font-semibold text-slate-500 hover:text-black hover:underline sm:text-[10px]"
+            >
+              {
+                product.seller
+              }
+            </Link>
+          ) : (
+            <span className="min-w-0 truncate text-[9px] text-slate-500 sm:text-[10px]">
+              {
+                product.seller
+              }
+            </span>
+          )}
+
+          <span className="shrink-0 text-[9px] font-bold text-slate-500 sm:text-[10px]">
+            {hasRating
+              ? `★ ${product.rating.toFixed(1)}`
+              : "New"}
           </span>
         </div>
 
-        <div className="mt-3 flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-500">
-          <span className="inline-flex items-center gap-1">
-            <span
-              className="h-1.5 w-1.5 rounded-full bg-emerald-500"
-              aria-hidden="true"
-            />
-
-            Campus pickup
-          </span>
-
-          <span className="text-emerald-700">
-            Verified seller
-          </span>
-        </div>
-
-        <p className="mt-3 text-xl font-bold text-black">
+        <p className="mt-2 text-[14px] font-black text-slate-950 sm:text-[15px]">
           {formatNaira(
             product.price
           )}
         </p>
-      </Link>
+
+        <div className="mt-2 grid grid-cols-2 gap-1.5">
+          <Link
+            href={`/marketplace/products/${product.id}`}
+            className="inline-flex min-h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-1.5 text-center text-[9px] font-black text-slate-800 transition hover:border-slate-400 sm:text-[10px]"
+          >
+            View
+          </Link>
+
+          {needsOptionSelection &&
+          !ownListing ? (
+            <Link
+              href={`/marketplace/products/${product.id}`}
+              className="inline-flex min-h-8 items-center justify-center rounded-lg bg-accent-400 px-1.5 text-center text-[9px] font-black text-black transition hover:bg-accent-500 sm:text-[10px]"
+            >
+              Choose options
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={
+                handleAddToCart
+              }
+              disabled={
+                ownListing
+              }
+              className="inline-flex min-h-8 items-center justify-center rounded-lg bg-accent-400 px-1.5 text-center text-[9px] font-black text-black transition hover:bg-accent-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 sm:text-[10px]"
+            >
+              {ownListing
+                ? "Yours"
+                : "Add"}
+            </button>
+          )}
+        </div>
+      </div>
     </article>
   );
 }

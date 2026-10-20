@@ -1,0 +1,329 @@
+name,shortName,state,city,kind,featuredInSignup,sourceAuthority,sourceUrl,sourceYear,ownership
+"Amadeus University, Amizi, Abia State",Amadeus University,Abia,Amizi,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Abia State University, Uturu",Abia State University,Abia,Uturu,university,false,NUC,https://enuc.nuc.edu.ng/nus,1981,State
+"Michael Okpara University of Agriculture, Umudike",Michael Okpara University of Agriculture,Abia,Umudike,university,false,NUC,https://enuc.nuc.edu.ng/nus,1992,Federal
+"Gregory University, Uturu, Abia State",Gregory University,Abia,Uturu,university,false,NUC,https://enuc.nuc.edu.ng/nus,2012,Private
+"Clifford University, Owerrinta, Abia State",Clifford University,Abia,Owerrinta,university,false,NUC,https://enuc.nuc.edu.ng/nus,2016,Private
+"Spiritan University, Nneochi, Abia State",Spiritan University,Abia,Nneochi,university,false,NUC,https://enuc.nuc.edu.ng/nus,2017,Private
+"Nigerian British University, Asa, Abia State",Nigerian British University,Abia,Asa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,Private
+"Lux Mundi University, Umuahia, Abia State",Lux Mundi University,Abia,Umuahia,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Adamawa State University, Mubi",Adamawa State University,Adamawa,Mubi,university,false,NUC,https://enuc.nuc.edu.ng/nus,2002,State
+"Modibbo Adama University, Yola",Modibbo Adama University,Adamawa,Yola,university,false,NUC,https://enuc.nuc.edu.ng/nus,1981,Federal
+"Federal University of Agriculture, Mubi",Federal University of Agriculture,Adamawa,Mubi,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"American University of Nigeria, Yola, Adamawa State",American University of Nigeria,Adamawa,Yola,university,true,NUC,https://enuc.nuc.edu.ng/nus,2003,Private
+"Akwa Ibom State University, Ikot Akpaden",Akwa Ibom State University,Akwa Ibom,Ikot Akpaden,university,false,NUC,https://enuc.nuc.edu.ng/nus,2010,State
+"Southern Atlantic University, Uyo, Akwa Ibom State",Southern Atlantic University,Akwa Ibom,Uyo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+Federal University of Agriculture and Technology Obio-Akpa,Federal University of Agriculture and Technology Obio-Akpa,Akwa Ibom,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Federal
+"University of Uyo, Uyo",University of Uyo,Akwa Ibom,Uyo,university,false,NUC,https://enuc.nuc.edu.ng/nus,1991,Federal
+"Federal University of Technology Ikot Abasi, Akwa Ibom State",Federal University of Technology Ikot Abasi,Akwa Ibom,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Federal
+"University of Maritime Studies, Oron, Akwa Ibom State",University of Maritime Studies,Akwa Ibom,Oron,university,false,NUC,https://enuc.nuc.edu.ng/nus,2024,Federal
+"Obong University Obong Ntak, Akwa Ibom State",Obong University Obong Ntak,Akwa Ibom,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2007,Private
+"Ritman University, Ikot Ekpene, Akwa Ibom State",Ritman University,Akwa Ibom,Ikot Ekpene,university,false,NUC,https://enuc.nuc.edu.ng/nus,2015,Private
+"Topfaith University, Mkpatak, Akwa-Ibom State",Topfaith University,Akwa Ibom,Mkpatak,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Transatlantic University of Medicine and Health Sciences, Umuchukwu",Transatlantic University of Medicine and Health Sciences,Anambra,Umuchukwu,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"Chukwuemeka Odumegwu Ojukwu University, Uli",Chukwuemeka Odumegwu Ojukwu University,Anambra,Uli,university,false,NUC,https://enuc.nuc.edu.ng/nus,2000,State
+"University on the Niger, Umunya, Anambra State",University on the Niger,Anambra,Umunya,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Shanahan University, Onitsha, Anambra State",Shanahan University,Anambra,Onitsha,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Nnamdi Azikiwe University, Awka",Nnamdi Azikiwe University,Anambra,Awka,university,true,NUC,https://enuc.nuc.edu.ng/nus,1992,Federal
+"Madonna University, Okija, Anambra State",Madonna University,Anambra,Okija,university,false,NUC,https://enuc.nuc.edu.ng/nus,1999,Private
+"Tansian University, Umunya, Anambra State",Tansian University,Anambra,Umunya,university,false,NUC,https://enuc.nuc.edu.ng/nus,2007,Private
+"Paul University, Awka, Anambra State",Paul University,Anambra,Awka,university,false,NUC,https://enuc.nuc.edu.ng/nus,2009,Private
+"Legacy University, Okija, Anambra State",Legacy University,Anambra,Okija,university,false,NUC,https://enuc.nuc.edu.ng/nus,2016,Private
+"Peter University, Achina-Onneh, Anambra State",Peter University,Anambra,Achina-Onneh,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,Private
+"Sa'adu Zungur University, Gadau",Sa'adu Zungur University,Bauchi,Gadau,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,State
+"Abubakar Tafawa Balewa University, Bauchi",Abubakar Tafawa Balewa University,Bauchi,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,1988,Federal
+"Federal University of Health Sciences, Azare, Bauchi State",Federal University of Health Sciences,Bauchi,Azare,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Federal
+"Hensard University, Toru-Orua, Bayelsa State",Hensard University,Bayelsa,Toru-Orua,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Niger-Delta University, Yenagoa",Niger-Delta University,Bayelsa,Yenagoa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2000,State
+"University of Africa, Toru-Orua",University of Africa,Bayelsa,Toru-Orua,university,false,NUC,https://enuc.nuc.edu.ng/nus,2016,State
+"Bayelsa Medical University Yenagoa, Bayelsa State",Bayelsa Medical University Yenagoa,Bayelsa,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2019,State
+"Federal University, Otuoke, Bayelsa",Federal University,Bayelsa,Otuoke,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Federal
+"Federal University of Agriculture, Bassam-Bari, Bayelsa",Federal University of Agriculture,Bayelsa,Bassam-Bari,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Rv Fr. Moses Orshio Adasu University, Makurdi",Rv Fr. Moses Orshio Adasu University,Benue,Makurdi,university,false,NUC,https://enuc.nuc.edu.ng/nus,1992,State
+"Benue State University of Agriculture, Science and Technology, Ihugh, Benue State",Benue State University of Agriculture,Benue,Science and Technology,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,State
+"Joseph Sarwuan Tarka University, Makurdi, Benue State",Joseph Sarwuan Tarka University,Benue,Makurdi,university,false,NUC,https://enuc.nuc.edu.ng/nus,1988,Federal
+"Federal University of Health Sciences, Otukpo, Benue State",Federal University of Health Sciences,Benue,Otukpo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2020,Federal
+"University of Mkar, Mkar, Benue State",University of Mkar,Benue,Mkar,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+Borno State University,Borno State University,Borno,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2016,State
+"University of Maiduguri, Maiduguri",University of Maiduguri,Borno,Maiduguri,university,false,NUC,https://enuc.nuc.edu.ng/nus,1975,Federal
+"Nigerian Army University, Biu",Nigerian Army University,Borno,Biu,university,false,NUC,https://enuc.nuc.edu.ng/nus,2018,Federal
+"Al-Ansar University, Maiduguri, Borno State",Al-Ansar University,Borno,Maiduguri,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,Private
+"British Canadian University, Obudu, Cross River State",British Canadian University,Cross River,Obudu,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"The Duke Medical University Calabar, Cross River State",The Duke Medical University Calabar,Cross River,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Cross River University of Technology, Calabar",Cross River University of Technology,Cross River,Calabar,university,false,NUC,https://enuc.nuc.edu.ng/nus,2004,State
+"Cross River University of Education and Entrepreneurship, Akampa, Cross River State",Cross River University of Education and Entrepreneurship,Cross River,Akampa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,State
+"Pearl University, Calabar",Pearl University,Cross River,Calabar,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"University of Calabar, Calabar",University of Calabar,Cross River,Calabar,university,true,NUC,https://enuc.nuc.edu.ng/nus,1975,Federal
+"Arthur Jarvis University, Akpabuyo, Cross River State",Arthur Jarvis University,Cross River,Akpabuyo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2016,Private
+"Havilla University, Nde-Ikom, Cross River State",Havilla University,Cross River,Nde-Ikom,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Delta State University, Abraka",Delta State University,Delta,Abraka,university,false,NUC,https://enuc.nuc.edu.ng/nus,1992,State
+"University of Delta, Agbor, Delta State",University of Delta,Delta,Agbor,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,State
+"University of Science and Technology, Ozoro, Delta State",University of Science and Technology,Delta,Ozoro,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,State
+"Dennis Osadebey University, Asaba, Delta State",Dennis Osadebey University,Delta,Asaba,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,State
+"Godday Erewa University, Sapele",Godday Erewa University,Delta,Sapele,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"Federal University of Petroleum Resources, Effurun",Federal University of Petroleum Resources,Delta,Effurun,university,false,NUC,https://enuc.nuc.edu.ng/nus,2007,Federal
+"Nigeria Maritime University Okerenkoko, Delta State",Nigeria Maritime University Okerenkoko,Delta,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2018,Federal
+"Admiralty University, Ibusa, Delta State",Admiralty University,Delta,Ibusa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Federal University of Health Sciences, Kwale, Delta State",Federal University of Health Sciences,Delta,Kwale,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Novena University, Ogume, Delta State",Novena University,Delta,Ogume,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Western Delta University, Oghara, Delta State",Western Delta University,Delta,Oghara,university,false,NUC,https://enuc.nuc.edu.ng/nus,2007,Private
+"Michael & Cecilia Ibru University, Owhode, Delta State",Michael & Cecilia Ibru University,Delta,Owhode,university,false,NUC,https://enuc.nuc.edu.ng/nus,2015,Private
+"Edwin Clark University, Kiagbodo, Delta State",Edwin Clark University,Delta,Kiagbodo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2015,Private
+"Margaret Lawrence University, Galilee, Delta State",Margaret Lawrence University,Delta,Galilee,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,Private
+"Sports University, Idumuje, Ugboko, Delta State",Sports University,Delta,Idumuje,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,Private
+"Ebonyi State University, Abakaliki",Ebonyi State University,Ebonyi,Abakaliki,university,false,NUC,https://enuc.nuc.edu.ng/nus,2000,State
+"Euston University, Abakaliki",Euston University,Ebonyi,Abakaliki,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"Ebonyi State University of ICT, Science and Technology, Oferekpe, Ebonyi State",Ebonyi State University of ICT,Ebonyi,Science and Technology,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,State
+"Ebonyi State University of Aeronautics and Aerospace Engineering, Ezza, Ebonyi State",Ebonyi State University of Aeronautics and Aerospace Engineering,Ebonyi,Ezza,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,State
+"Alex Ekwueme Federal University, Ndufu Alike, Ebonyi State",Alex Ekwueme Federal University,Ebonyi,Ndufu Alike,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Federal
+"King David Umahi University of Medical Sciences, Uburu, Ebonyi State",King David Umahi University of Medical Sciences,Ebonyi,Uburu,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,Federal
+"Evangel University, Akaeze, Ebonyi State",Evangel University,Ebonyi,Akaeze,university,false,NUC,https://enuc.nuc.edu.ng/nus,2012,Private
+"Ambrose Alli University, Ekpoma, Edo State",Ambrose Alli University,Edo,Ekpoma,university,false,NUC,https://enuc.nuc.edu.ng/nus,1980,State
+"Lighthouse University, Evbuobanosa, Edo State",Lighthouse University,Edo,Evbuobanosa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2024,Private
+"Edo University, Iyamho",Edo University,Edo,Iyamho,university,false,NUC,https://enuc.nuc.edu.ng/nus,2016,State
+"Tonnie Iredia University of Communication, Benin City, Edo State",Tonnie Iredia University of Communication,Edo,Benin City,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Adeche Momoh University, Igarra",Adeche Momoh University,Edo,Igarra,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"University of Benin, Benin City",University of Benin,Edo,Benin City,university,true,NUC,https://enuc.nuc.edu.ng/nus,1970,Federal
+"Igbinedion University, Okada, Edo State",Igbinedion University,Edo,Okada,university,false,NUC,https://enuc.nuc.edu.ng/nus,1999,Private
+"Benson Idahosa University, Benin City, Edo State",Benson Idahosa University,Edo,Benin City,university,false,NUC,https://enuc.nuc.edu.ng/nus,2002,Private
+"Wellspring University, Evbuobanosa, Edo State",Wellspring University,Edo,Evbuobanosa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2009,Private
+"Glorious Vision University (formerly Samuel Adegboyega University), Ogwa, Edo State",Glorious Vision University (formerly Samuel Adegboyega University),Edo,Ogwa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Private
+"Mudiame University, Irrua, Edo State",Mudiame University,Edo,Irrua,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Ekiti State University, Ado-Ekiti. (formerly University of Ado-Ekiti)",Ekiti State University,Ekiti,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,1982,State
+"Hillside University of Science and Technology, Okemesi Ekiti, Ekiti State",Hillside University of Science and Technology,Ekiti,Okemesi Ekiti,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Venite University Iloro -Ekiti, Ekiti State",Venite University Iloro -Ekiti,Ekiti,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Bamidele Olumulia University of Education Science and Technology, Ikere - Ekiti State",Bamidele Olumulia University of Education Science and Technology,Ekiti,Ikere - Ekiti,university,false,NUC,https://enuc.nuc.edu.ng/nus,2020,State
+"High-Flyers University, Ikere-Ekiti",High-Flyers University,Ekiti,Ikere-Ekiti,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"Federal University, Oye-Ekiti, Ekiti State",Federal University,Ekiti,Oye-Ekiti,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Federal
+"Federal University of Technology and Environmental Studies, Iyin-Ekiti, Ekiti State",Federal University of Technology and Environmental Studies,Ekiti,Iyin-Ekiti,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Federal
+Afe Babalola University Ado-Ekiti - Ekiti State,Afe Babalola University Ado-Ekiti - Ekiti State,Ekiti,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2007,Private
+"Maduka University, Ekwegbe - Nsukka, Enugu State",Maduka University,Enugu,Ekwegbe - Nsukka,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Peaceland University, Enugu, Enugu State",Peaceland University,Enugu,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Enugu State University of Science & Tech, Enugu",Enugu State University of Science & Tech,Enugu,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,1982,State
+"Kevin Eze University, Mgbowo, Enugu State",Kevin Eze University,Enugu,Mgbowo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Enugu State University of Medical and Applied Sciences, Igbo-Eno, Enugu State",Enugu State University of Medical and Applied Sciences,Enugu,Igbo-Eno,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,State
+"University of Nigeria, Nsukka",University of Nigeria,Enugu,Nsukka,university,true,NUC,https://enuc.nuc.edu.ng/nus,1960,Federal
+"Federal University of Allied Health Sciences, Enugu",Federal University of Allied Health Sciences,Enugu,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2024,Federal
+"Caritas University, Enugu, Enugu State",Caritas University,Enugu,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Renaissance University, Enugu, Enugu State",Renaissance University,Enugu,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Godfrey Okoye University, Ugwuomu-Nike, Enugu State",Godfrey Okoye University,Enugu,Ugwuomu-Nike,university,false,NUC,https://enuc.nuc.edu.ng/nus,2007,Private
+"Coal City University, Enugu, Enugu State",Coal City University,Enugu,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2016,Private
+"Canadian University of Nigeria, Abuja, FCT",Canadian University of Nigeria,FCT,Abuja,university,true,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Miva Open University, Abuja, FCT",Miva Open University,FCT,Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Cosmopolitan University, Abuja, FCT",Cosmopolitan University,FCT,Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Amaj University, Abuja, FCT",Amaj University,FCT,Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Prime University, Abuja, FCT",Prime University,FCT,Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Al-Muhibbah Open University, Abuja, FCT",Al-Muhibbah Open University,FCT,Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"African School of Economics, FCT, Abuja",African School of Economics,FCT,Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2024,Private
+"Eranova University, Mabushi, Abuja",Eranova University,FCT,Mabushi,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Leadership University, Abuja",Leadership University,FCT,Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"City University, Abuja",City University,FCT,Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"Ummah University of Nigeria, Abuja",Ummah University of Nigeria,FCT,Abuja,university,true,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"University of Abuja, Abuja",University of Abuja,FCT,Abuja,university,true,NUC,https://enuc.nuc.edu.ng/nus,1988,Federal
+"National Open University of Nigeria, Abuja",National Open University of Nigeria,FCT,Abuja,university,true,NUC,https://enuc.nuc.edu.ng/nus,2002,Federal
+"African Aviation and Aerospace University, Abuja, FCT",African Aviation and Aerospace University,FCT,Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"National University of Science and Technology, Abuja, FCT",National University of Science and Technology,FCT,Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Veritas University, Abuja, FCT",Veritas University,FCT,Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2006,Private
+"African University of Science & Technology, Abuja, FCT",African University of Science & Technology,FCT,Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2007,Private
+"Nile University of Nigeria, FCT Abuja",Nile University of Nigeria,FCT,FCT Abuja,university,true,NUC,https://enuc.nuc.edu.ng/nus,2009,Private
+"Baze University, FCT Abuja",Baze University,FCT,FCT Abuja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Private
+"Philomath University, Kuje, Abuja",Philomath University,FCT,Kuje,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"European University of Nigeria, Duboyi, Abuja, FCT",European University of Nigeria,FCT,Duboyi,university,true,NUC,https://enuc.nuc.edu.ng/nus,2022,Private
+"Jewel University, Gombe, Gombe State",Jewel University,Gombe,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Gombe State University, Gombe",Gombe State University,Gombe,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2004,State
+"Federal University, Kashere, Gombe State",Federal University,Gombe,Kashere,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Federal
+"North Eastern University Gombe, Gombe State",North Eastern University Gombe,Gombe,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,Private
+"Imo State University, Owerri",Imo State University,Imo,Owerri,university,false,NUC,https://enuc.nuc.edu.ng/nus,1992,State
+"Kingsley Ozumba (K.O) Mbadiwe University, Imo State",Kingsley Ozumba (K.O) Mbadiwe University,Imo,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2016,State
+"University of Innovation, Science & Technology, Omuma",University of Innovation,Imo,Science & Technology,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,State
+"University of Agriculture and Environmental Sciences, Umuagwo, Imo State",University of Agriculture and Environmental Sciences,Imo,Umuagwo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2019,State
+"Bridget University Mbaise, Okirika-Nweke, Imo State",Bridget University Mbaise,Imo,Okirika-Nweke,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Azione Verde University, Amaigbo, Imo State",Azione Verde University,Imo,Amaigbo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Maria Assumpta University, Owerri",Maria Assumpta University,Imo,Owerri,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"Federal University of Technology, Owerri",Federal University of Technology,Imo,Owerri,university,false,NUC,https://enuc.nuc.edu.ng/nus,1980,Federal
+"Alvan Ikoku Federal University of Education, Owerri, Imo State",Alvan Ikoku Federal University of Education,Imo,Owerri,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Hezekiah University, Umudi, Imo State",Hezekiah University,Imo,Umudi,university,false,NUC,https://enuc.nuc.edu.ng/nus,2015,Private
+"Claretian University of Nigeria, Nekede, Imo State",Claretian University of Nigeria,Imo,Nekede,university,true,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Sule Lamido University, Kafin Hausa",Sule Lamido University,Jigawa,Kafin Hausa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2013,State
+"Federal University, Dutse, Jigawa State",Federal University,Jigawa,Dutse,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Federal
+"Federal University of Technology, Babura, Jigawa State",Federal University of Technology,Jigawa,Babura,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Federal
+Jigawa State Universitiy of Allied and Medical Science,Jigawa State Universitiy of Allied and Medical Science,Jigawa,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,State
+"Franco British International University, Kaduna, Kaduna State",Franco British International University,Kaduna,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Kaduna State University, Kaduna",Kaduna State University,Kaduna,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2004,State
+"College of Petroleum and Energy Studies, Kaduna, Kaduna State",College of Petroleum and Energy Studies,Kaduna,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Tazkiyah University, Kaduna",Tazkiyah University,Kaduna,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Ahmadu Bello University, Zaria",Ahmadu Bello University,Kaduna,Zaria,university,true,NUC,https://enuc.nuc.edu.ng/nus,1962,Federal
+"Omega University, Kaduna",Omega University,Kaduna,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"Nigerian Defence Academy, Kaduna",Nigerian Defence Academy,Kaduna,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,1985,Federal
+"Air Force Institute of Technology, Kaduna",Air Force Institute of Technology,Kaduna,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2018,Federal
+"Federal University of Education, Zaria, Kaduna State",Federal University of Education,Kaduna,Zaria,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Federal University of Applied Sciences, Kachia, Kaduna State",Federal University of Applied Sciences,Kaduna,Kachia,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Federal
+"Greenfield University, Kasarami-Kaduna, Kaduna State",Greenfield University,Kaduna,Kasarami-Kaduna,university,false,NUC,https://enuc.nuc.edu.ng/nus,2019,Private
+"Azman University, Kano, Kano State",Azman University,Kano,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Aliko Dangote University of Science & Technology, Wudil",Aliko Dangote University of Science & Technology,Kano,Wudil,university,false,NUC,https://enuc.nuc.edu.ng/nus,2000,State
+"Elrazi University of Medical Sciences, Kano, Kano State",Elrazi University of Medical Sciences,Kano,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Northwest University, Kano",Northwest University,Kano,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2012,State
+"Federal University of Science and Technology, Kabo",Federal University of Science and Technology,Kano,Kabo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Federal
+"Bayero University, Kano",Bayero University,Kano,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,1975,Federal
+"The Nigeria Police Academy, Wudil, Kano State",The Nigeria Police Academy,Kano,Wudil,university,false,NUC,https://enuc.nuc.edu.ng/nus,2012,Federal
+"Yusuf Maitama Sule Federal University of Education, Kano, Kano State",Yusuf Maitama Sule Federal University of Education,Kano,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Skyline University, Nigeria, Kano, Kano State",Skyline University,Kano,Nigeria,university,false,NUC,https://enuc.nuc.edu.ng/nus,2018,Private
+"Al-Istiqama University, Sumaila, Kano State",Al-Istiqama University,Kano,Sumaila,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Maryam Abacha American University of Nigeria, Kano, Kano State",Maryam Abacha American University of Nigeria,Kano,Not specified,university,true,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Capital City University, Kano, Kano State",Capital City University,Kano,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Khalifa Isiyaku Rabiu University, Gadon /Kaya City Gate Kano, Kano State",Khalifa Isiyaku Rabiu University,Kano,Gadon /Kaya City Gate Kano,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,Private
+"Baba-Ahmed University, Kano, Kano State",Baba-Ahmed University,Kano,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,Private
+"Umaru Musa Yar’Adua University, Katsina",Umaru Musa Yar’Adua University,Katsina,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2006,State
+"Federal University, Dutsin-Ma, Katsina State",Federal University,Katsina,Dutsin-Ma,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Federal
+"Federal University of Transportation, Daura, Katsina State",Federal University of Transportation,Katsina,Daura,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Federal University of Health Sciences, Funtua, Katsina State",Federal University of Health Sciences,Katsina,Funtua,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Al-Qalam University, Katsina, Katsina State",Al-Qalam University,Katsina,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Kebbi State University of Science and Technology, Aliero",Kebbi State University of Science and Technology,Kebbi,Aliero,university,false,NUC,https://enuc.nuc.edu.ng/nus,2006,State
+"Federal University, Birnin-Kebbi, Kebbi",Federal University,Kebbi,Birnin-Kebbi,university,false,NUC,https://enuc.nuc.edu.ng/nus,2013,Federal
+"Federal University of Agriculture, Zuru, Kebbi State",Federal University of Agriculture,Kebbi,Zuru,university,false,NUC,https://enuc.nuc.edu.ng/nus,2020,Federal
+"Rayhaan University, Birnin Kebbi, Kebbi State",Rayhaan University,Kebbi,Birnin Kebbi,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Prince Abubakar Audu University, Anyigba",Prince Abubakar Audu University,Kogi,Anyigba,university,false,NUC,https://enuc.nuc.edu.ng/nus,1999,State
+"Al-Bayan University, Ankpa, Kogi State",Al-Bayan University,Kogi,Ankpa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Confluence University of Science and Technology Osara, Kogi State",Confluence University of Science and Technology Osara,Kogi,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2020,State
+"Kogi State University, Kabba, Kogi State",Kogi State University,Kogi,Kabba,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,State
+"Federal University, Lokoja, Kogi State",Federal University,Kogi,Lokoja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Federal
+"Salem University, Lokoja, Kogi State",Salem University,Kogi,Lokoja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2007,Private
+"Kwara State University, Ilorin",Kwara State University,Kwara,Ilorin,university,false,NUC,https://enuc.nuc.edu.ng/nus,2009,State
+"Abdulrasaq Abubakar Toyin University, Oke-Agba, Kwara State",Abdulrasaq Abubakar Toyin University,Kwara,Oke-Agba,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Lens University, Ilemona, Kwara State",Lens University,Kwara,Ilemona,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Jimoh Babalola University, Ilorin",Jimoh Babalola University,Kwara,Ilorin,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Kwara State University of Education, Ilorin, Kwara State",Kwara State University of Education,Kwara,Ilorin,university,false,NUC,https://enuc.nuc.edu.ng/nus,2024,State
+"University of Ilorin, Ilorin",University of Ilorin,Kwara,Ilorin,university,true,NUC,https://enuc.nuc.edu.ng/nus,1975,Federal
+"Al-Hikmah University, Ilorin, Kwara State",Al-Hikmah University,Kwara,Ilorin,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Landmark University Omu-Aran, Kwara State",Landmark University Omu-Aran,Kwara,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Private
+"Summit University, Offa, Kwara State",Summit University,Kwara,Offa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2015,Private
+"Ojaja University, Eiyenkorin, Kwara State (formerly Crown-Hill University)",Ojaja University,Kwara,Eiyenkorin,university,false,NUC,https://enuc.nuc.edu.ng/nus,2016,Private
+"Thomas Adewumi University, Oko-Irese, Kwara State",Thomas Adewumi University,Kwara,Oko-Irese,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Ahman Pategi University, Patigi, Kwara State",Ahman Pategi University,Kwara,Patigi,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"University of Offa, Offa, Kwara State",University of Offa,Kwara,Offa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Muhammad Kamalud-Deen University, Ilorin, Kwara State",Muhammad Kamalud-Deen University,Kwara,Ilorin,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Lagos State University, Ojo, Lagos",Lagos State University,Lagos,Ojo,university,true,NUC,https://enuc.nuc.edu.ng/nus,1983,State
+"Nigerian University of Technology and Management, Apapa , Lagos State",Nigerian University of Technology and Management,Lagos,Apapa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Isaac Balami University of Aeronautics and Management, Lagos State",Isaac Balami University of Aeronautics and Management,Lagos,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Federal University of Science and Technology, Epe",Federal University of Science and Technology,Lagos,Epe,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Federal
+"Lagos University of Education, LASUED, Oto/Ijanikin, Lagos State",Lagos University of Education,Lagos,LASUED,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,State
+"Lagos University of Science and Technology, Ikorodu, Lagos State",Lagos University of Science and Technology,Lagos,Ikorodu,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,State
+"Unique Open University, Ojo, Lagos State",Unique Open University,Lagos,Ojo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Regnum Medical University, Anthony",Regnum Medical University,Lagos,Anthony,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"University of Lagos, Lagos",University of Lagos,Lagos,Not specified,university,true,NUC,https://enuc.nuc.edu.ng/nus,1962,Federal
+"Pan-Atlantic University, Lekki-Express Way, Lagos State",Pan-Atlantic University,Lagos,Lekki-Express Way,university,false,NUC,https://enuc.nuc.edu.ng/nus,2002,Private
+"Caleb University, Imota, Lagos State",Caleb University,Lagos,Imota,university,false,NUC,https://enuc.nuc.edu.ng/nus,2007,Private
+"Augustine University, Ilara, Lagos State",Augustine University,Lagos,Ilara,university,false,NUC,https://enuc.nuc.edu.ng/nus,2015,Private
+"Anchor University, Ayobo, Lagos State",Anchor University,Lagos,Ayobo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2016,Private
+"Eko University of Medical Sciences, Ijanikin, Lagos",Eko University of Medical Sciences,Lagos,Ijanikin,university,false,NUC,https://enuc.nuc.edu.ng/nus,2017,Private
+"Maranatha University, Lekki, Lagos State",Maranatha University,Lagos,Lekki,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"James Hope University, Lekki, Lagos State",James Hope University,Lagos,Lekki,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Phoenix University, Agwada, Nasarawa State",Phoenix University,Nasarawa,Agwada,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Nasarawa State University, Keffi",Nasarawa State University,Nasarawa,Keffi,university,false,NUC,https://enuc.nuc.edu.ng/nus,2002,State
+"Federal University, Lafia, Nasarawa State",Federal University,Nasarawa,Lafia,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Federal
+"Bingham University, New-Karu, Nasarawa State",Bingham University,Nasarawa,New-Karu,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Ave-Maria University, Piyanko, Nasarawa State",Ave-Maria University,Nasarawa,Piyanko,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Mewar University, Masaka, Nasarawa State",Mewar University,Nasarawa,Masaka,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Ibrahim Badamasi Babangida University, Lapai, Niger State",Ibrahim Badamasi Babangida University,Niger,Lapai,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,State
+"El-Amin University, Niger State",El-Amin University,Niger,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"JEFAP University, Suleja",JEFAP University,Niger,Suleja,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Abdulkadir Kure University, Minna, Niger State",Abdulkadir Kure University,Niger,Minna,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,State
+"Abdulsalami Abubakar University of Agriculture and Climate Action, Mokwa, Niger State",Abdulsalami Abubakar University of Agriculture and Climate Action,Niger,Mokwa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,State
+"Sani Bello University, Kontagora",Sani Bello University,Niger,Kontagora,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"Federal University of Technology, Minna",Federal University of Technology,Niger,Minna,university,false,NUC,https://enuc.nuc.edu.ng/nus,1982,Federal
+"Federal University of Education, Kantagora, Niger State",Federal University of Education,Niger,Kantagora,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Edusoko University, Bida, Niger State",Edusoko University,Niger,Bida,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Newgate University, Minna, Niger State",Newgate University,Niger,Minna,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,Private
+"Vision University, Ikogbo, Ogun State",Vision University,Ogun,Ikogbo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Olabisi Onabanjo University, Ago-Iwoye",Olabisi Onabanjo University,Ogun,Ago-Iwoye,university,false,NUC,https://enuc.nuc.edu.ng/nus,1982,State
+"Gerar University of Medical Sciences, Imope-Ijebu, Ogun State",Gerar University of Medical Sciences,Ogun,Imope-Ijebu,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"New City University, Ayetoro, Ogun State",New City University,Ogun,Ayetoro,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Monarch University, Iyesi-Ota, Ogun State",Monarch University,Ogun,Iyesi-Ota,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Moshood Abiola University of Science and Technology, Abeokuta",Moshood Abiola University of Science and Technology,Ogun,Abeokuta,university,false,NUC,https://enuc.nuc.edu.ng/nus,2017,State
+"American Open University, Abeokuta, Ogun State",American Open University,Ogun,Abeokuta,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Abdulfattah Durojaiye University, Abeokuta",Abdulfattah Durojaiye University,Ogun,Abeokuta,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"Federal University of Agriculture, Abeokuta",Federal University of Agriculture,Ogun,Abeokuta,university,false,NUC,https://enuc.nuc.edu.ng/nus,1988,Federal
+"Federal University of Medicine and Medical Sciences, Abeokuta, Ogun State",Federal University of Medicine and Medical Sciences,Ogun,Abeokuta,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Tai Solarin Federal University of Education, Ijagun, Ijebu Ode",Tai Solarin Federal University of Education,Ogun,Ijagun,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Federal
+"Babcock University, Ilishan-Remo, Ogun State",Babcock University,Ogun,Ilishan-Remo,university,true,NUC,https://enuc.nuc.edu.ng/nus,1999,Private
+"Bowen University, Iwo, Ogun State",Bowen University,Ogun,Iwo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2001,Private
+"Covenant University, Otta, Ogun State",Covenant University,Ogun,Otta,university,true,NUC,https://enuc.nuc.edu.ng/nus,2002,Private
+"Bells University of Technology, Otta, Ogun State",Bells University of Technology,Ogun,Otta,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Crawford University, Igbesa, Ogun State",Crawford University,Ogun,Igbesa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Crescent University, Abeokuta, Ogun State",Crescent University,Ogun,Abeokuta,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Redeemer's University, Mowe, Ogun State",Redeemer's University,Ogun,Mowe,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Mcpherson University, Seriki Sotayo, Ajebo",Mcpherson University,Ogun,Seriki Sotayo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2012,Private
+"Southwestern University Oku Owa, Ogun State",Southwestern University Oku Owa,Ogun,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2012,Private
+"Chrisland University, Owode, Ogun State",Chrisland University,Ogun,Owode,university,false,NUC,https://enuc.nuc.edu.ng/nus,2015,Private
+"Christopher University, Mowe, Ogun State",Christopher University,Ogun,Mowe,university,false,NUC,https://enuc.nuc.edu.ng/nus,2015,Private
+"Hallmark University, Ijebu-Itele, Ogun State",Hallmark University,Ogun,Ijebu-Itele,university,false,NUC,https://enuc.nuc.edu.ng/nus,2015,Private
+"Mountain Top University, Makogi/Oba, Ogun State",Mountain Top University,Ogun,Makogi/Oba,university,false,NUC,https://enuc.nuc.edu.ng/nus,2015,Private
+"Trinity University, Laloko, Ogun State",Trinity University,Ogun,Laloko,university,false,NUC,https://enuc.nuc.edu.ng/nus,2019,Private
+"Aletheia University, Ago-Iwoye, Ogun State",Aletheia University,Ogun,Ago-Iwoye,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Adekunle Ajasin University, Akungba - Akoko",Adekunle Ajasin University,Ondo,Akungba - Akoko,university,false,NUC,https://enuc.nuc.edu.ng/nus,1999,State
+"Olusegun Agagu University of Science and Technology, Okitipupa, Ondo State",Olusegun Agagu University of Science and Technology,Ondo,Okitipupa,university,false,NUC,https://enuc.nuc.edu.ng/nus,2008,State
+"University of Fortune, Igbotako, Ondo State",University of Fortune,Ondo,Igbotako,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+Ondo State University of Medical Sciences,Ondo State University of Medical Sciences,Ondo,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2015,State
+"Millennium Crest University, Ikare-Akoko",Millennium Crest University,Ondo,Ikare-Akoko,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"Federal University of Technology, Akure",Federal University of Technology,Ondo,Akure,university,false,NUC,https://enuc.nuc.edu.ng/nus,1981,Federal
+"Adeyemi Federal University of Education, Akure, Ondo State",Adeyemi Federal University of Education,Ondo,Akure,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Achievers University, Owo, Ondo State",Achievers University,Ondo,Owo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2007,Private
+"Wesley University of Science & Technology, Ondo State",Wesley University of Science & Technology,Ondo,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2007,Private
+"Elizade University, Ilara-Mokin, Ondo State",Elizade University,Ondo,Ilara-Mokin,university,false,NUC,https://enuc.nuc.edu.ng/nus,2012,Private
+"Sam Maris University, Supare, Ondo State",Sam Maris University,Ondo,Supare,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Mercy Medical University, Iwara, Iwo, Osun State",Mercy Medical University,Osun,Iwara,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Osun State University, Osogbo",Osun State University,Osun,Osogbo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2006,State
+"Minaret University, Ikirun, Osun State",Minaret University,Osun,Ikirun,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"University of Ilesa, Osun State",University of Ilesa,Osun,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,State
+"Owolabi University, Oke-Ila Orangun",Owolabi University,Osun,Oke-Ila Orangun,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,Private
+"Obafemi Awolowo University, Ile-Ife",Obafemi Awolowo University,Osun,Ile-Ife,university,true,NUC,https://enuc.nuc.edu.ng/nus,1962,Federal
+"Federal University of Health Sciences, Ila Orangun, Osun State",Federal University of Health Sciences,Osun,Ila Orangun,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Federal
+"Federal University of Agriculture and Developmental Studies, Iragbiji, Osun State",Federal University of Agriculture and Developmental Studies,Osun,Iragbiji,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Federal
+"Joseph Ayo Babalola University, Ikeji-Arakeji, Osun State",Joseph Ayo Babalola University,Osun,Ikeji-Arakeji,university,false,NUC,https://enuc.nuc.edu.ng/nus,2006,Private
+"Fountain University, Oshogbo, Osun State",Fountain University,Osun,Oshogbo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2007,Private
+"Oduduwa University, Ipetumodu - Osun State",Oduduwa University,Osun,Ipetumodu - Osun,university,false,NUC,https://enuc.nuc.edu.ng/nus,2009,Private
+"Adeleke University, Ede, Osun State",Adeleke University,Osun,Ede,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Private
+"Kings University Ode-Omu, Osun State",Kings University Ode-Omu,Osun,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2015,Private
+"Westland University, Iwo, Osun State",Westland University,Osun,Iwo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2019,Private
+"Ladoke Akintola University of Technology, Ogbomoso",Ladoke Akintola University of Technology,Oyo,Ogbomoso,university,false,NUC,https://enuc.nuc.edu.ng/nus,1990,State
+"West Midland Open University, Ibadan, Oyo State",West Midland Open University,Oyo,Ibadan,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"First Technical University, Ibadan",First Technical University,Oyo,Ibadan,university,false,NUC,https://enuc.nuc.edu.ng/nus,2012,State
+"Emmanuel Alayande University of Education, Oyo, Oyo State",Emmanuel Alayande University of Education,Oyo,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,State
+"University of Ibadan, Ibadan",University of Ibadan,Oyo,Ibadan,university,true,NUC,https://enuc.nuc.edu.ng/nus,1948,Federal
+"Federal University of Agriculture and Technology, Okeho, Oyo",Federal University of Agriculture and Technology,Oyo,Okeho,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Federal
+"Ajayi Crowther University, Ibadan, Oyo State",Ajayi Crowther University,Oyo,Ibadan,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Lead City University, Ibadan, Oyo State",Lead City University,Oyo,Ibadan,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Dominican University, Ibadan, Oyo State",Dominican University,Oyo,Ibadan,university,false,NUC,https://enuc.nuc.edu.ng/nus,2016,Private
+"Kola Daisi University, Ibadan, Oyo State",Kola Daisi University,Oyo,Ibadan,university,false,NUC,https://enuc.nuc.edu.ng/nus,2016,Private
+"Precious Cornerstone, Ibadan, Oyo State",Precious Cornerstone,Oyo,Ibadan,university,false,NUC,https://enuc.nuc.edu.ng/nus,2017,Private
+"Atiba University, Oyo, Oyo State",Atiba University,Oyo,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2017,Private
+"Dominion University, Ibadan, Oyo State",Dominion University,Oyo,Ibadan,university,false,NUC,https://enuc.nuc.edu.ng/nus,2019,Private
+"Plateau State University, Bokkos",Plateau State University,Plateau,Bokkos,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,State
+"University of Jos, Jos",University of Jos,Plateau,Jos,university,false,NUC,https://enuc.nuc.edu.ng/nus,1975,Federal
+"Federal University of Education, Pankshin, Plateau State",Federal University of Education,Plateau,Pankshin,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Federal
+"Karl-Kumm University, Vom, Plateau State",Karl-Kumm University,Plateau,Vom,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"ANAN University, Kwall, Plateau State",ANAN University,Plateau,Kwall,university,false,NUC,https://enuc.nuc.edu.ng/nus,2021,Private
+"Rivers State University of Science & Technology, Port Harcourt, Rivers State",Rivers State University of Science & Technology,Rivers,Port Harcourt,university,true,NUC,https://enuc.nuc.edu.ng/nus,1979,State
+"Wigwe University, Isiokpo, Rivers State",Wigwe University,Rivers,Isiokpo,university,true,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Ignatius Ajuru University of Education, Rumuolumeni",Ignatius Ajuru University of Education,Rivers,Rumuolumeni,university,true,NUC,https://enuc.nuc.edu.ng/nus,2010,State
+"University of Port-Harcourt, Port-Harcourt",University of Port-Harcourt,Rivers,Port-Harcourt,university,true,NUC,https://enuc.nuc.edu.ng/nus,1975,Federal
+"Federal University of Environment and Technology, Tai Town, Ogoniland, Rivers State",Federal University of Environment and Technology,Rivers,Tai Town,university,true,NUC,https://enuc.nuc.edu.ng/nus,2025,Federal
+"Rhema University, Obeama-Asa, Rivers State",Rhema University,Rivers,Obeama-Asa,university,true,NUC,https://enuc.nuc.edu.ng/nus,2009,Private
+"PAMO University of Medical Sciences, Port-Harcourt, Rivers State",PAMO University of Medical Sciences,Rivers,Port-Harcourt,university,true,NUC,https://enuc.nuc.edu.ng/nus,2017,Private
+"Iconic Open University, Sokoto, Sokoto State",Iconic Open University,Sokoto,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Sokoto State University, Sokoto",Sokoto State University,Sokoto,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2009,State
+"Shehu Shagari University of Education, Sokoto, Sokoto State",Shehu Shagari University of Education,Sokoto,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,State
+"Usmanu Danfodiyo University, Sokoto",Usmanu Danfodiyo University,Sokoto,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,1975,Federal
+"Saisa University Of Medical Sciences And Technology, Sokoto, Sokoto State",Saisa University Of Medical Sciences And Technology,Sokoto,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,Private
+"Northwest University, Sokoto, Sokoto State",Northwest University,Sokoto,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2022,Private
+"Taraba State University, Jalingo",Taraba State University,Taraba,Jalingo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2008,State
+"Taraba State University of Tropical Agriculture, Science, Technology and Climate Action, Gembu",Taraba State University of Tropical Agriculture,Taraba,Science,university,false,NUC,https://enuc.nuc.edu.ng/nus,2026,State
+"Greenland University, Jalingo, Taraba State",Greenland University,Taraba,Jalingo,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Private
+"Federal University, Wukari, Taraba State",Federal University,Taraba,Wukari,university,false,NUC,https://enuc.nuc.edu.ng/nus,2011,Federal
+"Kwararafa University, Wukari, Taraba State",Kwararafa University,Taraba,Wukari,university,false,NUC,https://enuc.nuc.edu.ng/nus,2005,Private
+"Yobe State University Damaturu, Yobe State",Yobe State University Damaturu,Yobe,Not specified,university,false,NUC,https://enuc.nuc.edu.ng/nus,2006,State
+"Federal University, Gashua, Yobe",Federal University,Yobe,Gashua,university,false,NUC,https://enuc.nuc.edu.ng/nus,2013,Federal
+"Huda University, Gusau, Zamfara State",Huda University,Zamfara,Gusau,university,false,NUC,https://enuc.nuc.edu.ng/nus,2023,Private
+"Zamfara State University, Talata-Mafara",Zamfara State University,Zamfara,Talata-Mafara,university,false,NUC,https://enuc.nuc.edu.ng/nus,2018,State
+"Federal University, Gusau, Zamfara",Federal University,Zamfara,Gusau,university,false,NUC,https://enuc.nuc.edu.ng/nus,2013,Federal
+"Federal University of Health Science and Technology, Tsafe, Zamfara State",Federal University of Health Science and Technology,Zamfara,Tsafe,university,false,NUC,https://enuc.nuc.edu.ng/nus,2025,Federal
