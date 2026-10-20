@@ -1,16 +1,14 @@
-import {
+import type {
   NextFunction,
   Request,
   Response,
 } from "express";
 
 import jwt, {
-  JwtPayload,
+  type JwtPayload,
 } from "jsonwebtoken";
 
-import {
-  prisma,
-} from "../lib/prisma";
+import { prisma } from "../lib/prisma";
 
 import {
   UserRole,
@@ -21,23 +19,23 @@ import {
   reconcileSellerAccess,
 } from "../services/sellerEligibility.service";
 
-type TokenPayload =
-  JwtPayload & {
-    userId: string;
-    role: UserRole;
-  };
+import {
+  getSessionVersion,
+} from "../lib/sessionVersion";
 
-export interface AuthenticatedRequest
-  extends Request {
+type TokenPayload = JwtPayload & {
+  userId: string;
+  role: UserRole;
+  sessionVersion?: string;
+};
+
+export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
     name: string;
     email: string;
     role: UserRole;
-
-    vendorAccessStatus:
-      | VendorAccessStatus
-      | null;
+    vendorAccessStatus: VendorAccessStatus | null;
   };
 }
 
@@ -53,128 +51,121 @@ export const requireAuth = async (
   next: NextFunction
 ) => {
   try {
-    const authHeader =
-      req.headers.authorization;
+    const authHeader = req.headers.authorization;
 
-    if (
-      !authHeader?.startsWith(
-        "Bearer "
-      )
-    ) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return res.status(401).json({
         success: false,
-
-        message:
-          "Authentication required.",
+        message: "Authentication required.",
       });
     }
 
-    const token =
-      authHeader.split(" ")[1];
+    const token = authHeader.slice(7).trim();
 
     if (!token) {
       return res.status(401).json({
         success: false,
-
-        message:
-          "Authentication required.",
+        message: "Authentication required.",
       });
     }
 
-    const jwtSecret =
-      process.env.JWT_SECRET;
+    const jwtSecret = process.env.JWT_SECRET;
 
     if (!jwtSecret) {
-      throw new Error(
-        "JWT_SECRET is not set"
-      );
+      throw new Error("JWT_SECRET is not set");
     }
 
-    const decoded =
-      jwt.verify(
-        token,
-        jwtSecret
-      ) as TokenPayload;
+    const decoded = jwt.verify(
+      token,
+      jwtSecret
+    ) as TokenPayload;
 
-    if (!decoded.userId) {
+    if (
+      !decoded.userId ||
+      typeof decoded.userId !== "string"
+    ) {
       return res.status(401).json({
         success: false,
-
-        message:
-          "Invalid authentication token.",
+        message: "Invalid authentication token.",
       });
     }
 
-    const user =
-      await prisma.user.findUnique({
-        where: {
-          id:
-            decoded.userId,
-        },
-
-        select: {
-          id:
-            true,
-
-          name:
-            true,
-
-          email:
-            true,
-
-          role:
-            true,
-
-          vendorProfile: {
-            select: {
-              accessStatus:
-                true,
-            },
+    const user = await prisma.user.findUnique({
+      where: {
+        id: decoded.userId,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        passwordHash: true,
+        accountSuspendedAt: true,
+        vendorProfile: {
+          select: {
+            accessStatus: true,
           },
         },
-      });
+      },
+    });
 
     if (!user) {
       return res.status(401).json({
         success: false,
+        message: "User account no longer exists.",
+      });
+    }
 
+    /*
+     * The token must have been issued for the password
+     * hash currently stored for this user.
+     *
+     * Previously issued tokens without sessionVersion
+     * are intentionally invalidated on deployment.
+     */
+    const expectedVersion = getSessionVersion(
+      user.passwordHash,
+      jwtSecret
+    );
+
+    if (
+      typeof decoded.sessionVersion !== "string" ||
+      decoded.sessionVersion !== expectedVersion
+    ) {
+      return res.status(401).json({
+        success: false,
+        code: "SESSION_EXPIRED",
         message:
-          "User account no longer exists.",
+          "Your session is no longer valid. Please sign in again.",
+      });
+    }
+
+    if (user.accountSuspendedAt) {
+      return res.status(403).json({
+        success: false,
+        code: "ACCOUNT_SUSPENDED",
+        message:
+          "Your CampusMart account is suspended. Please contact support for review.",
       });
     }
 
     req.user = {
-      id:
-        user.id,
-
-      name:
-        user.name,
-
-      email:
-        user.email,
-
-      role:
-        user.role,
-
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
       vendorAccessStatus:
-        user.vendorProfile
-          ?.accessStatus ??
-        null,
+        user.vendorProfile?.accessStatus ?? null,
     };
 
     next();
-  } catch (
-    error
-  ) {
+  } catch (error) {
     if (
-      error instanceof
-        jwt.JsonWebTokenError ||
-      error instanceof
-        jwt.TokenExpiredError
+      error instanceof jwt.JsonWebTokenError ||
+      error instanceof jwt.TokenExpiredError
     ) {
       return res.status(401).json({
         success: false,
-
         message:
           "Invalid or expired authentication token.",
       });
@@ -187,9 +178,7 @@ export const requireAuth = async (
 
     return res.status(500).json({
       success: false,
-
-      message:
-        "Unable to authenticate request.",
+      message: "Unable to authenticate request.",
     });
   }
 };
@@ -198,17 +187,6 @@ export const requireAuth = async (
  * =======================================================
  * VENDOR ACCOUNT
  * =======================================================
- *
- * Checks only whether the user has a seller/vendor account.
- *
- * It deliberately does NOT require active seller access.
- *
- * Suitable for:
- *
- * - seller dashboard
- * - seller setup
- * - seller listing history
- * - existing order history
  */
 
 export const requireVendorAccount = (
@@ -219,24 +197,15 @@ export const requireVendorAccount = (
   if (!req.user) {
     return res.status(401).json({
       success: false,
-
-      message:
-        "Authentication required.",
+      message: "Authentication required.",
     });
   }
 
-  if (
-    req.user.role !==
-    UserRole.vendor
-  ) {
+  if (req.user.role !== UserRole.vendor) {
     return res.status(403).json({
       success: false,
-
-      code:
-        "VENDOR_ROLE_REQUIRED",
-
-      message:
-        "Seller account required.",
+      code: "VENDOR_ROLE_REQUIRED",
+      message: "Seller account required.",
     });
   }
 
@@ -248,165 +217,104 @@ export const requireVendorAccount = (
  * EXISTING ORDER FULFILMENT
  * =======================================================
  *
- * Existing buyer obligations are different from creating
- * new commercial activity.
+ * Active and pending-review sellers can fulfil
+ * existing obligations.
  *
- * ACTIVE
- *   -> may fulfil existing orders
- *
- * PENDING_REVIEW
- *   -> may fulfil existing orders
- *
- * RESTRICTED
- *   -> blocked
- *
- * SUSPENDED
- *   -> blocked
- *
- * This middleware reconciles seller state first so stale
- * access values are corrected before the decision.
+ * Restricted and suspended sellers cannot perform
+ * order actions, but may still view history.
  */
 
-export const requireVendorOrderFulfillment =
-  async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      if (!req.user) {
-        return res.status(401).json({
-          success: false,
-
-          message:
-            "Authentication required.",
-        });
-      }
-
-      if (
-        req.user.role !==
-        UserRole.vendor
-      ) {
-        return res.status(403).json({
-          success: false,
-
-          code:
-            "VENDOR_ROLE_REQUIRED",
-
-          message:
-            "Seller account required.",
-        });
-      }
-
-      const eligibility =
-        await reconcileSellerAccess(
-          req.user.id
-        );
-
-      const accessStatus =
-        eligibility
-          .sellerProfile
-          .accessStatus;
-
-      /*
-       * Keep request-local state synced
-       * after reconciliation.
-       */
-      req.user.vendorAccessStatus =
-        accessStatus;
-
-      if (
-        accessStatus ===
-          VendorAccessStatus.active ||
-        accessStatus ===
-          VendorAccessStatus.pending_review
-      ) {
-        return next();
-      }
-
-      if (
-        accessStatus ===
-        VendorAccessStatus.restricted
-      ) {
-        return res.status(403).json({
-          success: false,
-
-          code:
-            "SELLER_ORDER_ACTIONS_RESTRICTED",
-
-          message:
-            "Your seller access is restricted. You can still view your existing orders, but order actions are currently unavailable.",
-
-          eligibility,
-        });
-      }
-
-      if (
-        accessStatus ===
-        VendorAccessStatus.suspended
-      ) {
-        return res.status(403).json({
-          success: false,
-
-          code:
-            "SELLER_ORDER_ACTIONS_SUSPENDED",
-
-          message:
-            "Your seller account is suspended. You can still view your existing order history, but order actions are currently unavailable.",
-
-          eligibility,
-        });
-      }
-
-      return res.status(403).json({
+export const requireVendorOrderFulfillment = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
         success: false,
-
-        code:
-          "SELLER_ORDER_ACTIONS_UNAVAILABLE",
-
-        message:
-          "Order fulfilment is not currently available for this seller account.",
-
-        eligibility,
-      });
-    } catch (
-      error
-    ) {
-      console.error(
-        "Vendor order fulfilment middleware error:",
-        error
-      );
-
-      if (
-        error instanceof
-          Error &&
-        error.message ===
-          "USER_NOT_FOUND"
-      ) {
-        return res.status(401).json({
-          success: false,
-
-          message:
-            "User account no longer exists.",
-        });
-      }
-
-      return res.status(500).json({
-        success: false,
-
-        message:
-          "Unable to confirm seller order access.",
+        message: "Authentication required.",
       });
     }
-  };
+
+    if (req.user.role !== UserRole.vendor) {
+      return res.status(403).json({
+        success: false,
+        code: "VENDOR_ROLE_REQUIRED",
+        message: "Seller account required.",
+      });
+    }
+
+    const eligibility = await reconcileSellerAccess(
+      req.user.id
+    );
+
+    const accessStatus =
+      eligibility.sellerProfile.accessStatus;
+
+    req.user.vendorAccessStatus = accessStatus;
+
+    if (
+      accessStatus === VendorAccessStatus.active ||
+      accessStatus === VendorAccessStatus.pending_review
+    ) {
+      return next();
+    }
+
+    if (accessStatus === VendorAccessStatus.restricted) {
+      return res.status(403).json({
+        success: false,
+        code: "SELLER_ORDER_ACTIONS_RESTRICTED",
+        message:
+          "Your seller access is restricted. You can still view your existing orders, but order actions are currently unavailable.",
+        eligibility,
+      });
+    }
+
+    if (accessStatus === VendorAccessStatus.suspended) {
+      return res.status(403).json({
+        success: false,
+        code: "SELLER_ORDER_ACTIONS_SUSPENDED",
+        message:
+          "Your seller account is suspended. You can still view your existing order history, but order actions are currently unavailable.",
+        eligibility,
+      });
+    }
+
+    return res.status(403).json({
+      success: false,
+      code: "SELLER_ORDER_ACTIONS_UNAVAILABLE",
+      message:
+        "Order fulfilment is not currently available for this seller account.",
+      eligibility,
+    });
+  } catch (error) {
+    console.error(
+      "Vendor order fulfilment middleware error:",
+      error
+    );
+
+    if (
+      error instanceof Error &&
+      error.message === "USER_NOT_FOUND"
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "User account no longer exists.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to confirm seller order access.",
+    });
+  }
+};
 
 /*
  * =======================================================
  * LEGACY ACTIVE-VENDOR CHECK
  * =======================================================
- *
- * Retained for compatibility while older routes are being
- * migrated to more specific access policies.
  */
 
 export const requireVendor = (
@@ -417,248 +325,156 @@ export const requireVendor = (
   if (!req.user) {
     return res.status(401).json({
       success: false,
-
-      message:
-        "Authentication required.",
+      message: "Authentication required.",
     });
   }
 
-  if (
-    req.user.role !==
-    UserRole.vendor
-  ) {
+  if (req.user.role !== UserRole.vendor) {
     return res.status(403).json({
       success: false,
-
-      message:
-        "Vendor access required.",
+      message: "Vendor access required.",
     });
   }
 
-  if (
-    req.user.vendorAccessStatus ===
-    VendorAccessStatus.pending_review
-  ) {
-    return res.status(403).json({
-      success: false,
+  switch (req.user.vendorAccessStatus) {
+    case VendorAccessStatus.active:
+      return next();
 
-      code:
-        "VENDOR_PENDING_REVIEW",
+    case VendorAccessStatus.pending_review:
+      return res.status(403).json({
+        success: false,
+        code: "VENDOR_PENDING_REVIEW",
+        message:
+          "Your seller account is still under review. You can continue using CampusMart as a buyer while we review your seller access.",
+      });
 
-      message:
-        "Your seller account is still under review. You can continue using CampusMart as a buyer while we review your seller access.",
-    });
+    case VendorAccessStatus.restricted:
+      return res.status(403).json({
+        success: false,
+        code: "VENDOR_RESTRICTED",
+        message:
+          "Your seller access is currently restricted. Please contact CampusMart support.",
+      });
+
+    case VendorAccessStatus.suspended:
+      return res.status(403).json({
+        success: false,
+        code: "VENDOR_SUSPENDED",
+        message: "Your seller account is currently suspended.",
+      });
+
+    default:
+      return res.status(403).json({
+        success: false,
+        code: "VENDOR_ACCESS_UNAVAILABLE",
+        message:
+          "Seller access is not currently available for this account.",
+      });
   }
-
-  if (
-    req.user.vendorAccessStatus ===
-    VendorAccessStatus.restricted
-  ) {
-    return res.status(403).json({
-      success: false,
-
-      code:
-        "VENDOR_RESTRICTED",
-
-      message:
-        "Your seller access is currently restricted. Please contact CampusMart support.",
-    });
-  }
-
-  if (
-    req.user.vendorAccessStatus ===
-    VendorAccessStatus.suspended
-  ) {
-    return res.status(403).json({
-      success: false,
-
-      code:
-        "VENDOR_SUSPENDED",
-
-      message:
-        "Your seller account is currently suspended.",
-    });
-  }
-
-  if (
-    req.user.vendorAccessStatus !==
-    VendorAccessStatus.active
-  ) {
-    return res.status(403).json({
-      success: false,
-
-      code:
-        "VENDOR_ACCESS_UNAVAILABLE",
-
-      message:
-        "Seller access is not currently available for this account.",
-    });
-  }
-
-  next();
 };
 
 /*
  * =======================================================
  * SELLER ELIGIBILITY
  * =======================================================
- *
- * Authoritative gate for creating or modifying commercial
- * marketplace content.
- *
- * Checks:
- *
- * - vendor role
- * - university details
- * - matric number where required
- * - verified student identity
- * - complete seller profile
- * - active seller access
- *
- * It also safely reconciles:
- *
- * pending_review -> active
- * active         -> pending_review
- *
- * Restricted and suspended statuses are never
- * automatically overridden.
  */
 
-export const requireSellerEligibility =
-  async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ) => {
-    try {
-      if (!req.user) {
-        return res.status(401).json({
-          success: false,
-
-          message:
-            "Authentication required.",
-        });
-      }
-
-      if (
-        req.user.role !==
-        UserRole.vendor
-      ) {
-        return res.status(403).json({
-          success: false,
-
-          code:
-            "VENDOR_ROLE_REQUIRED",
-
-          message:
-            "Seller account required.",
-        });
-      }
-
-      const eligibility =
-        await reconcileSellerAccess(
-          req.user.id
-        );
-
-      req.user.vendorAccessStatus =
-        eligibility
-          .sellerProfile
-          .accessStatus;
-
-      if (
-        eligibility.canSell
-      ) {
-        return next();
-      }
-
-      let code =
-        "SELLER_NOT_ELIGIBLE";
-
-      switch (
-        eligibility.nextRequiredAction
-      ) {
-        case "complete_university_details":
-          code =
-            "SELLER_UNIVERSITY_DETAILS_REQUIRED";
-          break;
-
-        case "add_matric_number":
-          code =
-            "SELLER_MATRIC_REQUIRED";
-          break;
-
-        case "verify_student_identity":
-          code =
-            "STUDENT_VERIFICATION_REQUIRED";
-          break;
-
-        case "complete_seller_profile":
-          code =
-            "SELLER_PROFILE_REQUIRED";
-          break;
-
-        case "seller_access_pending":
-          code =
-            "SELLER_ACCESS_PENDING";
-          break;
-
-        case "seller_access_restricted":
-          code =
-            "SELLER_ACCESS_RESTRICTED";
-          break;
-
-        case "seller_access_suspended":
-          code =
-            "SELLER_ACCESS_SUSPENDED";
-          break;
-
-        case "not_a_seller":
-          code =
-            "VENDOR_ROLE_REQUIRED";
-          break;
-
-        default:
-          code =
-            "SELLER_NOT_ELIGIBLE";
-      }
-
-      return res.status(403).json({
+export const requireSellerEligibility = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
         success: false,
-
-        code,
-
-        message:
-          eligibility.message,
-
-        eligibility,
-      });
-    } catch (
-      error
-    ) {
-      console.error(
-        "Seller eligibility middleware error:",
-        error
-      );
-
-      if (
-        error instanceof
-          Error &&
-        error.message ===
-          "USER_NOT_FOUND"
-      ) {
-        return res.status(401).json({
-          success: false,
-
-          message:
-            "User account no longer exists.",
-        });
-      }
-
-      return res.status(500).json({
-        success: false,
-
-        message:
-          "Unable to confirm seller access.",
+        message: "Authentication required.",
       });
     }
-  };
+
+    if (req.user.role !== UserRole.vendor) {
+      return res.status(403).json({
+        success: false,
+        code: "VENDOR_ROLE_REQUIRED",
+        message: "Seller account required.",
+      });
+    }
+
+    const eligibility = await reconcileSellerAccess(
+      req.user.id
+    );
+
+    req.user.vendorAccessStatus =
+      eligibility.sellerProfile.accessStatus;
+
+    if (eligibility.canSell) {
+      return next();
+    }
+
+    let code = "SELLER_NOT_ELIGIBLE";
+
+    switch (eligibility.nextRequiredAction) {
+      case "complete_university_details":
+        code = "SELLER_UNIVERSITY_DETAILS_REQUIRED";
+        break;
+
+      case "add_matric_number":
+        code = "SELLER_MATRIC_REQUIRED";
+        break;
+
+      case "verify_student_identity":
+        code = "STUDENT_VERIFICATION_REQUIRED";
+        break;
+
+      case "complete_seller_profile":
+        code = "SELLER_PROFILE_REQUIRED";
+        break;
+
+      case "seller_access_pending":
+        code = "SELLER_ACCESS_PENDING";
+        break;
+
+      case "seller_access_restricted":
+        code = "SELLER_ACCESS_RESTRICTED";
+        break;
+
+      case "seller_access_suspended":
+        code = "SELLER_ACCESS_SUSPENDED";
+        break;
+
+      case "not_a_seller":
+        code = "VENDOR_ROLE_REQUIRED";
+        break;
+
+      default:
+        code = "SELLER_NOT_ELIGIBLE";
+    }
+
+    return res.status(403).json({
+      success: false,
+      code,
+      message: eligibility.message,
+      eligibility,
+    });
+  } catch (error) {
+    console.error(
+      "Seller eligibility middleware error:",
+      error
+    );
+
+    if (
+      error instanceof Error &&
+      error.message === "USER_NOT_FOUND"
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "User account no longer exists.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to confirm seller access.",
+    });
+  }
+};

@@ -1,27 +1,18 @@
+
 "use client";
 
 import Link from "next/link";
-
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import PageShell from "@/components/common/PageShell";
-
-import {
-  useAuth,
-} from "@/components/common/AuthContext";
-
-import {
-  formatNaira,
-  type Product,
-} from "@/lib/products";
+import { useAuth } from "@/components/common/AuthContext";
+import { useCampusMartConfirm } from "@/components/common/CampusMartConfirm";
+import { formatNaira, type Product } from "@/lib/products";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+const PAGE_SIZE = 10;
 
 type SellerNextAction =
   | "not_a_seller"
@@ -36,753 +27,437 @@ type SellerNextAction =
 
 type SellerEligibility = {
   canSell: boolean;
-
-  nextRequiredAction:
-    SellerNextAction;
-
+  nextRequiredAction: SellerNextAction;
   message: string;
 };
 
-type VendorProduct =
-  Product & {
-    isArchived: boolean;
+type VendorProduct = Product & {
+  isArchived: boolean;
+  archivedAt: string | null;
+  moderationHidden?: boolean;
+};
 
-    archivedAt:
-      | string
-      | null;
-  };
-
-type ListingFilter =
-  | "all"
-  | "published"
-  | "archived";
+type ListingFilter = "all" | "published" | "archived";
 
 type ListingAction =
   | {
       id: number;
-
-      type:
-        | "archive"
-        | "restore";
+      type: "archive" | "restore";
     }
   | null;
 
-function getSetupAction(
-  action:
-    SellerNextAction
-) {
+function getSetupAction(action: SellerNextAction) {
   switch (action) {
     case "complete_university_details":
       return {
-        label:
-          "Complete university details",
-
-        href:
-          "/profile",
+        label: "Complete university details",
+        href: "/profile",
       };
 
     case "add_matric_number":
       return {
-        label:
-          "Add matric number",
-
-        href:
-          "/profile",
+        label: "Add matric number",
+        href: "/profile",
       };
 
     case "verify_student_identity":
       return {
-        label:
-          "Complete verification",
-
-        href:
-          "/profile",
+        label: "Complete verification",
+        href: "/profile",
       };
 
     case "complete_seller_profile":
       return {
-        label:
-          "Complete seller profile",
-
-        href:
-          "/profile",
-      };
-
-    case "seller_access_pending":
-      return {
-        label:
-          "Review seller setup",
-
-        href:
-          "/profile",
-      };
-
-    case "seller_access_restricted":
-      return {
-        label:
-          "Review account",
-
-        href:
-          "/profile",
-      };
-
-    case "seller_access_suspended":
-      return {
-        label:
-          "Review account",
-
-        href:
-          "/profile",
+        label: "Complete seller profile",
+        href: "/profile",
       };
 
     default:
       return {
-        label:
-          "Complete seller setup",
-
-        href:
-          "/profile",
+        label: "Review account",
+        href: "/profile",
       };
   }
 }
 
-function formatArchivedDate(
-  value:
-    | string
-    | null
-) {
-  if (!value) {
-    return "";
-  }
+function formatArchivedDate(value: string | null) {
+  if (!value) return "";
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "";
-  }
+  if (Number.isNaN(date.getTime())) return "";
 
-  return date.toLocaleDateString(
-    "en-GB",
-    {
-      day:
-        "numeric",
-
-      month:
-        "short",
-
-      year:
-        "numeric",
-    }
-  );
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 export default function Page() {
-  const {
-    user,
-    openAuth,
-  } =
-    useAuth();
+  const campusMartConfirm = useCampusMartConfirm();
+  const { user, openAuth } = useAuth();
 
-  const [
-    listings,
-    setListings,
-  ] =
-    useState<
-      VendorProduct[]
-    >(
-      []
-    );
+  const topRef = useRef<HTMLDivElement>(null);
 
-  const [
-    eligibility,
-    setEligibility,
-  ] =
-    useState<
-      SellerEligibility | null
-    >(
-      null
-    );
+  const [listings, setListings] = useState<VendorProduct[]>([]);
+  const [eligibility, setEligibility] =
+    useState<SellerEligibility | null>(null);
 
-  const [
-    loading,
-    setLoading,
-  ] =
-    useState(
-      true
-    );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const [
-    error,
-    setError,
-  ] =
-    useState(
-      ""
-    );
-
-  const [
-    success,
-    setSuccess,
-  ] =
-    useState(
-      ""
-    );
-
-  const [
-    filter,
-    setFilter,
-  ] =
-    useState<ListingFilter>(
-      "all"
-    );
-
-  const [
-    listingAction,
-    setListingAction,
-  ] =
-    useState<ListingAction>(
-      null
-    );
+  const [filter, setFilter] = useState<ListingFilter>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [listingAction, setListingAction] =
+    useState<ListingAction>(null);
 
   /*
-   * =====================================================
-   * LOAD LISTINGS + SELLER ELIGIBILITY
-   * =====================================================
+   * LOAD SELLER LISTINGS AND ELIGIBILITY
    */
 
   useEffect(() => {
-    if (
-      user?.role !==
-      "vendor"
-    ) {
-      setLoading(
-        false
-      );
-
-      setEligibility(
-        null
-      );
-
+    if (user?.role !== "vendor") {
+      setLoading(false);
       return;
     }
 
-    const controller =
-      new AbortController();
+    const controller = new AbortController();
 
-    const loadPage =
-      async () => {
-        try {
-          setLoading(
-            true
-          );
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError("");
 
-          setError(
-            ""
-          );
+        const token = localStorage.getItem("campusmart-token");
 
-          setSuccess(
-            ""
-          );
-
-          const token =
-            localStorage.getItem(
-              "campusmart-token"
-            );
-
-          if (!token) {
-            throw new Error(
-              "Your session could not be verified. Please sign in again."
-            );
-          }
-
-          const headers = {
-            Authorization:
-              `Bearer ${token}`,
-          };
-
-          const [
-            listingsResponse,
-            eligibilityResponse,
-          ] =
-            await Promise.all([
-              fetch(
-                `${API_URL}/api/products/mine`,
-                {
-                  headers,
-
-                  signal:
-                    controller.signal,
-
-                  cache:
-                    "no-store",
-                }
-              ),
-
-              fetch(
-                `${API_URL}/api/vendor/eligibility`,
-                {
-                  headers,
-
-                  signal:
-                    controller.signal,
-
-                  cache:
-                    "no-store",
-                }
-              ),
-            ]);
-
-          const [
-            listingsData,
-            eligibilityData,
-          ] =
-            await Promise.all([
-              listingsResponse.json(),
-
-              eligibilityResponse.json(),
-            ]);
-
-          if (
-            !listingsResponse.ok ||
-            !listingsData.success
-          ) {
-            throw new Error(
-              listingsData.message ||
-                "Unable to load your listings."
-            );
-          }
-
-          if (
-            !eligibilityResponse.ok ||
-            !eligibilityData.success
-          ) {
-            throw new Error(
-              eligibilityData.message ||
-                "Unable to check seller access."
-            );
-          }
-
-          setListings(
-            Array.isArray(
-              listingsData.products
-            )
-              ? listingsData.products
-              : []
-          );
-
-          setEligibility(
-            eligibilityData
-              .eligibility
-          );
-        } catch (
-          pageError
-        ) {
-          if (
-            pageError instanceof
-              DOMException &&
-            pageError.name ===
-              "AbortError"
-          ) {
-            return;
-          }
-
-          console.error(
-            "Vendor listings error:",
-            pageError
-          );
-
-          setError(
-            pageError instanceof
-              Error
-              ? pageError.message
-              : "Unable to load your listings."
-          );
-        } finally {
-          if (
-            !controller.signal
-              .aborted
-          ) {
-            setLoading(
-              false
-            );
-          }
+        if (!token) {
+          throw new Error("Your session could not be verified.");
         }
-      };
 
-    void loadPage();
+        const headers = {
+          Authorization: `Bearer ${token}`,
+        };
+
+        const [listingsResponse, eligibilityResponse] =
+          await Promise.all([
+            fetch(`${API_URL}/api/products/mine`, {
+              headers,
+              signal: controller.signal,
+              cache: "no-store",
+            }),
+
+            fetch(`${API_URL}/api/vendor/eligibility`, {
+              headers,
+              signal: controller.signal,
+              cache: "no-store",
+            }),
+          ]);
+
+        const [listingsData, eligibilityData] =
+          await Promise.all([
+            listingsResponse.json(),
+            eligibilityResponse.json(),
+          ]);
+
+        if (!listingsResponse.ok || !listingsData.success) {
+          throw new Error(
+            listingsData.message || "Unable to load listings."
+          );
+        }
+
+        if (!eligibilityResponse.ok || !eligibilityData.success) {
+          throw new Error(
+            eligibilityData.message ||
+              "Unable to check seller access."
+          );
+        }
+
+        if (controller.signal.aborted) return;
+
+        setListings(
+          Array.isArray(listingsData.products)
+            ? listingsData.products
+            : []
+        );
+
+        setEligibility(eligibilityData.eligibility);
+      } catch (loadError) {
+        if (controller.signal.aborted) return;
+
+        if (
+          loadError instanceof DOMException &&
+          loadError.name === "AbortError"
+        ) {
+          return;
+        }
+
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load listings."
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void load();
 
     return () => {
       controller.abort();
     };
-  }, [
-    user,
-  ]);
+  }, [user]);
 
   /*
-   * =====================================================
-   * COUNTS + FILTERING
-   * =====================================================
+   * LISTING COUNTS AND FILTERS
+   *
+   * Admin-hidden listings remain archived in the database,
+   * so they continue to appear under All and Archived.
+   * Their individual cards show the correct moderation status.
    */
 
-  const publishedCount =
-    useMemo(
-      () =>
-        listings.filter(
-          (
-            listing
-          ) =>
-            !listing.isArchived
-        ).length,
-      [
-        listings,
-      ]
-    );
+  const publishedCount = useMemo(
+    () => listings.filter((listing) => !listing.isArchived).length,
+    [listings]
+  );
 
-  const archivedCount =
-    useMemo(
-      () =>
-        listings.filter(
-          (
-            listing
-          ) =>
-            listing.isArchived
-        ).length,
-      [
-        listings,
-      ]
-    );
+  const archivedCount = useMemo(
+    () => listings.filter((listing) => listing.isArchived).length,
+    [listings]
+  );
 
-  const filteredListings =
-    useMemo(
-      () => {
-        if (
-          filter ===
-          "published"
-        ) {
-          return listings.filter(
-            (
-              listing
-            ) =>
-              !listing.isArchived
-          );
-        }
+  const filteredListings = useMemo(() => {
+    if (filter === "published") {
+      return listings.filter((listing) => !listing.isArchived);
+    }
 
-        if (
-          filter ===
-          "archived"
-        ) {
-          return listings.filter(
-            (
-              listing
-            ) =>
-              listing.isArchived
-          );
-        }
+    if (filter === "archived") {
+      return listings.filter((listing) => listing.isArchived);
+    }
 
-        return listings;
-      },
-      [
-        filter,
-        listings,
-      ]
-    );
+    return listings;
+  }, [filter, listings]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredListings.length / PAGE_SIZE)
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const visibleListings = filteredListings.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
+
+  const changePage = (page: number) => {
+    setCurrentPage(page);
+
+    window.requestAnimationFrame(() => {
+      topRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  };
 
   /*
-   * =====================================================
-   * ARCHIVE LISTING
-   * =====================================================
-   *
-   * Archiving is intentionally allowed for any vendor
-   * account that owns the listing.
-   *
-   * Full current selling eligibility is NOT required to
-   * take an item off sale.
+   * SELLER ARCHIVE
    */
 
-  const archiveListing =
-    async (
-      listing:
-        VendorProduct
-    ) => {
-      const confirmed =
-        window.confirm(
-          `Archive "${listing.title}"?\n\nIt will disappear from the public marketplace but remain in your listing history.`
-        );
+  const archiveListing = async (listing: VendorProduct) => {
+    const accepted = await campusMartConfirm({
+      title: "Confirm action",
+      description: `Archive "${listing.title}"?`,
+      danger: true,
+    });
 
-      if (
-        !confirmed
-      ) {
-        return;
+    if (!accepted) return;
+
+    try {
+      setListingAction({
+        id: listing.id,
+        type: "archive",
+      });
+
+      setError("");
+      setSuccess("");
+
+      const token = localStorage.getItem("campusmart-token");
+
+      if (!token) {
+        throw new Error("Your session could not be verified.");
       }
 
-      try {
-        setListingAction({
-          id:
-            listing.id,
+      const response = await fetch(
+        `${API_URL}/api/products/${listing.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
-          type:
-            "archive",
-        });
+      const data = await response.json();
 
-        setError(
-          ""
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || "Unable to archive listing."
         );
+      }
 
-        setSuccess(
-          ""
-        );
+      setListings((current) =>
+        current.map((item) =>
+          item.id === listing.id
+            ? {
+                ...item,
+                ...data.product,
+              }
+            : item
+        )
+      );
 
-        const token =
-          localStorage.getItem(
-            "campusmart-token"
-          );
+      setSuccess("Listing archived.");
+    } catch (archiveError) {
+      setError(
+        archiveError instanceof Error
+          ? archiveError.message
+          : "Unable to archive listing."
+      );
+    } finally {
+      setListingAction(null);
+    }
+  };
 
-        if (!token) {
-          throw new Error(
-            "Your session could not be verified. Please sign in again."
-          );
+  /*
+   * SELLER RESTORE
+   *
+   * Admin-hidden listings must not be restored here.
+   * The backend independently enforces the same rule.
+   */
+
+  const restoreListing = async (listing: VendorProduct) => {
+    if (listing.moderationHidden) {
+      setError(
+        "This listing was hidden by CampusMart moderation. Contact support to request a review."
+      );
+      return;
+    }
+
+    if (!eligibility?.canSell) {
+      setError(
+        eligibility?.message ||
+          "Active seller access is required."
+      );
+      return;
+    }
+
+    try {
+      setListingAction({
+        id: listing.id,
+        type: "restore",
+      });
+
+      setError("");
+      setSuccess("");
+
+      const token = localStorage.getItem("campusmart-token");
+
+      if (!token) {
+        throw new Error("Your session could not be verified.");
+      }
+
+      const response = await fetch(
+        `${API_URL}/api/products/${listing.id}/restore`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        if (data.eligibility) {
+          setEligibility(data.eligibility);
         }
 
-        const response =
-          await fetch(
-            `${API_URL}/api/products/${listing.id}`,
-            {
-              method:
-                "DELETE",
-
-              headers: {
-                Authorization:
-                  `Bearer ${token}`,
-              },
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (
-          !response.ok ||
-          !data.success
-        ) {
-          throw new Error(
-            data.message ||
-              "Unable to archive listing."
-          );
-        }
-
-        setListings(
-          (
-            current
-          ) =>
-            current.map(
-              (
-                currentListing
-              ) =>
-                currentListing.id ===
-                listing.id
-                  ? {
-                      ...currentListing,
-
-                      ...data.product,
-                    }
-                  : currentListing
+        if (data.code === "LISTING_HIDDEN_BY_ADMIN") {
+          setListings((current) =>
+            current.map((item) =>
+              item.id === listing.id
+                ? {
+                    ...item,
+                    isArchived: true,
+                    moderationHidden: true,
+                  }
+                : item
             )
-        );
-
-        setSuccess(
-          "Listing archived. It is no longer visible in the marketplace."
-        );
-      } catch (
-        archiveError
-      ) {
-        console.error(
-          "Archive listing error:",
-          archiveError
-        );
-
-        setError(
-          archiveError instanceof
-            Error
-            ? archiveError.message
-            : "Unable to archive listing."
-        );
-      } finally {
-        setListingAction(
-          null
-        );
-      }
-    };
-
-  /*
-   * =====================================================
-   * RESTORE LISTING
-   * =====================================================
-   *
-   * Restoring makes the listing publicly sellable again.
-   * Full seller eligibility is therefore required.
-   */
-
-  const restoreListing =
-    async (
-      listing:
-        VendorProduct
-    ) => {
-      if (
-        !eligibility?.canSell
-      ) {
-        setError(
-          eligibility?.message ||
-            "Active seller access is required before you can restore listings."
-        );
-
-        return;
-      }
-
-      try {
-        setListingAction({
-          id:
-            listing.id,
-
-          type:
-            "restore",
-        });
-
-        setError(
-          ""
-        );
-
-        setSuccess(
-          ""
-        );
-
-        const token =
-          localStorage.getItem(
-            "campusmart-token"
-          );
-
-        if (!token) {
-          throw new Error(
-            "Your session could not be verified. Please sign in again."
           );
         }
 
-        const response =
-          await fetch(
-            `${API_URL}/api/products/${listing.id}/restore`,
-            {
-              method:
-                "PATCH",
-
-              headers: {
-                Authorization:
-                  `Bearer ${token}`,
-              },
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (
-          !response.ok ||
-          !data.success
-        ) {
-          if (
-            data.eligibility
-          ) {
-            setEligibility(
-              data.eligibility
-            );
-          }
-
-          throw new Error(
-            data.message ||
-              "Unable to restore listing."
-          );
-        }
-
-        setListings(
-          (
-            current
-          ) =>
-            current.map(
-              (
-                currentListing
-              ) =>
-                currentListing.id ===
-                listing.id
-                  ? {
-                      ...currentListing,
-
-                      ...data.product,
-                    }
-                  : currentListing
-            )
-        );
-
-        setSuccess(
-          "Listing restored and published to the marketplace."
-        );
-      } catch (
-        restoreError
-      ) {
-        console.error(
-          "Restore listing error:",
-          restoreError
-        );
-
-        setError(
-          restoreError instanceof
-            Error
-            ? restoreError.message
-            : "Unable to restore listing."
-        );
-      } finally {
-        setListingAction(
-          null
+        throw new Error(
+          data.message || "Unable to restore listing."
         );
       }
-    };
+
+      setListings((current) =>
+        current.map((item) =>
+          item.id === listing.id
+            ? {
+                ...item,
+                ...data.product,
+                moderationHidden: false,
+              }
+            : item
+        )
+      );
+
+      setSuccess("Listing restored.");
+    } catch (restoreError) {
+      setError(
+        restoreError instanceof Error
+          ? restoreError.message
+          : "Unable to restore listing."
+      );
+    } finally {
+      setListingAction(null);
+    }
+  };
 
   /*
-   * =====================================================
-   * NON-SELLER
-   * =====================================================
+   * NON-SELLER VIEW
    */
 
-  if (
-    user?.role !==
-    "vendor"
-  ) {
+  if (user?.role !== "vendor") {
     return (
       <PageShell
         title="Vendor listings"
         description="Review and manage your marketplace listings."
       >
         <div className="site-card max-w-md p-8 text-center">
-          <h2 className="text-2xl font-bold text-slate-950">
-            Vendor access
-            required
+          <h2 className="text-2xl font-bold">
+            Vendor access required
           </h2>
-
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Sign in with a seller
-            account to manage your
-            CampusMart listings.
-          </p>
 
           <button
             type="button"
-            onClick={() =>
-              openAuth(
-                "login",
-                "vendor"
-              )
-            }
+            onClick={() => openAuth("login", "vendor")}
             className="mt-6 rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black"
           >
             Sign in as seller
@@ -792,410 +467,189 @@ export default function Page() {
     );
   }
 
-  const canSell =
-    eligibility
-      ?.canSell ??
-    false;
+  const canSell = eligibility?.canSell ?? false;
 
-  const setupAction =
-    getSetupAction(
-      eligibility
-        ?.nextRequiredAction ??
-        "not_a_seller"
-    );
-
-  const isRestricted =
-    eligibility
-      ?.nextRequiredAction ===
-      "seller_access_restricted";
-
-  const isSuspended =
-    eligibility
-      ?.nextRequiredAction ===
-      "seller_access_suspended";
-
-  const dangerState =
-    isRestricted ||
-    isSuspended;
+  const setupAction = getSetupAction(
+    eligibility?.nextRequiredAction ?? "not_a_seller"
+  );
 
   return (
     <PageShell
       title="My listings"
-      description="Manage published products and keep archived listings for your records."
+      description="Manage your current and archived CampusMart products."
     >
-      {!loading &&
-      eligibility &&
-      !canSell ? (
-        <section
-          className={`mb-6 rounded-2xl border p-5 sm:p-6 ${
-            dangerState
-              ? "border-red-200 bg-red-50"
-              : "border-amber-200 bg-amber-50"
-          }`}
-        >
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p
-                className={`text-xs font-bold uppercase tracking-[0.18em] ${
-                  dangerState
-                    ? "text-red-700"
-                    : "text-amber-700"
-                }`}
-              >
-                Seller access
-              </p>
+      <div ref={topRef} className="scroll-mt-32" />
 
-              <h2
-                className={`mt-2 text-xl font-bold ${
-                  dangerState
-                    ? "text-red-950"
-                    : "text-amber-950"
-                }`}
-              >
-                New selling activity is
-                currently unavailable
-              </h2>
-
-              <p
-                className={`mt-2 max-w-xl text-sm leading-6 ${
-                  dangerState
-                    ? "text-red-800"
-                    : "text-amber-800"
-                }`}
-              >
-                {
-                  eligibility.message
-                }
-              </p>
-
-              <p
-                className={`mt-2 text-xs leading-5 ${
-                  dangerState
-                    ? "text-red-700"
-                    : "text-amber-700"
-                }`}
-              >
-                You can still view your
-                listing history and
-                archive published items.
-                Creating, editing and
-                restoring listings
-                requires active seller
-                access.
-              </p>
-            </div>
-
-            <Link
-              href={
-                setupAction.href
-              }
-              className={`shrink-0 rounded-[10px] px-5 py-3 text-center text-sm font-bold transition ${
-                dangerState
-                  ? "border border-red-200 bg-white text-red-800 hover:border-red-400"
-                  : "bg-accent-400 text-black hover:bg-accent-500"
-              }`}
-            >
-              {
-                setupAction.label
-              }
-            </Link>
-          </div>
-        </section>
-      ) : null}
-
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-sm text-slate-600">
-            <span className="font-bold text-slate-950">
-              {
-                publishedCount
-              }
-            </span>{" "}
+            <strong className="text-slate-950">
+              {publishedCount}
+            </strong>{" "}
             published
             {" · "}
-            <span className="font-bold text-slate-950">
-              {
-                archivedCount
-              }
-            </span>{" "}
+            <strong className="text-slate-950">
+              {archivedCount}
+            </strong>{" "}
             archived
-          </p>
-
-          <p className="mt-1 text-xs text-slate-500">
-            Archived listings are kept
-            in your history but are not
-            visible to buyers.
           </p>
         </div>
 
         {canSell ? (
           <Link
             href="/vendor/add-listing"
-            className="rounded-[10px] bg-accent-400 px-5 py-3 text-center text-sm font-bold text-black transition hover:bg-accent-500"
+            className="rounded-[10px] bg-accent-400 px-5 py-2.5 text-sm font-black text-black"
           >
-            Add listing
+            + Add listing
           </Link>
         ) : (
           <Link
-            href={
-              setupAction.href
-            }
-            className="rounded-[10px] border border-amber-200 bg-amber-50 px-5 py-3 text-center text-sm font-bold text-amber-900 transition hover:bg-amber-100"
+            href={setupAction.href}
+            className="rounded-[10px] bg-amber-100 px-5 py-2.5 text-sm font-black text-amber-900"
           >
-            {
-              setupAction.label
-            }
+            {setupAction.label}
           </Link>
         )}
       </div>
 
       {error ? (
-        <div
-          className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
-          role="alert"
-        >
-          {
-            error
-          }
+        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          {error}
         </div>
       ) : null}
 
       {success ? (
-        <div
-          className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800"
-          role="status"
-        >
-          {
-            success
-          }
+        <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+          {success}
         </div>
       ) : null}
 
       {!loading ? (
-        <div className="mt-6 flex flex-wrap gap-2 border-b border-slate-200 pb-4">
-          <button
-            type="button"
-            onClick={() =>
-              setFilter(
-                "all"
-              )
-            }
-            className={`rounded-full px-4 py-2 text-sm font-bold transition ${
-              filter ===
-              "all"
-                ? "bg-slate-950 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            All (
-            {
-              listings.length
-            }
-            )
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setFilter(
-                "published"
-              )
-            }
-            className={`rounded-full px-4 py-2 text-sm font-bold transition ${
-              filter ===
-              "published"
-                ? "bg-slate-950 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            Published (
-            {
-              publishedCount
-            }
-            )
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setFilter(
-                "archived"
-              )
-            }
-            className={`rounded-full px-4 py-2 text-sm font-bold transition ${
-              filter ===
-              "archived"
-                ? "bg-slate-950 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            Archived (
-            {
-              archivedCount
-            }
-            )
-          </button>
+        <div className="mt-6 inline-flex flex-wrap gap-1 rounded-full border border-white/80 bg-white/75 p-1 shadow-sm backdrop-blur-xl">
+          {(
+            [
+              ["all", `All ${listings.length}`],
+              ["published", `Published ${publishedCount}`],
+              ["archived", `Archived ${archivedCount}`],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilter(value)}
+              className={`rounded-full px-4 py-2 text-xs font-black transition ${
+                filter === value
+                  ? "bg-[#4A1724] text-white"
+                  : "text-[#755861] hover:bg-[#F5EADF]"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       ) : null}
 
       {loading ? (
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          {[
-            1,
-            2,
-          ].map(
-            (
-              item
-            ) => (
-              <div
-                key={
-                  item
-                }
-                className="site-card h-[420px] animate-pulse bg-slate-100"
-              />
-            )
-          )}
+        <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <div
+              key={index}
+              className="h-72 animate-pulse rounded-2xl bg-slate-100"
+            />
+          ))}
         </div>
-      ) : filteredListings.length ? (
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          {filteredListings.map(
-            (
-              listing
-            ) => {
-              const isArchived =
-                listing.isArchived;
+      ) : visibleListings.length > 0 ? (
+        <>
+          <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+            {visibleListings.map((listing) => {
+              const isArchived = listing.isArchived;
+              const adminHidden = Boolean(
+                listing.moderationHidden
+              );
 
-              const archiving =
-                listingAction?.id ===
-                  listing.id &&
-                listingAction.type ===
-                  "archive";
+              const busy = listingAction?.id === listing.id;
 
-              const restoring =
-                listingAction?.id ===
-                  listing.id &&
-                listingAction.type ===
-                  "restore";
-
-              const actionBusy =
-                archiving ||
-                restoring;
-
-              const archivedDate =
-                formatArchivedDate(
-                  listing.archivedAt
-                );
+              const archivedDate = formatArchivedDate(
+                listing.archivedAt
+              );
 
               return (
                 <article
-                  key={
-                    listing.id
-                  }
-                  className={`site-card overflow-hidden ${
-                    isArchived
-                      ? "border border-slate-200 bg-slate-50"
-                      : ""
-                  }`}
+                  key={listing.id}
+                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
                 >
-                  <div className="relative">
-                    {listing.images
-                      .length ? (
+                  <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
+                    {listing.images.length > 0 ? (
                       <img
-                        src={
-                          listing
-                            .images[0]
-                        }
-                        alt={
-                          listing.title
-                        }
-                        className={`h-44 w-full object-cover ${
-                          isArchived
-                            ? "opacity-60 grayscale"
+                        src={listing.images[0]}
+                        alt={listing.title}
+                        className={`h-full w-full object-cover ${
+                          isArchived || adminHidden
+                            ? "grayscale opacity-60"
                             : ""
                         }`}
                       />
                     ) : (
-                      <div
-                        className={`flex h-44 items-center justify-center bg-slate-950 px-6 text-center text-sm font-bold text-white ${
-                          isArchived
-                            ? "opacity-60"
-                            : ""
-                        }`}
-                      >
+                      <div className="flex h-full items-center justify-center bg-slate-900 text-xs font-black text-white">
                         CampusMart
-                        listing image
                       </div>
                     )}
 
                     <span
-                      className={`absolute left-4 top-4 rounded-full border px-3 py-1 text-xs font-bold shadow-sm ${
-                        isArchived
-                          ? "border-slate-300 bg-white text-slate-700"
-                          : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      className={`absolute left-2.5 top-2.5 rounded-full border px-2.5 py-1 text-[10px] font-black ${
+                        adminHidden
+                          ? "border-red-200 bg-red-50 text-red-700"
+                          : isArchived
+                            ? "border-slate-300 bg-white text-slate-600"
+                            : "border-emerald-200 bg-emerald-50 text-emerald-700"
                       }`}
                     >
-                      {isArchived
-                        ? "Archived"
-                        : "Published"}
+                      {adminHidden
+                        ? "Hidden by CampusMart"
+                        : isArchived
+                          ? "Archived"
+                          : "Published"}
                     </span>
                   </div>
 
-                  <div className="p-5">
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                      {
-                        listing.category
-                      }
+                  <div className="p-3.5">
+                    <p className="truncate text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">
+                      {listing.category}
                     </p>
 
-                    <h2 className="mt-2 text-xl font-bold text-slate-950">
-                      {
-                        listing.title
-                      }
+                    <h2 className="mt-1.5 line-clamp-2 min-h-10 text-sm font-black leading-5 text-slate-950">
+                      {listing.title}
                     </h2>
 
-                    <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">
-                      {
-                        listing.description
-                      }
+                    <p className="mt-2 text-base font-black">
+                      {formatNaira(listing.price)}
                     </p>
 
-                    <p className="mt-4 text-lg font-bold text-slate-950">
-                      {formatNaira(
-                        listing.price
-                      )}
-                    </p>
-
-                    {isArchived ? (
-                      <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
-                        <p className="text-sm font-bold text-slate-800">
-                          Not visible in marketplace
-                        </p>
-
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          Buyers cannot
-                          open or order
-                          this listing.
-                          {archivedDate
-                            ? ` Archived ${archivedDate}.`
-                            : ""}
-                        </p>
-                      </div>
+                    {isArchived && archivedDate ? (
+                      <p className="mt-1 text-[10px] text-slate-400">
+                        {adminHidden
+                          ? "Hidden"
+                          : "Archived"}{" "}
+                        {archivedDate}
+                      </p>
                     ) : null}
 
-                    <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
-                      {!isArchived ? (
+                    <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3">
+                      {!isArchived && !adminHidden ? (
                         <Link
                           href={`/marketplace/products/${listing.id}`}
-                          className="rounded-[9px] border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition hover:border-black hover:text-black"
+                          className="inline-flex min-h-9 items-center justify-center rounded-[9px] border border-slate-200 px-2 text-xs font-black"
                         >
                           View
                         </Link>
-                      ) : null}
+                      ) : (
+                        <span />
+                      )}
 
                       {canSell ? (
                         <Link
                           href={`/vendor/edit-listing?id=${listing.id}`}
-                          className="rounded-[9px] border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition hover:border-black hover:text-black"
+                          className="inline-flex min-h-9 items-center justify-center rounded-[9px] border border-slate-200 px-2 text-xs font-black"
                         >
                           Edit
                         </Link>
@@ -1203,129 +657,107 @@ export default function Page() {
                         <button
                           type="button"
                           disabled
-                          title="Active seller access is required to edit listings."
-                          className="cursor-not-allowed rounded-[9px] border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold text-slate-400"
+                          className="min-h-9 rounded-[9px] bg-slate-100 text-xs font-black text-slate-400"
                         >
                           Edit
                         </button>
                       )}
-
-                      {isArchived ? (
-                        <button
-                          type="button"
-                          disabled={
-                            !canSell ||
-                            actionBusy
-                          }
-                          onClick={() =>
-                            restoreListing(
-                              listing
-                            )
-                          }
-                          title={
-                            canSell
-                              ? "Restore this listing to the marketplace"
-                              : "Active seller access is required to restore listings."
-                          }
-                          className={`rounded-[9px] px-4 py-2 text-sm font-bold transition ${
-                            canSell
-                              ? "bg-accent-400 text-black hover:bg-accent-500"
-                              : "cursor-not-allowed bg-slate-100 text-slate-400"
-                          } disabled:opacity-50`}
-                        >
-                          {restoring
-                            ? "Restoring..."
-                            : "Restore"}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={
-                            actionBusy
-                          }
-                          onClick={() =>
-                            archiveListing(
-                              listing
-                            )
-                          }
-                          title="Remove this listing from the marketplace without deleting its history."
-                          className="rounded-[9px] px-4 py-2 text-sm font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {archiving
-                            ? "Archiving..."
-                            : "Archive"}
-                        </button>
-                      )}
                     </div>
 
-                    {!canSell ? (
-                      <p className="mt-3 text-xs leading-5 text-slate-500">
-                        {isArchived
-                          ? "This listing remains in your history. Restore and edit will unlock when seller access is active."
-                          : "You can still archive this listing to take it off sale. Editing requires active seller access."}
-                      </p>
-                    ) : null}
+                    {adminHidden ? (
+                      <div className="mt-2 rounded-[9px] border border-red-200 bg-red-50 p-3">
+                        <p className="text-xs font-black text-red-800">
+                          Listing hidden by CampusMart
+                        </p>
+
+                        <p className="mt-1 text-[11px] leading-5 text-red-700">
+                          This listing is unavailable to buyers.
+                          Only CampusMart moderation can restore it.
+                        </p>
+
+                        <Link
+                          href="/support"
+                          className="mt-3 inline-flex w-full items-center justify-center rounded-[9px] border border-red-200 bg-white px-3 py-2 text-xs font-black text-red-800 transition hover:bg-red-100"
+                        >
+                          Contact support
+                        </Link>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={
+                          busy ||
+                          (isArchived && !canSell)
+                        }
+                        onClick={() =>
+                          isArchived
+                            ? void restoreListing(listing)
+                            : void archiveListing(listing)
+                        }
+                        className={`mt-2 w-full rounded-[9px] px-3 py-2 text-xs font-black transition disabled:opacity-40 ${
+                          isArchived
+                            ? "bg-accent-400 text-black"
+                            : "bg-red-50 text-red-600 hover:bg-red-100"
+                        }`}
+                      >
+                        {busy
+                          ? "Working..."
+                          : isArchived
+                            ? "Restore listing"
+                            : "Archive"}
+                      </button>
+                    )}
                   </div>
                 </article>
               );
-            }
-          )}
-        </div>
-      ) : listings.length ? (
-        <div className="site-card mt-6 p-8 text-center">
-          <h2 className="text-xl font-bold text-slate-950">
-            No{" "}
-            {filter ===
-            "published"
-              ? "published"
-              : filter ===
-                  "archived"
-                ? "archived"
-                : ""}{" "}
-            listings
-          </h2>
+            })}
+          </div>
 
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            {filter ===
-            "published"
-              ? "You do not currently have any products visible in the marketplace."
-              : filter ===
-                  "archived"
-                ? "You have not archived any listings."
-                : "No listings match this view."}
-          </p>
-        </div>
+          {filteredListings.length > PAGE_SIZE ? (
+            <div className="mt-8 grid grid-cols-3 items-center border-t border-slate-200 pt-5">
+              <div>
+                {currentPage > 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => changePage(currentPage - 1)}
+                    className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black"
+                  >
+                    ← Previous
+                  </button>
+                ) : null}
+              </div>
+
+              <p className="text-center text-xs font-bold text-slate-400">
+                {currentPage}
+                {" / "}
+                {totalPages}
+              </p>
+
+              <div className="text-right">
+                {currentPage < totalPages ? (
+                  <button
+                    type="button"
+                    onClick={() => changePage(currentPage + 1)}
+                    className="rounded-full bg-[#4A1724] px-4 py-2 text-sm font-black text-white"
+                  >
+                    Next →
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : (
         <div className="site-card mt-6 p-8 text-center">
-          <h2 className="text-xl font-bold text-slate-950">
-            Your shop is empty
+          <h2 className="text-xl font-bold">
+            No listings here
           </h2>
 
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            {canSell
-              ? "Publish your first product and it will appear here and in the marketplace."
-              : "You do not have any listings yet. Complete your seller requirements before publishing your first product."}
+          <p className="mt-2 text-sm text-slate-600">
+            {listings.length === 0
+              ? "Your shop does not have any listings yet."
+              : "No listings match this filter."}
           </p>
-
-          {canSell ? (
-            <Link
-              href="/vendor/add-listing"
-              className="mt-6 inline-flex rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black"
-            >
-              Add your first listing
-            </Link>
-          ) : (
-            <Link
-              href={
-                setupAction.href
-              }
-              className="mt-6 inline-flex rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black"
-            >
-              {
-                setupAction.label
-              }
-            </Link>
-          )}
         </div>
       )}
     </PageShell>

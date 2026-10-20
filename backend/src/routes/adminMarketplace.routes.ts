@@ -1,0 +1,13 @@
+import { Router } from "express";
+import { AdminRole } from "../generated/prisma/client";
+import { requireAdmin, requireAdminRole } from "../middleware/adminAuth.middleware";
+import { listMarketplaceCases, getMarketplaceCase, updateMarketplaceCase, moderateMarketplaceTarget, listMarketplaceListings, listMarketplaceSellers } from "../controllers/adminMarketplace.controller";
+const router = Router();
+router.use(requireAdmin, requireAdminRole(AdminRole.marketplace_moderator, AdminRole.customer_support, AdminRole.disputes));
+router.get("/cases", listMarketplaceCases);
+router.get("/cases/:id", getMarketplaceCase);
+router.patch("/cases/:id", updateMarketplaceCase);
+router.post("/cases/:id/actions", moderateMarketplaceTarget);
+router.get("/sellers", listMarketplaceSellers);
+router.get("/listings", listMarketplaceListings);
+export default router;

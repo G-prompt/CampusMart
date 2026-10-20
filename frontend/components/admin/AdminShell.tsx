@@ -1,25 +1,12 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-} from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 
-import type {
-  ReactNode,
-} from "react";
-
-import {
-  usePathname,
-  useRouter,
-} from "next/navigation";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000";
-
-const ADMIN_TOKEN_KEY =
-  "campusmart-admin-token";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const TOKEN = "campusmart-admin-token";
 
 export type AdminRole =
   | "super_admin"
@@ -39,214 +26,55 @@ export type AdminProfile = {
   active: boolean;
 };
 
-type NavigationItem = {
-  label: string;
-  description: string;
-  href: string;
-  enabled: boolean;
-};
+export function adminRoleLabel(role: AdminRole): string {
+  const labels: Record<AdminRole, string> = {
+    super_admin: "Super Admin",
+    verification_officer: "Verification Officer",
+    university_manager: "University Manager",
+    marketplace_moderator: "Marketplace Moderator",
+    customer_support: "Customer Support",
+    disputes: "Disputes Officer",
+    finance: "Finance Officer",
+    technical_admin: "Technical Admin",
+  };
+  return labels[role] || "Admin";
+}
 
-const navigation: NavigationItem[] = [
-  {
-    label: "Dashboard",
-    description:
-      "Overview and activity",
-    href: "/admin",
-    enabled: true,
-  },
+const pages: {
+  label: string;
+  hint: string;
+  href: string;
+  roles?: AdminRole[];
+}[] = [
+  { label: "Dashboard", hint: "Overview", href: "/admin" },
   {
     label: "Verification",
-    description:
-      "Student identity reviews",
-    href:
-      "/admin/verification",
-    enabled: true,
+    hint: "Student cases",
+    href: "/admin/verification",
+    roles: ["super_admin", "verification_officer"],
   },
   {
     label: "Universities",
-    description:
-      "Campus management",
-    href:
-      "/admin/universities",
-    enabled: false,
+    hint: "Campus network",
+    href: "/admin/universities",
+    roles: ["super_admin", "university_manager"],
   },
+  { label: "Campus Settings", hint: "Signup & selling", href: "/admin/campus-rollout", roles: ["super_admin", "university_manager"] },
   {
-    label: "Marketplace",
-    description:
-      "Listings and moderation",
-    href:
-      "/admin/marketplace",
-    enabled: false,
+    label: "Analytics & Reports",
+    hint: "Insights",
+    href: "/admin/analytics",
+    roles: ["super_admin"],
   },
+  { label: "Marketplace", hint: "Reports & safety", href: "/admin/marketplace", roles: ["super_admin", "marketplace_moderator", "customer_support", "disputes"] },
+  { label: "Seller Recognition", hint: "Badges & talent", href: "/admin/seller-recognition", roles: ["super_admin", "marketplace_moderator"] },
   {
-    label: "Users",
-    description:
-      "Buyers and sellers",
-    href:
-      "/admin/users",
-    enabled: false,
-  },
-  {
-    label: "Disputes",
-    description:
-      "Cases and resolutions",
-    href:
-      "/admin/disputes",
-    enabled: false,
-  },
-  {
-    label: "Finance",
-    description:
-      "Fees and settlements",
-    href:
-      "/admin/finance",
-    enabled: false,
-  },
-  {
-    label:
-      "Staff & Permissions",
-    description:
-      "Admin access control",
-    href:
-      "/admin/staff",
-    enabled: false,
-  },
-  {
-    label: "Settings",
-    description:
-      "Platform configuration",
-    href:
-      "/admin/settings",
-    enabled: false,
+    label: "Audit & Records",
+    hint: "Accountability",
+    href: "/admin/audit",
+    roles: ["super_admin"],
   },
 ];
-
-export function adminRoleLabel(
-  role: AdminRole
-) {
-  switch (role) {
-    case "super_admin":
-      return "Super Admin";
-
-    case "verification_officer":
-      return "Verification Officer";
-
-    case "university_manager":
-      return "University Manager";
-
-    case "marketplace_moderator":
-      return "Marketplace Moderator";
-
-    case "customer_support":
-      return "Customer Support";
-
-    case "disputes":
-      return "Disputes";
-
-    case "finance":
-      return "Finance";
-
-    case "technical_admin":
-      return "Technical Admin";
-
-    default:
-      return "Admin";
-  }
-}
-
-function AdminNavigation({
-  pathname,
-  onNavigate,
-}: {
-  pathname: string;
-  onNavigate?: () => void;
-}) {
-  const router =
-    useRouter();
-
-  return (
-    <nav className="flex-1 overflow-y-auto p-4">
-      <p className="px-3 pb-3 pt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-600">
-        Workspace
-      </p>
-
-      <div className="space-y-1">
-        {navigation.map(
-          (item) => {
-            const active =
-              item.href ===
-              "/admin"
-                ? pathname ===
-                  "/admin"
-                : pathname.startsWith(
-                    item.href
-                  );
-
-            return (
-              <button
-                key={
-                  item.href
-                }
-                type="button"
-                disabled={
-                  !item.enabled
-                }
-                onClick={() => {
-                  if (
-                    !item.enabled
-                  ) {
-                    return;
-                  }
-
-                  onNavigate?.();
-
-                  router.push(
-                    item.href
-                  );
-                }}
-                className={`w-full rounded-xl px-3 py-3 text-left transition ${
-                  active
-                    ? "bg-white/10 text-white"
-                    : item.enabled
-                      ? "text-slate-300 hover:bg-white/[0.06] hover:text-white"
-                      : "cursor-default text-slate-500"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p
-                      className={`truncate text-sm font-semibold ${
-                        active
-                          ? "text-white"
-                          : item.enabled
-                            ? "text-slate-300"
-                            : "text-slate-500"
-                      }`}
-                    >
-                      {item.label}
-                    </p>
-
-                    <p className="mt-0.5 truncate text-xs text-slate-600">
-                      {
-                        item.description
-                      }
-                    </p>
-                  </div>
-
-                  {!item.enabled ? (
-                    <span className="shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-600">
-                      Soon
-                    </span>
-                  ) : null}
-                </div>
-              </button>
-            );
-          }
-        )}
-      </div>
-    </nav>
-  );
-}
 
 export default function AdminShell({
   title,
@@ -255,417 +83,263 @@ export default function AdminShell({
   title: string;
   children: ReactNode;
 }) {
-  const router =
-    useRouter();
-
-  const pathname =
-    usePathname();
-
-  const [
-    admin,
-    setAdmin,
-  ] =
-    useState<
-      AdminProfile | null
-    >(null);
-
-  const [
-    loading,
-    setLoading,
-  ] =
-    useState(true);
-
-  const [
-    error,
-    setError,
-  ] =
-    useState("");
-
-  const [
-    mobileMenuOpen,
-    setMobileMenuOpen,
-  ] =
-    useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const [admin, setAdmin] = useState<AdminProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const openButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    let cancelled =
-      false;
+    setMounted(true);
+  }, []);
 
-    const loadAdmin =
-      async () => {
-        const token =
-          sessionStorage.getItem(
-            ADMIN_TOKEN_KEY
-          );
-
-        if (!token) {
-          router.replace(
-            "/admin/login"
-          );
-
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const token = sessionStorage.getItem(TOKEN);
+      if (!token) {
+        router.replace("/admin/login");
+        return;
+      }
+      try {
+        const response = await fetch(`${API}/api/admin/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success || !data.admin) {
+          sessionStorage.removeItem(TOKEN);
+          router.replace("/admin/login");
           return;
         }
-
-        try {
-          const response =
-            await fetch(
-              `${API_URL}/api/admin/auth/me`,
-              {
-                headers: {
-                  Authorization:
-                    `Bearer ${token}`,
-                },
-
-                cache:
-                  "no-store",
-              }
-            );
-
-          const data =
-            await response.json();
-
-          if (
-            !response.ok ||
-            !data.success ||
-            !data.admin
-          ) {
-            sessionStorage.removeItem(
-              ADMIN_TOKEN_KEY
-            );
-
-            router.replace(
-              "/admin/login"
-            );
-
-            return;
-          }
-
-          if (!cancelled) {
-            setAdmin(
-              data.admin
-            );
-          }
-        } catch (
-          requestError
-        ) {
-          console.error(
-            "Admin session load failed:",
-            requestError
-          );
-
-          if (!cancelled) {
-            setError(
-              "Unable to connect to the CampusMart Admin service."
-            );
-          }
-        } finally {
-          if (!cancelled) {
-            setLoading(
-              false
-            );
-          }
-        }
-      };
-
-    void loadAdmin();
-
+        if (alive) setAdmin(data.admin);
+      } catch {
+        if (alive) setError("Cannot connect to the Admin backend.");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
     return () => {
-      cancelled =
-        true;
+      alive = false;
     };
-  }, [
-    router,
-  ]);
+  }, [router]);
 
   useEffect(() => {
-    setMobileMenuOpen(
-      false
-    );
-  }, [
-    pathname,
-  ]);
+    setOpen(false);
+  }, [pathname]);
 
+  // Lock the document (both html and body) while the drawer is visible.
+  // Portal rendering keeps it outside any page scrolling/stacking context.
   useEffect(() => {
-    if (
-      !mobileMenuOpen
-    ) {
-      return;
-    }
+    if (!open) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtml = html.style.overflow;
+    const previousBody = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
 
-    const previousOverflow =
-      document.body.style
-        .overflow;
-
-    document.body.style.overflow =
-      "hidden";
-
-    return () => {
-      document.body.style.overflow =
-        previousOverflow;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
     };
-  }, [
-    mobileMenuOpen,
-  ]);
-
-  const signOut =
-    () => {
-      sessionStorage.removeItem(
-        ADMIN_TOKEN_KEY
-      );
-
-      router.replace(
-        "/admin/login"
-      );
-  };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      html.style.overflow = previousHtml;
+      body.style.overflow = previousBody;
+      document.removeEventListener("keydown", onKeyDown);
+      openButtonRef.current?.focus();
+    };
+  }, [open]);
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-100">
-        <div className="text-center">
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-300 border-t-slate-950" />
-
-          <p className="mt-4 text-sm font-semibold text-slate-600">
-            Loading CampusMart
-            Admin...
-          </p>
-        </div>
+      <main className="grid min-h-screen place-items-center bg-slate-100 text-sm text-slate-600">
+        Loading Admin workspace...
       </main>
     );
   }
 
-  if (
-    error &&
-    !admin
-  ) {
+  if (error && !admin) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-100 px-6">
-        <div className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-8 text-center shadow-sm">
-          <h1 className="text-xl font-bold text-slate-950">
-            Admin unavailable
-          </h1>
-
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            {error}
-          </p>
-
+      <main className="grid min-h-screen place-items-center bg-slate-100 p-6">
+        <div className="rounded-xl bg-white p-6 text-center">
+          <p>{error}</p>
           <button
             type="button"
-            onClick={() =>
-              window.location.reload()
-            }
-            className="mt-6 rounded-xl bg-slate-950 px-5 py-3 text-sm font-bold text-white"
+            onClick={() => window.location.reload()}
+            className="mt-4 rounded-lg bg-slate-950 px-4 py-2 text-sm text-white"
           >
-            Try again
+            Retry
           </button>
         </div>
       </main>
     );
   }
 
-  if (!admin) {
-    return null;
-  }
+  if (!admin) return null;
+
+  const permitted = pages.filter(
+    (page) => !page.roles || page.roles.includes(admin.role)
+  );
+
+  const signOut = () => {
+    sessionStorage.removeItem(TOKEN);
+    setOpen(false);
+    router.replace("/admin/login");
+  };
+
+  const menuContent = (
+    <>
+      <div className="shrink-0 border-b border-white/10 px-4 py-4">
+        <div className="flex items-center gap-3">
+          <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-400 text-sm font-black text-slate-950">
+            CM
+          </div>
+          <div className="min-w-0">
+            <p className="font-bold leading-5">CampusMart</p>
+            <p className="text-xs text-slate-400">Admin workspace</p>
+          </div>
+        </div>
+      </div>
+
+      <nav
+        aria-label="Admin navigation"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4"
+      >
+        <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+          Workspace
+        </p>
+        <div className="space-y-1">
+          {permitted.map((page) => {
+            const selected =
+              page.href === "/admin"
+                ? pathname === "/admin"
+                : pathname.startsWith(page.href);
+            return (
+              <Link
+                key={page.href}
+                href={page.href}
+                aria-current={selected ? "page" : undefined}
+                onClick={() => setOpen(false)}
+                className={`flex min-h-10 items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors ${
+                  selected
+                    ? "bg-white/15 font-bold text-white"
+                    : "text-slate-300 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <span>{page.label}</span>
+                <span
+                  className={`text-[10px] ${
+                    selected ? "text-amber-300" : "text-slate-500"
+                  }`}
+                >
+                  {page.hint}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+
+      <div className="shrink-0 border-t border-white/10 p-4">
+        <p className="truncate text-sm font-semibold">{admin.name}</p>
+        <p className="truncate text-xs text-slate-400">
+          {adminRoleLabel(admin.role)}
+        </p>
+        <button
+          type="button"
+          onClick={signOut}
+          className="mt-3 rounded-lg border border-white/15 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/10"
+        >
+          Sign out
+        </button>
+      </div>
+    </>
+  );
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-950">
-      <div className="flex min-h-screen">
-        <aside className="hidden w-[280px] shrink-0 flex-col border-r border-slate-800 bg-slate-950 text-white lg:flex">
-          <div className="border-b border-white/10 px-6 py-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-400 text-sm font-black text-slate-950">
-                CM
-              </div>
-
-              <div>
-                <p className="font-bold">
-                  CampusMart
-                </p>
-
-                <p className="text-xs text-slate-500">
-                  Admin Console
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <AdminNavigation
-            pathname={
-              pathname
-            }
-          />
-
-          <div className="border-t border-white/10 p-4">
-            <div className="rounded-xl bg-white/[0.05] p-4">
-              <p className="truncate text-sm font-bold">
-                {admin.name}
-              </p>
-
-              <p className="mt-1 truncate text-xs text-slate-500">
-                {admin.email}
-              </p>
-
-              <div className="mt-3 inline-flex rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-300">
-                {adminRoleLabel(
-                  admin.role
-                )}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={
-                signOut
-              }
-              className="mt-3 w-full rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
-            >
-              Sign out
-            </button>
-          </div>
+    <div className="h-[100dvh] overflow-hidden bg-[#f2f5f9] text-slate-950">
+      <div className="mx-auto flex h-full max-w-[1800px] overflow-hidden">
+        <aside className="hidden h-full w-[235px] shrink-0 flex-col overflow-hidden bg-slate-950 text-white lg:flex">
+          {menuContent}
         </aside>
 
-        {mobileMenuOpen ? (
-          <div className="fixed inset-0 z-50 lg:hidden">
-            <button
-              type="button"
-              aria-label="Close Admin menu"
-              onClick={() =>
-                setMobileMenuOpen(
-                  false
-                )
-              }
-              className="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px]"
-            />
-
-            <aside className="relative flex h-full w-[min(320px,88vw)] flex-col bg-slate-950 text-white shadow-2xl">
-              <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-400 text-sm font-black text-slate-950">
-                    CM
-                  </div>
-
-                  <div>
-                    <p className="font-bold">
-                      CampusMart
-                    </p>
-
-                    <p className="text-xs text-slate-500">
-                      Admin Console
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  aria-label="Close menu"
-                  onClick={() =>
-                    setMobileMenuOpen(
-                      false
-                    )
-                  }
-                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 text-lg text-slate-300"
-                >
-                  ×
-                </button>
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <header className="z-30 flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 sm:px-6">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                ref={openButtonRef}
+                type="button"
+                aria-label="Open Admin menu"
+                aria-expanded={open}
+                aria-controls="campusmart-admin-mobile-menu"
+                onClick={() => setOpen(true)}
+                className="grid size-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-xl lg:hidden"
+              >
+                ☰
+              </button>
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold text-slate-500">
+                  CampusMart Admin
+                </p>
+                <h1 className="truncate text-base font-black sm:text-lg">
+                  {title}
+                </h1>
               </div>
-
-              <AdminNavigation
-                pathname={
-                  pathname
-                }
-                onNavigate={() =>
-                  setMobileMenuOpen(
-                    false
-                  )
-                }
-              />
-
-              <div className="border-t border-white/10 p-4">
-                <div className="rounded-xl bg-white/[0.05] p-4">
-                  <p className="truncate text-sm font-bold">
-                    {admin.name}
-                  </p>
-
-                  <p className="mt-1 truncate text-xs text-slate-500">
-                    {admin.email}
-                  </p>
-
-                  <p className="mt-2 text-xs font-semibold text-amber-300">
-                    {adminRoleLabel(
-                      admin.role
-                    )}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={
-                    signOut
-                  }
-                  className="mt-3 w-full rounded-xl border border-white/10 px-4 py-3 text-sm font-semibold text-slate-300"
-                >
-                  Sign out
-                </button>
-              </div>
-            </aside>
-          </div>
-        ) : null}
-
-        <section className="min-w-0 flex-1">
-          <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
-            <div className="flex min-h-[72px] items-center justify-between gap-4 px-5 sm:px-8">
-              <div className="flex min-w-0 items-center gap-3">
-                <button
-                  type="button"
-                  aria-label="Open Admin menu"
-                  onClick={() =>
-                    setMobileMenuOpen(
-                      true
-                    )
-                  }
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-xl font-bold text-slate-800 shadow-sm lg:hidden"
-                >
-                  ☰
-                </button>
-
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-slate-500 lg:hidden">
-                    CampusMart Admin
-                  </p>
-
-                  <h1 className="truncate text-lg font-bold tracking-tight sm:text-xl">
-                    {title}
-                  </h1>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="hidden text-right sm:block">
-                  <p className="text-sm font-bold">
-                    {admin.name}
-                  </p>
-
-                  <p className="text-xs text-slate-500">
-                    {adminRoleLabel(
-                      admin.role
-                    )}
-                  </p>
-                </div>
-
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-amber-400">
-                  {admin.name
-                    .slice(
-                      0,
-                      1
-                    )
-                    .toUpperCase()}
-                </div>
-              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="hidden text-xs text-slate-500 sm:block">
+                {adminRoleLabel(admin.role)}
+              </span>
+              <span className="grid size-9 place-items-center rounded-full bg-slate-950 text-sm font-bold text-amber-300">
+                {admin.name.slice(0, 1).toUpperCase()}
+              </span>
             </div>
           </header>
 
-          {children}
+          {/* This is the only region that scrolls the Admin page. */}
+          <div id="admin-page-scroll" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {children}
+          </div>
         </section>
       </div>
-    </main>
+
+      {mounted && open
+        ? createPortal(
+            <div
+              id="campusmart-admin-mobile-menu"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Admin menu"
+              className="fixed inset-0 z-[100] flex h-[100dvh] overflow-hidden lg:hidden"
+            >
+              <button
+                type="button"
+                aria-label="Close Admin menu"
+                onClick={() => setOpen(false)}
+                className="absolute inset-0 bg-slate-950/65"
+              />
+              <aside className="relative flex h-full w-[min(300px,88vw)] shrink-0 flex-col overflow-hidden bg-slate-950 text-white shadow-xl">
+                <button
+                  ref={closeButtonRef}
+                  type="button"
+                  aria-label="Close menu"
+                  onClick={() => setOpen(false)}
+                  className="absolute right-3 top-4 z-10 rounded-lg border border-white/20 bg-slate-950 px-3 py-1.5 text-sm"
+                >
+                  Close
+                </button>
+                {menuContent}
+              </aside>
+            </div>,
+            document.body
+          )
+        : null}
+    </div>
   );
 }

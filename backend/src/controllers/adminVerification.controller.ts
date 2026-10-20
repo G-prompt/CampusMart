@@ -538,6 +538,15 @@ export const getVerificationEvidenceAccess =
         });
       }
 
+      // Audit evidence access without ever storing the signed URL or file contents.
+      await prisma.adminAuditLog.create({ data: {
+        actorAdminId: req.admin!.id,
+        action: "verification.evidence_accessed",
+        targetType: "verification_appeal",
+        targetId: appealId,
+        afterState: JSON.stringify({ evidenceId, evidenceType: evidence.type }),
+      } });
+
       /*
        * Prevent browsers/proxies from
        * caching this sensitive response.

@@ -1,3 +1,4 @@
+
 import {
   Router,
 } from "express";
@@ -6,10 +7,20 @@ import {
   completeVendorProfile,
   getPublicVendorStorefront,
   getVendorEligibility,
+  upgradeBuyerToVendor,
 } from "../controllers/vendor.controller";
 
 import {
+  createVendorPickupPoint,
+  getMyVendorPickupPoints,
+  getPublicVendorPickupPoints,
+  removeVendorPickupPoint,
+  updateVendorPickupPoint,
+} from "../controllers/vendorPickupPoint.controller";
+
+import {
   requireAuth,
+  requireVendorAccount,
 } from "../middleware/auth.middleware";
 
 const router =
@@ -17,26 +28,24 @@ const router =
 
 /*
  * =======================================================
- * PUBLIC SELLER STOREFRONT
+ * BUYER -> SELLER
  * =======================================================
- *
- * No authentication required.
- *
- * Only active seller storefronts are returned by the
- * controller.
  */
 
-router.get(
-  "/storefront/:vendorId",
-  getPublicVendorStorefront
+// The existing frontend calls /become-seller.
+// /upgrade remains supported for compatibility.
+// Both use the same authenticated controller.
+
+router.post(
+  ["/upgrade", "/become-seller"],
+  requireAuth,
+  upgradeBuyerToVendor
 );
 
 /*
  * =======================================================
  * SELLER ELIGIBILITY
  * =======================================================
- *
- * Private seller/account endpoint.
  */
 
 router.get(
@@ -47,16 +56,70 @@ router.get(
 
 /*
  * =======================================================
- * COMPLETE SELLER PROFILE
+ * SELLER PROFILE
  * =======================================================
- *
- * Private seller/account endpoint.
  */
 
 router.post(
   "/profile",
   requireAuth,
   completeVendorProfile
+);
+
+/*
+ * =======================================================
+ * PRIVATE PICKUP-POINT MANAGEMENT
+ * =======================================================
+ */
+
+router.get(
+  "/pickup-points",
+  requireAuth,
+  requireVendorAccount,
+  getMyVendorPickupPoints
+);
+
+router.post(
+  "/pickup-points",
+  requireAuth,
+  requireVendorAccount,
+  createVendorPickupPoint
+);
+
+router.patch(
+  "/pickup-points/:pickupPointId",
+  requireAuth,
+  requireVendorAccount,
+  updateVendorPickupPoint
+);
+
+router.delete(
+  "/pickup-points/:pickupPointId",
+  requireAuth,
+  requireVendorAccount,
+  removeVendorPickupPoint
+);
+
+/*
+ * =======================================================
+ * PUBLIC CHECKOUT PICKUP POINTS
+ * =======================================================
+ */
+
+router.get(
+  "/storefront/:vendorId/pickup-points",
+  getPublicVendorPickupPoints
+);
+
+/*
+ * =======================================================
+ * PUBLIC STOREFRONT
+ * =======================================================
+ */
+
+router.get(
+  "/storefront/:vendorId",
+  getPublicVendorStorefront
 );
 
 export default router;

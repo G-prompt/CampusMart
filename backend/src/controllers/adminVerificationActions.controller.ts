@@ -1,4 +1,4 @@
-import {
+﻿import {
   Response,
 } from "express";
 
@@ -166,8 +166,8 @@ export const startVerificationAppealReview =
         });
       }
 
-      const claimed =
-        await prisma.verificationAppeal.updateMany({
+      const claimed = await prisma.$transaction(async (tx) => {
+        const result = await tx.verificationAppeal.updateMany({
           where: {
             id:
               appealId,
@@ -184,9 +184,17 @@ export const startVerificationAppealReview =
               VerificationAppealStatus.under_review,
 
             reviewedByAdminId:
-              req.admin.id,
+              req.admin!.id,
           },
         });
+        if (result.count === 1) {
+          await tx.adminAuditLog.create({data:{ actorAdminId: req.admin!.id,
+            action: "verification.review_started", targetType: "verification_appeal", targetId: appealId,
+            beforeState: JSON.stringify({status:"pending"}), afterState: JSON.stringify({status:"under_review"})
+          }});
+        }
+        return result;
+      });
 
       if (
         claimed.count !==
@@ -453,8 +461,8 @@ export const requestMoreVerificationInformation =
         });
       }
 
-      const updated =
-        await prisma.verificationAppeal.updateMany({
+      const updated = await prisma.$transaction(async (tx) => {
+        const result = await tx.verificationAppeal.updateMany({
           where: {
             id:
               appealId,
@@ -463,7 +471,7 @@ export const requestMoreVerificationInformation =
               VerificationAppealStatus.under_review,
 
             reviewedByAdminId:
-              req.admin.id,
+              req.admin!.id,
           },
 
           data: {
@@ -473,6 +481,15 @@ export const requestMoreVerificationInformation =
             decisionReason,
           },
         });
+        if (result.count === 1) {
+          await tx.adminAuditLog.create({data:{ actorAdminId: req.admin!.id,
+            action: "verification.information_requested", targetType: "verification_appeal", targetId: appealId,
+            reason: decisionReason, beforeState: JSON.stringify({status:"under_review"}),
+            afterState: JSON.stringify({status:"more_information_required"})
+          }});
+        }
+        return result;
+      });
 
       if (
         updated.count !==
@@ -852,6 +869,18 @@ export const approveVerificationAppeal =
               data: {
                 accessStatus:
                   VendorAccessStatus.active,
+              },
+            });
+
+            await transaction.adminAuditLog.create({
+              data: {
+                actorAdminId: req.admin!.id,
+                action: "verification.approved",
+                targetType: "verification_appeal",
+                targetId: currentAppeal.id,
+                reason: decisionReason || null,
+                beforeState: JSON.stringify({ status: currentAppeal.status, userId: currentAppeal.userId }),
+                afterState: JSON.stringify({ status: "approved", userId: currentAppeal.userId }),
               },
             });
 
@@ -1240,6 +1269,18 @@ export const rejectVerificationAppeal =
              * and suspended states remain
              * untouched.
              */
+            await transaction.adminAuditLog.create({
+              data: {
+                actorAdminId: req.admin!.id,
+                action: "verification.rejected",
+                targetType: "verification_appeal",
+                targetId: currentAppeal.id,
+                reason: decisionReason || null,
+                beforeState: JSON.stringify({ status: currentAppeal.status, userId: currentAppeal.userId }),
+                afterState: JSON.stringify({ status: "rejected", userId: currentAppeal.userId }),
+              },
+            });
+
             return transaction.verificationAppeal.findUnique({
               where: {
                 id:

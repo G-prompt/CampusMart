@@ -1,31 +1,25 @@
-import {
-  Request,
-  Response,
-} from "express";
 
-import {
-  prisma,
-} from "../lib/prisma";
+import { Request, Response } from "express";
+import { OrderStatus } from "../generated/prisma/client";
+import { prisma } from "../lib/prisma";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware";
+import { uploadProductImage } from "../lib/cloudinary";
+import { getSellerEligibilityMap } from "../services/sellerEligibility.service";
 
-import type {
-  AuthenticatedRequest,
-} from "../middleware/auth.middleware";
+const ALLOWED_SIZES = new Set([
+  "S",
+  "M",
+  "L",
+  "XL",
+  "XXL",
+  "XXXL",
+  ...Array.from({ length: 10 }, (_, index) => `EU ${37 + index}`),
+]);
 
-import {
-  uploadProductImage,
-} from "../lib/cloudinary";
+const MAX_IMAGES = 6;
+const MAX_COLORS = 18;
 
-import {
-  getSellerEligibilityMap,
-} from "../services/sellerEligibility.service";
-
-/*
- * =======================================================
- * PRODUCT RESPONSE
- * =======================================================
- */
-
-const productResponse = (product: {
+type ProductResponseRecord = {
   id: number;
   slug: string;
   title: string;
@@ -34,1357 +28,904 @@ const productResponse = (product: {
   rating: number;
   description: string;
   images: string[];
+  sizes: string[];
+  colors: string[];
   vendorId: string;
-
   isArchived: boolean;
-
-  archivedAt:
-    | Date
-    | null;
-
+  archivedAt: Date | null;
   vendor: {
     name: string;
+    campus?: string | null;
+    universityId?: string | null;
   };
-}) => ({
-  id:
-    product.id,
+  _count?: {
+    orderItems: number;
+  };
+};
 
-  slug:
-    product.slug,
-
-  title:
-    product.title,
-
-  category:
-    product.category,
-
-  price:
-    product.price,
-
-  rating:
-    product.rating,
-
-  seller:
-    product.vendor.name,
-
-  description:
-    product.description,
-
-  images:
-    product.images,
-
-  vendorId:
-    product.vendorId,
-
-  isArchived:
-    product.isArchived,
-
-  archivedAt:
-    product.archivedAt,
+const productResponse = (product: ProductResponseRecord) => ({
+  id: product.id,
+  slug: product.slug,
+  title: product.title,
+  category: product.category,
+  price: product.price,
+  rating: product.rating,
+  seller: product.vendor.name,
+  description: product.description,
+  images: product.images,
+  sizes: product.sizes,
+  colors: product.colors,
+  vendorId: product.vendorId,
+  sellerCampus: product.vendor.campus ?? null,
+  sellerUniversityId: product.vendor.universityId ?? null,
+  demandScore: product._count?.orderItems ?? 0,
+  isArchived: product.isArchived,
+  archivedAt: product.archivedAt,
 });
 
-/*
- * =======================================================
- * PUBLIC PRODUCT AVAILABILITY
- * =======================================================
- *
- * Product publication state and seller eligibility are
- * deliberately separate.
- *
- * A product is publicly available only when:
- *
- * - product is not archived
- * - canonical seller eligibility says canSell === true
- *
- * IMPORTANT:
- *
- * Public marketplace reads do NOT reconcile or mutate a
- * seller account.
- *
- * If a seller temporarily becomes ineligible:
- *
- * isArchived remains false
- *
- * Their product is simply omitted from public marketplace
- * responses until canonical seller eligibility becomes
- * valid again.
- *
- * Seller eligibility itself is evaluated only by
- * sellerEligibility.service.ts.
- */
+function cleanText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
 
-/*
- * =======================================================
- * UNIQUE SLUG
- * =======================================================
- */
+function requestQueryValue(req: Request, key: string): string {
+  const query = (
+    req as Request & { query?: Record<string, unknown> }
+  ).query;
 
-const createUniqueSlug =
-  async (
-    title: string
-  ) => {
-    const baseSlug =
-      title
-        .toLowerCase()
-        .trim()
-        .replace(
-          /[^a-z0-9]+/g,
-          "-"
-        )
-        .replace(
-          /^-+|-+$/g,
-          ""
-        ) ||
-      "listing";
+  return cleanText(query?.[key]);
+}
 
-    let slug =
-      baseSlug;
+function parseStringArrayField(
+  value: unknown
+): string[] | undefined | null {
+  if (value === undefined) {
+    return undefined;
+  }
 
-    let counter =
-      1;
+  let parsed: unknown = value;
 
-    while (
-      await prisma.product.findUnique({
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+      return [];
+    }
+
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!Array.isArray(parsed)) {
+    return null;
+  }
+
+  if (parsed.some((item) => typeof item !== "string")) {
+    return null;
+  }
+
+  return parsed
+    .map((item: string) => item.trim())
+    .filter(Boolean);
+}
+
+function uniqueCaseInsensitive(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const key = value.toLowerCase();
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(value);
+  }
+
+  return result;
+}
+
+function validateSizes(values: string[]): string[] | null {
+  const unique = uniqueCaseInsensitive(values);
+
+  if (unique.some((value) => !ALLOWED_SIZES.has(value))) {
+    return null;
+  }
+
+  return unique;
+}
+
+function validateColors(values: string[]): string[] | null {
+  const unique = uniqueCaseInsensitive(values);
+
+  if (unique.length > MAX_COLORS) {
+    return null;
+  }
+
+  if (unique.some((value) => value.length > 30)) {
+    return null;
+  }
+
+  return unique;
+}
+
+const createUniqueSlug = async (title: string) => {
+  const baseSlug =
+    title
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "listing";
+
+  let slug = baseSlug;
+  let counter = 1;
+
+  while (await prisma.product.findUnique({ where: { slug } })) {
+    slug = `${baseSlug}-${counter}`;
+    counter += 1;
+  }
+
+  return slug;
+};
+
+const vendorInclude = {
+  vendor: {
+    select: {
+      name: true,
+      campus: true,
+      universityId: true,
+    },
+  },
+  _count: {
+    select: {
+      orderItems: {
         where: {
-          slug,
+          status: {
+            in: [
+              OrderStatus.confirmed,
+              OrderStatus.completed,
+            ],
+          },
         },
-      })
-    ) {
-      slug =
-        `${baseSlug}-${counter}`;
-
-      counter +=
-        1;
-    }
-
-    return slug;
-  };
+      },
+    },
+  },
+};
 
 /*
- * =======================================================
- * SELLER'S OWN LISTINGS
- * =======================================================
+ * SELLER LISTINGS
  *
- * Returns BOTH:
- *
- * - published listings
- * - archived listings
- *
- * Seller history remains available even when selling
- * access temporarily changes.
+ * Seller-only response includes moderationHidden.
+ * Public product responses remain unchanged.
  */
-
-export const getVendorProducts =
-  async (
-    req: AuthenticatedRequest,
-    res: Response
-  ) => {
-    try {
-      if (!req.user) {
-        return res
-          .status(401)
-          .json({
-            success:
-              false,
-
-            message:
-              "Authentication required.",
-          });
-      }
-
-      const products =
-        await prisma.product.findMany({
-          where: {
-            vendorId:
-              req.user.id,
-          },
-
-          include: {
-            vendor: {
-              select: {
-                name:
-                  true,
-              },
-            },
-          },
-
-          orderBy: {
-            createdAt:
-              "desc",
-          },
-        });
-
-      return res
-        .status(200)
-        .json({
-          success:
-            true,
-
-          products:
-            products.map(
-              productResponse
-            ),
-        });
-    } catch (
-      error
-    ) {
-      console.error(
-        "Get vendor products error:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          success:
-            false,
-
-          message:
-            "Unable to load your listings.",
-        });
+export const getVendorProducts = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
     }
-  };
+
+    const products = await prisma.product.findMany({
+      where: {
+        vendorId: req.user.id,
+      },
+      include: vendorInclude,
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      products: products.map((product) => ({
+        ...productResponse(product),
+
+        // Only the owner-facing endpoint receives this flag.
+        // Do not expose confidential investigation notes.
+        moderationHidden: product.moderationHiddenAt !== null,
+      })),
+    });
+  } catch (error) {
+    console.error("Get vendor products error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load your listings.",
+    });
+  }
+};
 
 /*
- * =======================================================
  * PUBLIC MARKETPLACE
- * =======================================================
- *
- * Public visibility now uses the canonical seller
- * eligibility evaluator instead of maintaining a second
- * copy of the selling requirements here.
- *
- * Flow:
- *
- * 1. load non-archived products
- * 2. batch-load each represented seller once
- * 3. evaluate every seller through the canonical service
- * 4. return only products whose seller canSell
- *
- * This avoids an N+1 seller query pattern.
  */
+export const getProducts = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const universityId = requestQueryValue(
+      req,
+      "universityId"
+    );
 
-export const getProducts =
-  async (
-    _req: Request,
-    res: Response
-  ) => {
-    try {
-      const products =
-        await prisma.product.findMany({
-          where: {
-            isArchived:
-              false,
+    const campus = requestQueryValue(req, "campus");
+
+    let demandOrderIds: string[] | null = null;
+
+    if (universityId) {
+      const universityOrders = await prisma.order.findMany({
+        where: {
+          buyer: {
+            universityId,
           },
+        },
+        select: {
+          id: true,
+        },
+      });
 
-          include: {
-            vendor: {
-              select: {
-                name:
-                  true,
+      demandOrderIds = universityOrders.map(
+        (order) => order.id
+      );
+    } else if (campus) {
+      const campusOrders = await prisma.order.findMany({
+        where: {
+          buyer: {
+            campus,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      demandOrderIds = campusOrders.map(
+        (order) => order.id
+      );
+    }
+
+    const products = await prisma.product.findMany({
+      where: {
+        isArchived: false,
+      },
+      include: {
+        vendor: {
+          select: {
+            name: true,
+            campus: true,
+            universityId: true,
+          },
+        },
+        _count: {
+          select: {
+            orderItems: {
+              where: {
+                status: {
+                  in: [
+                    OrderStatus.confirmed,
+                    OrderStatus.completed,
+                  ],
+                },
+                ...(demandOrderIds !== null
+                  ? {
+                      orderId: {
+                        in: demandOrderIds,
+                      },
+                    }
+                  : {}),
               },
             },
           },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
-          orderBy: {
-            createdAt:
-              "desc",
-          },
-        });
+    const eligibilityMap = await getSellerEligibilityMap(
+      products.map((product) => product.vendorId)
+    );
 
-      const eligibilityMap =
-        await getSellerEligibilityMap(
-          products.map(
-            (
-              product
-            ) =>
-              product.vendorId
-          )
-        );
+    const availableProducts = products.filter(
+      (product) =>
+        eligibilityMap.get(product.vendorId)?.canSell === true
+    );
 
-      const availableProducts =
-        products.filter(
-          (
-            product
-          ) =>
-            eligibilityMap.get(
-              product.vendorId
-            )
-              ?.canSell ===
-            true
-        );
+    return res.status(200).json({
+      success: true,
+      universityId: universityId || null,
+      campus: campus || null,
+      products: availableProducts.map(productResponse),
+    });
+  } catch (error) {
+    console.error("Get products error:", error);
 
-      return res
-        .status(200)
-        .json({
-          success:
-            true,
-
-          products:
-            availableProducts.map(
-              productResponse
-            ),
-        });
-    } catch (
-      error
-    ) {
-      console.error(
-        "Get products error:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          success:
-            false,
-
-          message:
-            "Unable to load products.",
-        });
-    }
-  };
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load products.",
+    });
+  }
+};
 
 /*
- * =======================================================
- * PUBLIC PRODUCT DETAIL
- * =======================================================
- *
- * Product detail follows exactly the same canonical
- * seller-eligibility decision as the marketplace.
- *
- * seller loses eligibility
- * -> direct listing URL becomes unavailable
- *
- * seller becomes eligible again
- * -> same listing becomes available again
- *
- * The product itself is never deleted or archived by
- * public availability checks.
+ * PUBLIC PRODUCT DETAILS
  */
+export const getProductById = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const id = Number(req.params.id);
 
-export const getProductById =
-  async (
-    req: Request,
-    res: Response
-  ) => {
-    try {
-      const id =
-        Number(
-          req.params.id
-        );
-
-      if (
-        !Number.isInteger(
-          id
-        ) ||
-        id <= 0
-      ) {
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            message:
-              "Invalid product ID.",
-          });
-      }
-
-      /*
-       * Archive state is a property of the listing itself,
-       * so it remains safe to filter at the database level.
-       *
-       * Seller eligibility is evaluated separately through
-       * the canonical seller service.
-       */
-
-      const product =
-        await prisma.product.findFirst({
-          where: {
-            id,
-
-            isArchived:
-              false,
-          },
-
-          include: {
-            vendor: {
-              select: {
-                name:
-                  true,
-              },
-            },
-          },
-        });
-
-      if (
-        !product
-      ) {
-        return res
-          .status(404)
-          .json({
-            success:
-              false,
-
-            message:
-              "Product not found.",
-          });
-      }
-
-      const eligibilityMap =
-        await getSellerEligibilityMap([
-          product.vendorId,
-        ]);
-
-      const sellerEligibility =
-        eligibilityMap.get(
-          product.vendorId
-        );
-
-      if (
-        !sellerEligibility
-          ?.canSell
-      ) {
-        /*
-         * Public callers should not be told whether a
-         * hidden listing exists because of seller state,
-         * archive state or another availability reason.
-         */
-
-        return res
-          .status(404)
-          .json({
-            success:
-              false,
-
-            message:
-              "Product not found.",
-          });
-      }
-
-      return res
-        .status(200)
-        .json({
-          success:
-            true,
-
-          product:
-            productResponse(
-              product
-            ),
-        });
-    } catch (
-      error
-    ) {
-      console.error(
-        "Get product error:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          success:
-            false,
-
-          message:
-            "Unable to load product.",
-        });
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid product ID.",
+      });
     }
-  };
+
+    const product = await prisma.product.findFirst({
+      where: {
+        id,
+        isArchived: false,
+      },
+      include: vendorInclude,
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found.",
+      });
+    }
+
+    const eligibilityMap = await getSellerEligibilityMap([
+      product.vendorId,
+    ]);
+
+    if (!eligibilityMap.get(product.vendorId)?.canSell) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      product: productResponse(product),
+    });
+  } catch (error) {
+    console.error("Get product error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load product.",
+    });
+  }
+};
 
 /*
- * =======================================================
  * CREATE PRODUCT
- * =======================================================
- *
- * Full seller eligibility is enforced by route middleware.
- *
- * requireSellerEligibility uses the same canonical seller
- * eligibility service as public marketplace visibility.
  */
+export const createProduct = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+    }
 
-export const createProduct =
-  async (
-    req: AuthenticatedRequest,
-    res: Response
-  ) => {
-    try {
-      if (!req.user) {
-        return res
-          .status(401)
-          .json({
-            success:
-              false,
+    const {
+      title,
+      category,
+      price,
+      description,
+      imageUrl,
+    } = req.body;
 
-            message:
-              "Authentication required.",
-          });
+    const numericPrice = Number(price);
+
+    if (
+      typeof title !== "string" ||
+      !title.trim() ||
+      typeof category !== "string" ||
+      !category.trim() ||
+      typeof description !== "string" ||
+      !description.trim() ||
+      !Number.isFinite(numericPrice) ||
+      numericPrice <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Title, category, description and a valid price are required.",
+      });
+    }
+
+    const parsedSizes = parseStringArrayField(
+      req.body.sizes
+    );
+
+    const parsedColors = parseStringArrayField(
+      req.body.colors
+    );
+
+    if (parsedSizes === null || parsedColors === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid product size or colour options.",
+      });
+    }
+
+    const sizes = validateSizes(parsedSizes ?? []);
+    const colors = validateColors(parsedColors ?? []);
+
+    if (sizes === null || colors === null) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "One or more product size or colour options are invalid.",
+      });
+    }
+
+    const files = Array.isArray(req.files)
+      ? req.files
+      : [];
+
+    const cleanImageUrl =
+      typeof imageUrl === "string"
+        ? imageUrl.trim()
+        : "";
+
+    if (files.length === 0 && !cleanImageUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "A main product image is required.",
+      });
+    }
+
+    const uploadedImages = await Promise.all(
+      files.map((file) => uploadProductImage(file.buffer))
+    );
+
+    const safeImages = uploadedImages.map(
+      (image) => image.url
+    );
+
+    if (cleanImageUrl) {
+      safeImages.push(cleanImageUrl);
+    }
+
+    const slug = await createUniqueSlug(title);
+
+    const product = await prisma.product.create({
+      data: {
+        title: title.trim(),
+        slug,
+        category: category.trim(),
+        price: Math.round(numericPrice),
+        description: description.trim(),
+        images: safeImages.slice(0, MAX_IMAGES),
+        sizes,
+        colors,
+        vendorId: req.user.id,
+        isArchived: false,
+        archivedAt: null,
+      },
+      include: vendorInclude,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Listing published successfully.",
+      product: productResponse(product),
+    });
+  } catch (error) {
+    console.error("Create product error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to publish listing.",
+    });
+  }
+};
+
+/*
+ * UPDATE PRODUCT
+ */
+export const updateProduct = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+    }
+
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid product ID.",
+      });
+    }
+
+    const existingProduct = await prisma.product.findUnique({
+      where: {
+        id,
+      },
+      select: {
+        id: true,
+        vendorId: true,
+        images: true,
+      },
+    });
+
+    if (!existingProduct) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found.",
+      });
+    }
+
+    if (existingProduct.vendorId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only edit your own listings.",
+      });
+    }
+
+    const updateData: {
+      title?: string;
+      category?: string;
+      price?: number;
+      description?: string;
+      images?: string[];
+      sizes?: string[];
+      colors?: string[];
+    } = {};
+
+    const {
+      title,
+      category,
+      price,
+      description,
+      imageUrl,
+    } = req.body;
+
+    if (title !== undefined) {
+      if (typeof title !== "string" || !title.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Title cannot be empty.",
+        });
       }
 
-      const {
-        title,
-        category,
-        price,
-        description,
-        imageUrl,
-      } =
-        req.body;
+      updateData.title = title.trim();
+    }
 
-      const numericPrice =
-        Number(
-          price
-        );
+    if (category !== undefined) {
+      if (typeof category !== "string" || !category.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Category cannot be empty.",
+        });
+      }
+
+      updateData.category = category.trim();
+    }
+
+    if (price !== undefined) {
+      const numericPrice = Number(price);
 
       if (
-        typeof title !==
-          "string" ||
-        !title.trim() ||
-        typeof category !==
-          "string" ||
-        !category.trim() ||
-        typeof description !==
-          "string" ||
-        !description.trim() ||
-        !Number.isFinite(
-          numericPrice
-        ) ||
+        !Number.isFinite(numericPrice) ||
         numericPrice <= 0
       ) {
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            message:
-              "Title, category, description and a valid price are required.",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "Price must be a valid positive number.",
+        });
       }
 
-      const files =
-        Array.isArray(
-          req.files
-        )
-          ? req.files
-          : [];
-
-      const uploadedImages =
-        await Promise.all(
-          files.map(
-            (
-              file
-            ) =>
-              uploadProductImage(
-                file.buffer
-              )
-          )
-        );
-
-      const safeImages =
-        uploadedImages.map(
-          (
-            image
-          ) =>
-            image.url
-        );
-
-      if (
-        typeof imageUrl ===
-          "string" &&
-        imageUrl.trim()
-      ) {
-        safeImages.push(
-          imageUrl.trim()
-        );
-      }
-
-      const slug =
-        await createUniqueSlug(
-          title
-        );
-
-      const product =
-        await prisma.product.create({
-          data: {
-            title:
-              title.trim(),
-
-            slug,
-
-            category:
-              category.trim(),
-
-            price:
-              Math.round(
-                numericPrice
-              ),
-
-            description:
-              description.trim(),
-
-            images:
-              safeImages.slice(
-                0,
-                5
-              ),
-
-            vendorId:
-              req.user.id,
-
-            isArchived:
-              false,
-
-            archivedAt:
-              null,
-          },
-
-          include: {
-            vendor: {
-              select: {
-                name:
-                  true,
-              },
-            },
-          },
-        });
-
-      return res
-        .status(201)
-        .json({
-          success:
-            true,
-
-          message:
-            "Listing published successfully.",
-
-          product:
-            productResponse(
-              product
-            ),
-        });
-    } catch (
-      error
-    ) {
-      console.error(
-        "Create product error:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          success:
-            false,
-
-          message:
-            "Unable to publish listing.",
-        });
+      updateData.price = Math.round(numericPrice);
     }
-  };
+
+    if (description !== undefined) {
+      if (
+        typeof description !== "string" ||
+        !description.trim()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Description cannot be empty.",
+        });
+      }
+
+      updateData.description = description.trim();
+    }
+
+    const parsedSizes = parseStringArrayField(
+      req.body.sizes
+    );
+
+    const parsedColors = parseStringArrayField(
+      req.body.colors
+    );
+
+    if (parsedSizes === null || parsedColors === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid product size or colour options.",
+      });
+    }
+
+    if (parsedSizes !== undefined) {
+      const sizes = validateSizes(parsedSizes);
+
+      if (sizes === null) {
+        return res.status(400).json({
+          success: false,
+          message: "One or more sizes are invalid.",
+        });
+      }
+
+      updateData.sizes = sizes;
+    }
+
+    if (parsedColors !== undefined) {
+      const colors = validateColors(parsedColors);
+
+      if (colors === null) {
+        return res.status(400).json({
+          success: false,
+          message: "One or more colours are invalid.",
+        });
+      }
+
+      updateData.colors = colors;
+    }
+
+    const files = Array.isArray(req.files)
+      ? req.files
+      : [];
+
+    const uploadedImages = await Promise.all(
+      files.map((file) => uploadProductImage(file.buffer))
+    );
+
+    const newImages = uploadedImages.map(
+      (image) => image.url
+    );
+
+    if (
+      typeof imageUrl === "string" &&
+      imageUrl.trim()
+    ) {
+      newImages.push(imageUrl.trim());
+    }
+
+    if (newImages.length > 0) {
+      updateData.images = newImages.slice(
+        0,
+        MAX_IMAGES
+      );
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No listing changes were provided.",
+      });
+    }
+
+    const updatedProduct = await prisma.product.update({
+      where: {
+        id,
+      },
+      data: updateData,
+      include: vendorInclude,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Listing updated successfully.",
+      product: productResponse(updatedProduct),
+    });
+  } catch (error) {
+    console.error("Update product error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to update listing.",
+    });
+  }
+};
 
 /*
- * =======================================================
- * UPDATE PRODUCT
- * =======================================================
- *
- * Seller eligibility is enforced by route middleware.
- *
- * Updating an archived listing does NOT automatically
- * republish it.
+ * SELLER ARCHIVE
  */
-
-export const updateProduct =
-  async (
-    req: AuthenticatedRequest,
-    res: Response
-  ) => {
-    try {
-      if (!req.user) {
-        return res
-          .status(401)
-          .json({
-            success:
-              false,
-
-            message:
-              "Authentication required.",
-          });
-      }
-
-      const id =
-        Number(
-          req.params.id
-        );
-
-      if (
-        !Number.isInteger(
-          id
-        ) ||
-        id <= 0
-      ) {
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            message:
-              "Invalid product ID.",
-          });
-      }
-
-      const existingProduct =
-        await prisma.product.findUnique({
-          where: {
-            id,
-          },
-
-          select: {
-            id:
-              true,
-
-            vendorId:
-              true,
-
-            images:
-              true,
-
-            isArchived:
-              true,
-          },
-        });
-
-      if (
-        !existingProduct
-      ) {
-        return res
-          .status(404)
-          .json({
-            success:
-              false,
-
-            message:
-              "Product not found.",
-          });
-      }
-
-      if (
-        existingProduct.vendorId !==
-        req.user.id
-      ) {
-        return res
-          .status(403)
-          .json({
-            success:
-              false,
-
-            message:
-              "You can only edit your own listings.",
-          });
-      }
-
-      const {
-        title,
-        category,
-        price,
-        description,
-        imageUrl,
-      } =
-        req.body;
-
-      const updateData: {
-        title?: string;
-        category?: string;
-        price?: number;
-        description?: string;
-        images?: string[];
-      } = {};
-
-      if (
-        title !==
-        undefined
-      ) {
-        if (
-          typeof title !==
-            "string" ||
-          !title.trim()
-        ) {
-          return res
-            .status(400)
-            .json({
-              success:
-                false,
-
-              message:
-                "Title cannot be empty.",
-            });
-        }
-
-        updateData.title =
-          title.trim();
-      }
-
-      if (
-        category !==
-        undefined
-      ) {
-        if (
-          typeof category !==
-            "string" ||
-          !category.trim()
-        ) {
-          return res
-            .status(400)
-            .json({
-              success:
-                false,
-
-              message:
-                "Category cannot be empty.",
-            });
-        }
-
-        updateData.category =
-          category.trim();
-      }
-
-      if (
-        price !==
-        undefined
-      ) {
-        const numericPrice =
-          Number(
-            price
-          );
-
-        if (
-          !Number.isFinite(
-            numericPrice
-          ) ||
-          numericPrice <= 0
-        ) {
-          return res
-            .status(400)
-            .json({
-              success:
-                false,
-
-              message:
-                "Price must be a valid positive number.",
-            });
-        }
-
-        updateData.price =
-          Math.round(
-            numericPrice
-          );
-      }
-
-      if (
-        description !==
-        undefined
-      ) {
-        if (
-          typeof description !==
-            "string" ||
-          !description.trim()
-        ) {
-          return res
-            .status(400)
-            .json({
-              success:
-                false,
-
-              message:
-                "Description cannot be empty.",
-            });
-        }
-
-        updateData.description =
-          description.trim();
-      }
-
-      const files =
-        Array.isArray(
-          req.files
-        )
-          ? req.files
-          : [];
-
-      const uploadedImages =
-        await Promise.all(
-          files.map(
-            (
-              file
-            ) =>
-              uploadProductImage(
-                file.buffer
-              )
-          )
-        );
-
-      const newImages =
-        uploadedImages.map(
-          (
-            image
-          ) =>
-            image.url
-        );
-
-      if (
-        typeof imageUrl ===
-          "string" &&
-        imageUrl.trim()
-      ) {
-        newImages.push(
-          imageUrl.trim()
-        );
-      }
-
-      /*
-       * Only replace the current gallery when the seller
-       * supplies at least one new image.
-       */
-
-      if (
-        newImages.length >
-        0
-      ) {
-        updateData.images =
-          newImages.slice(
-            0,
-            5
-          );
-      }
-
-      if (
-        Object.keys(
-          updateData
-        ).length ===
-        0
-      ) {
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            message:
-              "No listing changes were provided.",
-          });
-      }
-
-      const updatedProduct =
-        await prisma.product.update({
-          where: {
-            id,
-          },
-
-          data:
-            updateData,
-
-          include: {
-            vendor: {
-              select: {
-                name:
-                  true,
-              },
-            },
-          },
-        });
-
-      return res
-        .status(200)
-        .json({
-          success:
-            true,
-
-          message:
-            "Listing updated successfully.",
-
-          product:
-            productResponse(
-              updatedProduct
-            ),
-        });
-    } catch (
-      error
-    ) {
-      console.error(
-        "Update product error:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          success:
-            false,
-
-          message:
-            "Unable to update listing.",
-        });
+export const deleteProduct = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
     }
-  };
+
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid product ID.",
+      });
+    }
+
+    const product = await prisma.product.findUnique({
+      where: {
+        id,
+      },
+      include: vendorInclude,
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found.",
+      });
+    }
+
+    if (product.vendorId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only archive your own listings.",
+      });
+    }
+
+    if (product.isArchived) {
+      return res.status(200).json({
+        success: true,
+        message: "Listing is already archived.",
+        product: productResponse(product),
+      });
+    }
+
+    const archivedProduct = await prisma.product.update({
+      where: {
+        id,
+      },
+      data: {
+        isArchived: true,
+        archivedAt: new Date(),
+      },
+      include: vendorInclude,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Listing archived successfully.",
+      product: productResponse(archivedProduct),
+    });
+  } catch (error) {
+    console.error("Archive product error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to archive listing.",
+    });
+  }
+};
 
 /*
- * =======================================================
- * ARCHIVE PRODUCT
- * =======================================================
+ * SELLER RESTORE
  *
- * This intentionally keeps the old export name
- * `deleteProduct` for route compatibility.
- *
- * IMPORTANT:
- *
- * This is NOT a database delete.
- *
- * Archiving remains available even when seller
- * eligibility later lapses because removing an item from
- * sale is a risk-reducing action.
+ * An Admin-hidden listing cannot be restored
+ * through the seller endpoint.
  */
-
-export const deleteProduct =
-  async (
-    req: AuthenticatedRequest,
-    res: Response
-  ) => {
-    try {
-      if (!req.user) {
-        return res
-          .status(401)
-          .json({
-            success:
-              false,
-
-            message:
-              "Authentication required.",
-          });
-      }
-
-      const id =
-        Number(
-          req.params.id
-        );
-
-      if (
-        !Number.isInteger(
-          id
-        ) ||
-        id <= 0
-      ) {
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            message:
-              "Invalid product ID.",
-          });
-      }
-
-      const product =
-        await prisma.product.findUnique({
-          where: {
-            id,
-          },
-
-          include: {
-            vendor: {
-              select: {
-                name:
-                  true,
-              },
-            },
-          },
-        });
-
-      if (
-        !product
-      ) {
-        return res
-          .status(404)
-          .json({
-            success:
-              false,
-
-            message:
-              "Product not found.",
-          });
-      }
-
-      if (
-        product.vendorId !==
-        req.user.id
-      ) {
-        return res
-          .status(403)
-          .json({
-            success:
-              false,
-
-            message:
-              "You can only archive your own listings.",
-          });
-      }
-
-      /*
-       * Repeating the archive request is harmless.
-       */
-
-      if (
-        product.isArchived
-      ) {
-        return res
-          .status(200)
-          .json({
-            success:
-              true,
-
-            message:
-              "Listing is already archived.",
-
-            product:
-              productResponse(
-                product
-              ),
-          });
-      }
-
-      const archivedProduct =
-        await prisma.product.update({
-          where: {
-            id,
-          },
-
-          data: {
-            isArchived:
-              true,
-
-            archivedAt:
-              new Date(),
-          },
-
-          include: {
-            vendor: {
-              select: {
-                name:
-                  true,
-              },
-            },
-          },
-        });
-
-      return res
-        .status(200)
-        .json({
-          success:
-            true,
-
-          message:
-            "Listing archived successfully.",
-
-          product:
-            productResponse(
-              archivedProduct
-            ),
-        });
-    } catch (
-      error
-    ) {
-      console.error(
-        "Archive product error:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          success:
-            false,
-
-          message:
-            "Unable to archive listing.",
-        });
+export const restoreProduct = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
     }
-  };
 
-/*
- * =======================================================
- * RESTORE PRODUCT
- * =======================================================
- *
- * Full seller eligibility is enforced by route middleware.
- *
- * Restoring a listing counts as new selling activity.
- */
+    const id = Number(req.params.id);
 
-export const restoreProduct =
-  async (
-    req: AuthenticatedRequest,
-    res: Response
-  ) => {
-    try {
-      if (!req.user) {
-        return res
-          .status(401)
-          .json({
-            success:
-              false,
-
-            message:
-              "Authentication required.",
-          });
-      }
-
-      const id =
-        Number(
-          req.params.id
-        );
-
-      if (
-        !Number.isInteger(
-          id
-        ) ||
-        id <= 0
-      ) {
-        return res
-          .status(400)
-          .json({
-            success:
-              false,
-
-            message:
-              "Invalid product ID.",
-          });
-      }
-
-      const product =
-        await prisma.product.findUnique({
-          where: {
-            id,
-          },
-
-          include: {
-            vendor: {
-              select: {
-                name:
-                  true,
-              },
-            },
-          },
-        });
-
-      if (
-        !product
-      ) {
-        return res
-          .status(404)
-          .json({
-            success:
-              false,
-
-            message:
-              "Product not found.",
-          });
-      }
-
-      if (
-        product.vendorId !==
-        req.user.id
-      ) {
-        return res
-          .status(403)
-          .json({
-            success:
-              false,
-
-            message:
-              "You can only restore your own listings.",
-          });
-      }
-
-      /*
-       * Repeating restore on an already-published listing
-       * is also harmless.
-       */
-
-      if (
-        !product.isArchived
-      ) {
-        return res
-          .status(200)
-          .json({
-            success:
-              true,
-
-            message:
-              "Listing is already published.",
-
-            product:
-              productResponse(
-                product
-              ),
-          });
-      }
-
-      const restoredProduct =
-        await prisma.product.update({
-          where: {
-            id,
-          },
-
-          data: {
-            isArchived:
-              false,
-
-            archivedAt:
-              null,
-          },
-
-          include: {
-            vendor: {
-              select: {
-                name:
-                  true,
-              },
-            },
-          },
-        });
-
-      return res
-        .status(200)
-        .json({
-          success:
-            true,
-
-          message:
-            "Listing restored successfully.",
-
-          product:
-            productResponse(
-              restoredProduct
-            ),
-        });
-    } catch (
-      error
-    ) {
-      console.error(
-        "Restore product error:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          success:
-            false,
-
-          message:
-            "Unable to restore listing.",
-        });
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid product ID.",
+      });
     }
-  };
+
+    const product = await prisma.product.findUnique({
+      where: {
+        id,
+      },
+      include: vendorInclude,
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found.",
+      });
+    }
+
+    if (product.vendorId !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only restore your own listings.",
+      });
+    }
+
+    if (product.moderationHiddenAt) {
+      return res.status(403).json({
+        success: false,
+        code: "LISTING_HIDDEN_BY_ADMIN",
+        message:
+          "This listing was hidden by CampusMart moderation. Contact support to request a review.",
+      });
+    }
+
+    if (!product.isArchived) {
+      return res.status(200).json({
+        success: true,
+        message: "Listing is already published.",
+        product: productResponse(product),
+      });
+    }
+
+    const restoredProduct = await prisma.product.update({
+      where: {
+        id,
+      },
+      data: {
+        isArchived: false,
+        archivedAt: null,
+      },
+      include: vendorInclude,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Listing restored successfully.",
+      product: productResponse(restoredProduct),
+    });
+  } catch (error) {
+    console.error("Restore product error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to restore listing.",
+    });
+  }
+};

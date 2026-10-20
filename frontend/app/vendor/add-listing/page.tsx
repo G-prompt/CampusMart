@@ -1,21 +1,21 @@
 "use client";
 
-import Link from "next/link";
-
 import {
+  ChangeEvent,
+  FormEvent,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
-import type {
-  FormEvent,
-} from "react";
+import Link from "next/link";
 
 import {
   useRouter,
 } from "next/navigation";
 
 import PageShell from "@/components/common/PageShell";
+import ProductOptionsEditor from "@/components/common/ProductOptionsEditor";
 
 import {
   useAuth,
@@ -29,24 +29,7 @@ const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000";
 
-type SellerRequirement = {
-  key:
-    | "vendor_account"
-    | "university_details"
-    | "matric_number"
-    | "student_verification"
-    | "seller_profile"
-    | "seller_access";
-
-  label:
-    string;
-
-  complete:
-    boolean;
-
-  required:
-    boolean;
-};
+const MAX_IMAGES = 6;
 
 type SellerNextAction =
   | "not_a_seller"
@@ -59,39 +42,20 @@ type SellerNextAction =
   | "seller_access_suspended"
   | "ready_to_sell";
 
+type SellerRequirement = {
+  key: string;
+  label: string;
+  complete: boolean;
+  required: boolean;
+};
+
 type SellerEligibility = {
-  userId:
-    string;
-
-  isVendor:
-    boolean;
-
-  canSell:
-    boolean;
+  canSell: boolean;
 
   nextRequiredAction:
     SellerNextAction;
 
-  message:
-    string;
-
-  studentVerified:
-    boolean;
-
-  sellerProfile: {
-    exists:
-      boolean;
-
-    complete:
-      boolean;
-
-    accessStatus:
-      | "active"
-      | "pending_review"
-      | "restricted"
-      | "suspended"
-      | null;
-  };
+  message: string;
 
   requirements:
     SellerRequirement[];
@@ -101,123 +65,45 @@ function getSetupAction(
   action:
     SellerNextAction
 ) {
-  switch (action) {
+  switch (
+    action
+  ) {
     case "complete_university_details":
       return {
-        title:
-          "Add your university details",
-
-        description:
-          "CampusMart needs your university information before you can start selling.",
-
-        buttonLabel:
+        label:
           "Add university details",
-
         href:
           "/profile",
       };
 
     case "add_matric_number":
       return {
-        title:
-          "Add your matric number",
-
-        description:
-          "Add your student number so CampusMart can verify your university identity.",
-
-        buttonLabel:
+        label:
           "Add matric number",
-
         href:
           "/profile",
       };
 
     case "verify_student_identity":
       return {
-        title:
-          "Verify your student identity",
-
-        description:
-          "Student verification is required before you can publish listings on CampusMart.",
-
-        buttonLabel:
+        label:
           "Complete verification",
-
         href:
           "/profile",
       };
 
     case "complete_seller_profile":
       return {
-        title:
-          "Complete your seller profile",
-
-        description:
-          "Finish adding your shop information and pickup details before publishing products.",
-
-        buttonLabel:
+        label:
           "Complete seller profile",
-
-        href:
-          "/profile",
-      };
-
-    case "seller_access_pending":
-      return {
-        title:
-          "Seller access is not active yet",
-
-        description:
-          "Your seller account is still being prepared for marketplace access.",
-
-        buttonLabel:
-          "Review account",
-
-        href:
-          "/profile",
-      };
-
-    case "seller_access_restricted":
-      return {
-        title:
-          "Seller access restricted",
-
-        description:
-          "Your seller access is currently restricted. You cannot publish or modify listings.",
-
-        buttonLabel:
-          "Review account",
-
-        href:
-          "/profile",
-      };
-
-    case "seller_access_suspended":
-      return {
-        title:
-          "Seller access suspended",
-
-        description:
-          "Your seller account is currently suspended and cannot publish listings.",
-
-        buttonLabel:
-          "Review account",
-
         href:
           "/profile",
       };
 
     default:
       return {
-        title:
-          "Complete seller setup",
-
-        description:
-          "Finish the required seller setup before publishing products.",
-
-        buttonLabel:
-          "Complete setup",
-
+        label:
+          "Review seller setup",
         href:
           "/profile",
       };
@@ -293,13 +179,11 @@ export default function Page() {
     );
 
   const [
-    imageFile,
-    setImageFile,
+    imageFiles,
+    setImageFiles,
   ] =
-    useState<
-      File | null
-    >(
-      null
+    useState<File[]>(
+      []
     );
 
   const [
@@ -311,11 +195,19 @@ export default function Page() {
     );
 
   const [
-    previewUrl,
-    setPreviewUrl,
+    sizes,
+    setSizes,
   ] =
-    useState(
-      ""
+    useState<string[]>(
+      []
+    );
+
+  const [
+    colors,
+    setColors,
+  ] =
+    useState<string[]>(
+      []
     );
 
   const [
@@ -333,12 +225,6 @@ export default function Page() {
     useState(
       false
     );
-
-  /*
-   * =====================================================
-   * SELLER ELIGIBILITY
-   * =====================================================
-   */
 
   useEffect(() => {
     if (
@@ -359,7 +245,7 @@ export default function Page() {
     const controller =
       new AbortController();
 
-    const checkEligibility =
+    const load =
       async () => {
         try {
           setCheckingEligibility(
@@ -375,9 +261,11 @@ export default function Page() {
               "campusmart-token"
             );
 
-          if (!token) {
+          if (
+            !token
+          ) {
             throw new Error(
-              "Your session could not be verified. Please sign in again."
+              "Your session could not be verified."
             );
           }
 
@@ -415,87 +303,152 @@ export default function Page() {
             data.eligibility
           );
         } catch (
-          eligibilityRequestError
+          requestError
         ) {
           if (
-            eligibilityRequestError instanceof
+            requestError instanceof
               DOMException &&
-            eligibilityRequestError.name ===
+            requestError.name ===
               "AbortError"
           ) {
             return;
           }
 
-          console.error(
-            "Seller eligibility check error:",
-            eligibilityRequestError
-          );
-
           setEligibilityError(
-            eligibilityRequestError instanceof
+            requestError instanceof
               Error
-              ? eligibilityRequestError.message
+              ? requestError.message
               : "Unable to check seller access."
           );
         } finally {
-          setCheckingEligibility(
-            false
-          );
+          if (
+            !controller.signal
+              .aborted
+          ) {
+            setCheckingEligibility(
+              false
+            );
+          }
         }
       };
 
-    void checkEligibility();
+    void load();
 
-    return () => {
+    return () =>
       controller.abort();
-    };
   }, [
     user,
   ]);
 
-  /*
-   * =====================================================
-   * IMAGE PREVIEW
-   * =====================================================
-   */
-
-  useEffect(() => {
-    if (!imageFile) {
-      setPreviewUrl(
-        ""
-      );
-
-      return;
-    }
-
-    const objectUrl =
-      URL.createObjectURL(
-        imageFile
-      );
-
-    setPreviewUrl(
-      objectUrl
+  const imagePreviews =
+    useMemo(
+      () =>
+        imageFiles.map(
+          (
+            file
+          ) =>
+            URL.createObjectURL(
+              file
+            )
+        ),
+      [
+        imageFiles,
+      ]
     );
 
+  useEffect(() => {
     return () => {
-      URL.revokeObjectURL(
-        objectUrl
+      imagePreviews.forEach(
+        (
+          preview
+        ) =>
+          URL.revokeObjectURL(
+            preview
+          )
       );
     };
   }, [
-    imageFile,
+    imagePreviews,
   ]);
 
-  /*
-   * =====================================================
-   * PUBLISH LISTING
-   * =====================================================
-   */
+  const handleImages =
+    (
+      event:
+        ChangeEvent<HTMLInputElement>
+    ) => {
+      setError(
+        ""
+      );
+
+      const files =
+        Array.from(
+          event.target.files ??
+            []
+        );
+
+      if (
+        files.length >
+        MAX_IMAGES
+      ) {
+        setError(
+          "Choose a maximum of 6 images: 1 main image and up to 5 preview images."
+        );
+
+        event.target.value =
+          "";
+
+        return;
+      }
+
+      const invalid =
+        files.find(
+          (
+            file
+          ) =>
+            ![
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/avif",
+            ].includes(
+              file.type
+            ) ||
+            file.size >
+              5 *
+                1024 *
+                1024
+        );
+
+      if (
+        invalid
+      ) {
+        setError(
+          "Images must be JPG, PNG, WebP or AVIF and no larger than 5 MB each."
+        );
+
+        event.target.value =
+          "";
+
+        return;
+      }
+
+      setImageFiles(
+        files
+      );
+
+      if (
+        files.length
+      ) {
+        setImageUrl(
+          ""
+        );
+      }
+    };
 
   const submit =
     async (
       event:
-        FormEvent
+        FormEvent<HTMLFormElement>
     ) => {
       event.preventDefault();
 
@@ -508,24 +461,18 @@ export default function Page() {
         "vendor"
       ) {
         setError(
-          "Sign in with a seller account to publish a listing."
+          "Seller access is required."
         );
 
         return;
       }
 
-      /*
-       * Frontend convenience check.
-       *
-       * Backend requireSellerEligibility is still the
-       * authoritative security control.
-       */
       if (
         !eligibility?.canSell
       ) {
         setError(
           eligibility?.message ||
-            "Complete your seller setup before publishing listings."
+            "Complete your seller setup before publishing."
         );
 
         return;
@@ -546,7 +493,19 @@ export default function Page() {
           0
       ) {
         setError(
-          "Add a title, description, and valid price before publishing."
+          "Add a title, description and valid price."
+        );
+
+        return;
+      }
+
+      if (
+        imageFiles.length ===
+          0 &&
+        !imageUrl.trim()
+      ) {
+        setError(
+          "Every listing needs a main product image."
         );
 
         return;
@@ -557,9 +516,11 @@ export default function Page() {
           "campusmart-token"
         );
 
-      if (!token) {
+      if (
+        !token
+      ) {
         setError(
-          "Your session could not be verified. Please sign in again."
+          "Your session has expired. Sign in again."
         );
 
         return;
@@ -595,14 +556,29 @@ export default function Page() {
           description.trim()
         );
 
-        if (
-          imageFile
-        ) {
-          formData.append(
-            "images",
-            imageFile
-          );
-        }
+        formData.append(
+          "sizes",
+          JSON.stringify(
+            sizes
+          )
+        );
+
+        formData.append(
+          "colors",
+          JSON.stringify(
+            colors
+          )
+        );
+
+        imageFiles.forEach(
+          (
+            file
+          ) =>
+            formData.append(
+              "images",
+              file
+            )
+        );
 
         if (
           imageUrl.trim()
@@ -634,27 +610,34 @@ export default function Page() {
           await response.json();
 
         if (
+          data.eligibility
+        ) {
+          setEligibility(
+            data.eligibility
+          );
+        }
+
+        if (
           !response.ok ||
           !data.success
         ) {
-          /*
-           * If eligibility changed since the page loaded,
-           * use the authoritative state returned by the
-           * backend where available.
-           */
-          if (
-            data.eligibility
-          ) {
-            setEligibility(
-              data.eligibility
-            );
-          }
-
           throw new Error(
             data.message ||
               "Unable to publish listing."
           );
         }
+
+        window.dispatchEvent(
+          new CustomEvent(
+            "campusmart-toast",
+            {
+              detail: {
+                message:
+                  "Listing published",
+              },
+            }
+          )
+        );
 
         router.push(
           `/marketplace/products/${data.product.id}`
@@ -662,11 +645,6 @@ export default function Page() {
       } catch (
         publishError
       ) {
-        console.error(
-          "Publish listing error:",
-          publishError
-        );
-
         setError(
           publishError instanceof
             Error
@@ -680,12 +658,6 @@ export default function Page() {
       }
     };
 
-  /*
-   * =====================================================
-   * NON-SELLER
-   * =====================================================
-   */
-
   if (
     user?.role !==
     "vendor"
@@ -693,22 +665,15 @@ export default function Page() {
     return (
       <PageShell
         title="Add listing"
-        description="Create a detailed product or service listing for campus buyers."
+        description="Publish something for students to discover."
       >
-        <div className="site-card max-w-xl p-6 text-center sm:p-8">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-            Seller access
-          </p>
-
-          <h2 className="mt-3 text-2xl font-bold text-slate-950">
-            Seller account required
+        <section className="site-card max-w-xl p-7 text-center">
+          <h2 className="text-2xl font-black">
+            Seller access required
           </h2>
 
-          <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-slate-600">
-            You need to sign in
-            with a seller account
-            before you can publish
-            products on CampusMart.
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            Sign in with your seller-enabled CampusMart account before publishing a listing.
           </p>
 
           <button
@@ -719,20 +684,14 @@ export default function Page() {
                 "vendor"
               )
             }
-            className="mt-6 rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-accent-500"
+            className="mt-6 rounded-xl bg-accent-400 px-5 py-3 text-sm font-black"
           >
-            Sign in as seller
+            Sign in
           </button>
-        </div>
+        </section>
       </PageShell>
     );
   }
-
-  /*
-   * =====================================================
-   * CHECKING ACCESS
-   * =====================================================
-   */
 
   if (
     checkingEligibility
@@ -740,32 +699,15 @@ export default function Page() {
     return (
       <PageShell
         title="Add listing"
-        description="Create a detailed product or service listing for campus buyers."
+        description="Publish something for students to discover."
       >
-        <div className="site-card max-w-3xl p-6 sm:p-8">
-          <div className="animate-pulse space-y-4">
-            <div className="h-4 w-32 rounded bg-slate-200" />
-
-            <div className="h-8 w-72 max-w-full rounded bg-slate-200" />
-
-            <div className="h-4 w-full max-w-lg rounded bg-slate-100" />
-
-            <div className="h-4 w-4/5 max-w-md rounded bg-slate-100" />
-          </div>
-
-          <p className="mt-6 text-sm font-semibold text-slate-500">
-            Checking seller access...
-          </p>
+        <div className="site-card max-w-3xl animate-pulse p-8">
+          <div className="h-7 w-56 rounded bg-slate-200" />
+          <div className="mt-4 h-4 w-full max-w-lg rounded bg-slate-100" />
         </div>
       </PageShell>
     );
   }
-
-  /*
-   * =====================================================
-   * ELIGIBILITY ERROR
-   * =====================================================
-   */
 
   if (
     eligibilityError
@@ -773,43 +715,22 @@ export default function Page() {
     return (
       <PageShell
         title="Add listing"
-        description="Create a detailed product or service listing for campus buyers."
+        description="Publish something for students to discover."
       >
-        <div className="site-card max-w-2xl p-6 sm:p-8">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-600">
-            Seller access
-          </p>
-
-          <h2 className="mt-3 text-2xl font-bold text-slate-950">
-            We couldn&apos;t check
-            your seller access
+        <section className="site-card max-w-xl p-7">
+          <h2 className="text-xl font-black">
+            Seller access unavailable
           </h2>
 
-          <p className="mt-3 text-sm leading-7 text-slate-600">
+          <p className="mt-3 text-sm text-red-600">
             {
               eligibilityError
             }
           </p>
-
-          <button
-            type="button"
-            onClick={() =>
-              window.location.reload()
-            }
-            className="mt-6 rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-accent-500"
-          >
-            Try again
-          </button>
-        </div>
+        </section>
       </PageShell>
     );
   }
-
-  /*
-   * =====================================================
-   * INCOMPLETE / BLOCKED SELLER
-   * =====================================================
-   */
 
   if (
     eligibility &&
@@ -820,260 +741,91 @@ export default function Page() {
         eligibility.nextRequiredAction
       );
 
-    const requiredSteps =
-      eligibility.requirements.filter(
-        (
-          requirement
-        ) =>
-          requirement.required
-      );
-
-    const completedSteps =
-      requiredSteps.filter(
-        (
-          requirement
-        ) =>
-          requirement.complete
-      ).length;
-
-    const progress =
-      requiredSteps.length >
-      0
-        ? Math.round(
-            (
-              completedSteps /
-              requiredSteps.length
-            ) *
-              100
-          )
-        : 0;
-
-    const dangerState =
-      eligibility.nextRequiredAction ===
-        "seller_access_restricted" ||
-      eligibility.nextRequiredAction ===
-        "seller_access_suspended";
-
     return (
       <PageShell
         title="Add listing"
-        description="Create a detailed product or service listing for campus buyers."
+        description="Publish something for students to discover."
       >
-        <div className="max-w-3xl space-y-5">
-          <section
-            className={`rounded-2xl border p-6 sm:p-8 ${
-              dangerState
-                ? "border-red-200 bg-red-50"
-                : "border-amber-200 bg-amber-50"
-            }`}
-          >
-            <p
-              className={`text-xs font-bold uppercase tracking-[0.2em] ${
-                dangerState
-                  ? "text-red-700"
-                  : "text-amber-700"
-              }`}
-            >
-              Seller setup required
-            </p>
+        <section className="site-card max-w-2xl p-7">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">
+            Seller setup
+          </p>
 
-            <h2
-              className={`mt-3 text-2xl font-bold tracking-tight sm:text-3xl ${
-                dangerState
-                  ? "text-red-950"
-                  : "text-amber-950"
-              }`}
-            >
-              {
-                action.title
-              }
-            </h2>
+          <h2 className="mt-2 text-2xl font-black">
+            Finish your seller requirements
+          </h2>
 
-            <p
-              className={`mt-3 max-w-xl text-sm leading-7 ${
-                dangerState
-                  ? "text-red-800"
-                  : "text-amber-800"
-              }`}
-            >
-              {
-                eligibility.message
-              }
-            </p>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            {
+              eligibility.message
+            }
+          </p>
 
-            {!dangerState ? (
-              <div className="mt-6">
-                <div className="flex items-center justify-between gap-4 text-xs font-semibold text-slate-600">
-                  <span>
-                    Seller setup
+          <div className="mt-5 space-y-2">
+            {eligibility.requirements?.map(
+              (
+                requirement
+              ) => (
+                <div
+                  key={
+                    requirement.key
+                  }
+                  className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                >
+                  <span className="font-semibold">
+                    {
+                      requirement.label
+                    }
                   </span>
 
-                  <span>
-                    {
-                      completedSteps
+                  <span
+                    className={
+                      requirement.complete
+                        ? "font-bold text-emerald-600"
+                        : requirement.required
+                          ? "font-bold text-amber-700"
+                          : "text-slate-400"
                     }
-                    /
-                    {
-                      requiredSteps.length
-                    }{" "}
-                    complete
-                  </span>
-                </div>
-
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
-                  <div
-                    className="h-full rounded-full bg-accent-400 transition-all"
-                    style={{
-                      width:
-                        `${progress}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            <Link
-              href={
-                action.href
-              }
-              className={`mt-6 inline-flex rounded-[10px] px-5 py-3 text-sm font-bold transition ${
-                dangerState
-                  ? "border border-red-200 bg-white text-red-800 hover:border-red-400"
-                  : "bg-accent-400 text-black hover:bg-accent-500"
-              }`}
-            >
-              {
-                action.buttonLabel
-              }
-            </Link>
-          </section>
-
-          <section className="site-card p-6 sm:p-8">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-                  Requirements
-                </p>
-
-                <h3 className="mt-2 text-xl font-bold text-slate-950">
-                  Before you can
-                  publish
-                </h3>
-              </div>
-
-              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">
-                {
-                  completedSteps
-                }
-                /
-                {
-                  requiredSteps.length
-                }
-              </span>
-            </div>
-
-            <div className="mt-5 space-y-3">
-              {eligibility.requirements.map(
-                (
-                  requirement
-                ) => (
-                  <div
-                    key={
-                      requirement.key
-                    }
-                    className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
                   >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${
-                          requirement.complete
-                            ? "bg-emerald-100 text-emerald-700"
-                            : !requirement.required
-                              ? "bg-slate-200 text-slate-500"
-                              : "bg-amber-100 text-amber-800"
-                        }`}
-                      >
-                        {requirement.complete
-                          ? "✓"
-                          : !requirement.required
-                            ? "–"
-                            : "!"}
-                      </span>
+                    {requirement.complete
+                      ? "✓ Complete"
+                      : requirement.required
+                        ? "Required"
+                        : "Optional"}
+                  </span>
+                </div>
+              )
+            )}
+          </div>
 
-                      <p className="truncate text-sm font-semibold text-slate-900">
-                        {
-                          requirement.label
-                        }
-                      </p>
-                    </div>
-
-                    <span className="shrink-0 text-xs font-semibold text-slate-500">
-                      {requirement.complete
-                        ? "Complete"
-                        : !requirement.required
-                          ? "Not required"
-                          : "Required"}
-                    </span>
-                  </div>
-                )
-              )}
-            </div>
-
-            <p className="mt-5 text-xs leading-6 text-slate-500">
-              You can continue
-              browsing and buying on
-              CampusMart while your
-              seller setup is
-              incomplete.
-            </p>
-          </section>
-        </div>
+          <Link
+            href={
+              action.href
+            }
+            className="mt-6 inline-flex rounded-xl bg-accent-400 px-5 py-3 text-sm font-black"
+          >
+            {
+              action.label
+            }
+          </Link>
+        </section>
       </PageShell>
     );
   }
 
-  /*
-   * =====================================================
-   * ELIGIBLE SELLER — NORMAL LISTING FORM
-   * =====================================================
-   */
-
-  const displayPreview =
-    previewUrl ||
-    imageUrl.trim();
-
   return (
     <PageShell
       title="Add listing"
-      description="Create a detailed product or service listing for campus buyers."
+      description="Create a clear, useful listing without making buyers dig for the important details."
     >
-      <div className="mb-5 max-w-3xl rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-        <div className="flex items-center gap-3">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-black text-emerald-700">
-            ✓
-          </span>
-
-          <div>
-            <p className="text-sm font-bold text-emerald-950">
-              Seller access active
-            </p>
-
-            <p className="mt-0.5 text-xs leading-5 text-emerald-700">
-              Your account is eligible
-              to publish listings.
-            </p>
-          </div>
-        </div>
-      </div>
-
       <form
         onSubmit={
           submit
         }
-        className="site-card max-w-3xl space-y-5 p-6 sm:p-8"
+        className="site-card max-w-4xl space-y-6 p-5 sm:p-7"
       >
         <div className="grid gap-5 sm:grid-cols-2">
-          <label className="text-sm font-semibold text-slate-700">
+          <label className="text-sm font-bold text-slate-700">
             Product or service name
 
             <input
@@ -1088,12 +840,12 @@ export default function Page() {
                   event.target.value
                 )
               }
-              className="mt-2 w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none focus:border-black focus:bg-white"
-              placeholder="e.g. Calculus revision pack"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-black"
+              placeholder="e.g. Red sweater vest"
             />
           </label>
 
-          <label className="text-sm font-semibold text-slate-700">
+          <label className="text-sm font-bold text-slate-700">
             Category
 
             <select
@@ -1107,7 +859,7 @@ export default function Page() {
                   event.target.value
                 )
               }
-              className="mt-2 w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none focus:border-black focus:bg-white"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
             >
               {categories
                 .filter(
@@ -1125,9 +877,6 @@ export default function Page() {
                       key={
                         item
                       }
-                      value={
-                        item
-                      }
                     >
                       {
                         item
@@ -1139,7 +888,7 @@ export default function Page() {
           </label>
         </div>
 
-        <label className="block text-sm font-semibold text-slate-700">
+        <label className="block text-sm font-bold text-slate-700">
           Price in naira
 
           <input
@@ -1156,18 +905,18 @@ export default function Page() {
                 event.target.value
               )
             }
-            className="mt-2 w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none focus:border-black focus:bg-white"
-            placeholder="15000"
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-black"
+            placeholder="9000"
           />
         </label>
 
-        <label className="block text-sm font-semibold text-slate-700">
+        <label className="block text-sm font-bold text-slate-700">
           Description
 
           <textarea
             required
             rows={
-              6
+              5
             }
             value={
               description
@@ -1179,110 +928,144 @@ export default function Page() {
                 event.target.value
               )
             }
-            className="mt-2 w-full resize-y rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none focus:border-black focus:bg-white"
-            placeholder="Describe condition, what is included, delivery or pickup details, and anything buyers should know."
+            className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-black"
+            placeholder="Condition, what comes with it, important details, etc."
           />
         </label>
 
-        <div className="space-y-4">
-          <label className="block text-sm font-semibold text-slate-700">
-            Upload product picture
+        <ProductOptionsEditor
+          sizes={
+            sizes
+          }
+          colors={
+            colors
+          }
+          onSizesChange={
+            setSizes
+          }
+          onColorsChange={
+            setColors
+          }
+        />
 
-            <span className="ml-1 font-normal text-slate-500">
-              (optional)
-            </span>
+        <section className="rounded-2xl border border-slate-200 p-4 sm:p-5">
+          <h2 className="font-black text-slate-950">
+            Product photos
+          </h2>
+
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            The first image is your main listing image. Add up to five more preview images.
+          </p>
+
+          <label className="mt-4 block text-sm font-bold text-slate-700">
+            Upload images
 
             <input
               type="file"
+              multiple
               accept="image/jpeg,image/png,image/webp,image/avif"
-              onChange={(
-                event
-              ) => {
-                const file =
-                  event.target
-                    .files?.[0] ??
-                  null;
-
-                setImageFile(
-                  file
-                );
-
-                if (file) {
-                  setImageUrl(
-                    ""
-                  );
-                }
-              }}
-              className="mt-2 block w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
-            />
-
-            <span className="mt-1 block text-xs font-normal text-slate-500">
-              JPG, PNG, WebP or
-              AVIF. Maximum 5 MB.
-            </span>
-          </label>
-
-          <div className="flex items-center gap-3">
-            <div className="h-px flex-1 bg-slate-200" />
-
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              or
-            </span>
-
-            <div className="h-px flex-1 bg-slate-200" />
-          </div>
-
-          <label className="block text-sm font-semibold text-slate-700">
-            Product image URL
-
-            <span className="ml-1 font-normal text-slate-500">
-              (optional)
-            </span>
-
-            <input
-              type="url"
-              value={
-                imageUrl
+              onChange={
+                handleImages
               }
-              disabled={
-                Boolean(
-                  imageFile
-                )
-              }
-              onChange={(
-                event
-              ) =>
-                setImageUrl(
-                  event.target.value
-                )
-              }
-              className="mt-2 w-full rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none disabled:cursor-not-allowed disabled:opacity-50 focus:border-black focus:bg-white"
-              placeholder="https://..."
+              className="mt-2 block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
             />
           </label>
 
-          {displayPreview ? (
-            <div className="overflow-hidden rounded-[10px] border border-slate-200 bg-slate-100">
+          <p className="mt-2 text-xs text-slate-500">
+            1–6 images. Maximum 5 MB each.
+          </p>
+
+          {imageFiles.length ===
+            0 ? (
+            <>
+              <div className="my-4 flex items-center gap-3">
+                <div className="h-px flex-1 bg-slate-200" />
+                <span className="text-xs font-bold uppercase text-slate-400">
+                  or
+                </span>
+                <div className="h-px flex-1 bg-slate-200" />
+              </div>
+
+              <label className="block text-sm font-bold text-slate-700">
+                Main image URL
+
+                <input
+                  type="url"
+                  value={
+                    imageUrl
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setImageUrl(
+                      event.target.value
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
+                  placeholder="https://..."
+                />
+              </label>
+            </>
+          ) : null}
+
+          {imagePreviews.length >
+          0 ? (
+            <div className="mt-5 grid grid-cols-3 gap-3 sm:grid-cols-6">
+              {imagePreviews.map(
+                (
+                  preview,
+                  index
+                ) => (
+                  <div
+                    key={
+                      preview
+                    }
+                    className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100"
+                  >
+                    <img
+                      src={
+                        preview
+                      }
+                      alt={`Preview ${index + 1}`}
+                      className="aspect-square w-full object-cover"
+                    />
+
+                    <span className="absolute bottom-1 left-1 rounded-full bg-black/75 px-2 py-1 text-[9px] font-black text-white backdrop-blur">
+                      {index ===
+                      0
+                        ? "Main"
+                        : `Preview ${index}`}
+                    </span>
+                  </div>
+                )
+              )}
+            </div>
+          ) : imageUrl.trim() ? (
+            <div className="relative mt-5 w-36 overflow-hidden rounded-xl border border-slate-200">
               <img
                 src={
-                  displayPreview
+                  imageUrl
                 }
-                alt="Product preview"
-                className="h-56 w-full object-cover"
+                alt="Main preview"
+                className="aspect-square w-full object-cover"
               />
+
+              <span className="absolute bottom-1 left-1 rounded-full bg-black/75 px-2 py-1 text-[9px] font-black text-white">
+                Main
+              </span>
             </div>
           ) : null}
-        </div>
+        </section>
 
         {error ? (
-          <p
-            className="text-sm font-semibold text-red-600"
+          <div
             role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
           >
             {
               error
             }
-          </p>
+          </div>
         ) : null}
 
         <button
@@ -1290,7 +1073,7 @@ export default function Page() {
           disabled={
             publishing
           }
-          className="inline-flex w-full items-center justify-center rounded-[10px] bg-accent-400 px-5 py-3.5 text-sm font-bold text-black transition hover:bg-accent-500 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          className="w-full rounded-xl bg-accent-400 px-6 py-3.5 text-sm font-black transition hover:bg-accent-500 disabled:opacity-50 sm:w-auto"
         >
           {publishing
             ? "Publishing..."

@@ -1,1970 +1,2308 @@
 "use client";
 
 import {
-    FormEvent,
-    useEffect,
-    useState,
+  FormEvent,
+  useEffect,
+  useMemo,
+  useState,
 } from "react";
 
-import Link from "next/link";
 import Image from "next/image";
+import Link from "next/link";
 
 import {
-    useRouter,
+  useRouter,
 } from "next/navigation";
 
+import AutoScrollProducts from "@/components/common/AutoScrollProducts";
+
 import {
-    useCart,
+  useCart,
 } from "@/components/common/CartContext";
 
 import {
-    ChevronRightIcon,
-} from "@/components/common/icons";
-
-import ProductCard from "@/components/common/ProductCard";
-
-import {
-    useAuth,
+  useAuth,
 } from "@/components/common/AuthContext";
 
 import {
-    formatNaira,
-    type Product,
+  formatNaira,
+  type Product,
 } from "@/lib/products";
 
 import {
-    addReview,
-    getAverageRating,
-    getReviews,
-    type ProductReview,
+  getColourSwatch,
+  getSizeGuide,
+} from "@/lib/productOptions";
+
+import type {
+  ProductReview,
+  ReviewEligibility,
 } from "@/lib/reviews";
 
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5000";
+
 const MESSAGE_MAX_LENGTH =
-    2000;
+  2000;
 
 type ProductWithVendor =
-    Product & {
-        vendorId?: string;
-    };
+  Product & {
+    vendorId?: string;
+  };
 
 type SellerStorefront = {
-    sellerId: string;
+  sellerId: string;
 
-    ownerName: string;
+  businessName: string;
 
-    businessName: string;
+  university:
+    | {
+        name: string;
 
-    description: string;
+        shortName:
+          | string
+          | null;
 
-    university:
-        | {
-              id:
-                  | string
-                  | null;
+        state:
+          | string
+          | null;
 
-              name: string;
+        city:
+          | string
+          | null;
+      }
+    | null;
 
-              shortName:
-                  | string
-                  | null;
+  badges: {
+    studentVerified:
+      boolean;
 
-              state:
-                  | string
-                  | null;
-
-              city:
-                  | string
-                  | null;
-
-              managed: boolean;
-          }
-        | null;
-
-    badges: {
-        studentVerified:
-            boolean;
-
-        vendorVerified:
-            boolean;
-    };
-
-    memberSince: string;
-
-    listingCount: number;
+    vendorVerified:
+      boolean;
+  };
 };
 
 type ExistingConversation = {
-    id: string;
+  id: string;
 
-    contextType:
-        | "general"
-        | "listing"
-        | "order";
+  contextType:
+    | "general"
+    | "listing"
+    | "order";
 
-    product:
-        | {
-              id: number;
-          }
-        | null;
+  product:
+    | {
+        id:
+          number;
+      }
+    | null;
 
-    otherParty: {
-        id: string;
-    };
+  otherParty: {
+    id:
+      string;
+  };
 };
 
+function formatEligibilityTime(
+  value:
+    string | null
+) {
+  if (
+    !value
+  ) {
+    return "";
+  }
+
+  const date =
+    new Date(
+      value
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "";
+  }
+
+  return date.toLocaleString(
+    undefined,
+    {
+      dateStyle:
+        "medium",
+
+      timeStyle:
+        "short",
+    }
+  );
+}
+
 export default function ProductPage({
-    params,
+  params,
 }: {
-    params: {
-        id: string;
-    };
+  params: {
+    id:
+      string;
+  };
 }) {
-    const router =
-        useRouter();
+  const router =
+    useRouter();
 
-    const {
-        addToCart,
-    } =
-        useCart();
+  const {
+    addToCart,
+  } =
+    useCart();
 
-    const {
-        user,
-        openAuth,
-    } =
-        useAuth();
+  const {
+    user,
+    openAuth,
+  } =
+    useAuth();
 
-    const [
-        product,
-        setProduct,
-    ] =
-        useState<ProductWithVendor | null>(
-            null
-        );
+  const [
+    product,
+    setProduct,
+  ] =
+    useState<
+      ProductWithVendor | null
+    >(
+      null
+    );
 
-    const [
-        allProducts,
-        setAllProducts,
-    ] =
-        useState<Product[]>(
-            []
-        );
+  const [
+    allProducts,
+    setAllProducts,
+  ] =
+    useState<
+      Product[]
+    >([]);
 
-    const [
-        recentProducts,
-        setRecentProducts,
-    ] =
-        useState<Product[]>(
-            []
-        );
+  const [
+    storefront,
+    setStorefront,
+  ] =
+    useState<
+      SellerStorefront | null
+    >(
+      null
+    );
 
-    const [
-        sellerStorefront,
-        setSellerStorefront,
-    ] =
-        useState<SellerStorefront | null>(
-            null
-        );
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(
+      true
+    );
 
-    const [
-        loading,
-        setLoading,
-    ] =
-        useState(
+  const [
+    error,
+    setError,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    activeImage,
+    setActiveImage,
+  ] =
+    useState(
+      0
+    );
+
+  const [
+    selectedSize,
+    setSelectedSize,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    selectedColor,
+    setSelectedColor,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    sizeGuideOpen,
+    setSizeGuideOpen,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    variantError,
+    setVariantError,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    added,
+    setAdded,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    reviews,
+    setReviews,
+  ] =
+    useState<
+      ProductReview[]
+    >([]);
+
+  const [
+    reviewAverage,
+    setReviewAverage,
+  ] =
+    useState(
+      0
+    );
+
+  const [
+    reviewCount,
+    setReviewCount,
+  ] =
+    useState(
+      0
+    );
+
+  const [
+    reviewEligibility,
+    setReviewEligibility,
+  ] =
+    useState<
+      ReviewEligibility | null
+    >(
+      null
+    );
+
+  const [
+    reviewRating,
+    setReviewRating,
+  ] =
+    useState(
+      5
+    );
+
+  const [
+    reviewComment,
+    setReviewComment,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    reviewError,
+    setReviewError,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    postingReview,
+    setPostingReview,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    showAllReviews,
+    setShowAllReviews,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    messageComposerOpen,
+    setMessageComposerOpen,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    messageDraft,
+    setMessageDraft,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    messageError,
+    setMessageError,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    openingMessages,
+    setOpeningMessages,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    sendingMessage,
+    setSendingMessage,
+  ] =
+    useState(
+      false
+    );
+
+  /*
+   * =====================================================
+   * PRODUCT
+   * =====================================================
+   */
+
+  useEffect(() => {
+    let active =
+      true;
+
+    const load =
+      async () => {
+        try {
+          setLoading(
             true
-        );
+          );
 
-    const [
-        error,
-        setError,
-    ] =
-        useState(
+          setError(
             ""
-        );
+          );
 
-    const [
-        activeImage,
-        setActiveImage,
-    ] =
-        useState(
+          setStorefront(
+            null
+          );
+
+          const [
+            productResponse,
+            productsResponse,
+            reviewsResponse,
+          ] =
+            await Promise.all([
+              fetch(
+                `${API_URL}/api/products/${params.id}`,
+                {
+                  cache:
+                    "no-store",
+                }
+              ),
+
+              fetch(
+                `${API_URL}/api/products`,
+                {
+                  cache:
+                    "no-store",
+                }
+              ),
+
+              fetch(
+                `${API_URL}/api/products/${params.id}/reviews`,
+                {
+                  cache:
+                    "no-store",
+                }
+              ),
+            ]);
+
+          const [
+            productData,
+            productsData,
+            reviewsData,
+          ] =
+            await Promise.all([
+              productResponse.json(),
+
+              productsResponse.json(),
+
+              reviewsResponse.json(),
+            ]);
+
+          if (
+            !productResponse.ok ||
+            !productData.success
+          ) {
+            throw new Error(
+              productData.message ||
+                "Product not found."
+            );
+          }
+
+          if (
+            !active
+          ) {
+            return;
+          }
+
+          const loadedProduct =
+            productData.product as
+              ProductWithVendor;
+
+          setProduct(
+            loadedProduct
+          );
+
+          setActiveImage(
             0
-        );
+          );
 
-    const [
-        added,
-        setAdded,
-    ] =
-        useState(
+          setSizeGuideOpen(
             false
-        );
+          );
 
-    const [
-        reviews,
-        setReviews,
-    ] =
-        useState<ProductReview[]>(
-            []
-        );
+          const loadedSizes =
+            loadedProduct.sizes ??
+            [];
 
-    const [
-        reviewRating,
-        setReviewRating,
-    ] =
-        useState(
-            5
-        );
+          const loadedColors =
+            loadedProduct.colors ??
+            [];
 
-    const [
-        reviewComment,
-        setReviewComment,
-    ] =
-        useState(
-            ""
-        );
+          setSelectedSize(
+            loadedSizes.length ===
+              1
+              ? loadedSizes[0]
+              : ""
+          );
 
-    const [
-        reviewError,
-        setReviewError,
-    ] =
-        useState(
-            ""
-        );
+          setSelectedColor(
+            loadedColors.length ===
+              1
+              ? loadedColors[0]
+              : ""
+          );
 
-    /*
-     * =====================================================
-     * MESSAGING
-     * =====================================================
-     */
+          if (
+            productsResponse.ok &&
+            productsData.success
+          ) {
+            setAllProducts(
+              Array.isArray(
+                productsData.products
+              )
+                ? productsData.products
+                : []
+            );
+          }
 
-    const [
-        messageComposerOpen,
-        setMessageComposerOpen,
-    ] =
-        useState(
-            false
-        );
-
-    const [
-        messageDraft,
-        setMessageDraft,
-    ] =
-        useState(
-            ""
-        );
-
-    const [
-        messageError,
-        setMessageError,
-    ] =
-        useState(
-            ""
-        );
-
-    const [
-        openingMessages,
-        setOpeningMessages,
-    ] =
-        useState(
-            false
-        );
-
-    const [
-        sendingMessage,
-        setSendingMessage,
-    ] =
-        useState(
-            false
-        );
-
-    const apiUrl =
-        process.env.NEXT_PUBLIC_API_URL ||
-        "http://localhost:5000";
-
-    /*
-     * =====================================================
-     * LOAD PRODUCT + PUBLIC MARKETPLACE PRODUCTS
-     * =====================================================
-     */
-
-    useEffect(() => {
-        let active =
-            true;
-
-        const loadProduct =
-            async () => {
-                try {
-                    setLoading(
-                        true
-                    );
-
-                    setError(
-                        ""
-                    );
-
-                    setSellerStorefront(
-                        null
-                    );
-
-                    const productResponse =
-                        await fetch(
-                            `${apiUrl}/api/products/${params.id}`,
-                            {
-                                cache:
-                                    "no-store",
-                            }
-                        );
-
-                    const productData =
-                        await productResponse.json();
-
-                    if (
-                        !productResponse.ok ||
-                        !productData.success
-                    ) {
-                        throw new Error(
-                            productData.message ||
-                                "Product not found."
-                        );
-                    }
-
-                    if (
-                        !active
-                    ) {
-                        return;
-                    }
-
-                    const loadedProduct =
-                        productData.product as
-                            ProductWithVendor;
-
-                    setProduct(
-                        loadedProduct
-                    );
-
-                    /*
-                     * Load the seller storefront independently.
-                     *
-                     * A storefront failure must not break the
-                     * product page.
-                     */
-
-                    if (
-                        loadedProduct.vendorId
-                    ) {
-                        try {
-                            const storefrontResponse =
-                                await fetch(
-                                    `${apiUrl}/api/vendor/storefront/${encodeURIComponent(
-                                        loadedProduct.vendorId
-                                    )}`,
-                                    {
-                                        cache:
-                                            "no-store",
-                                    }
-                                );
-
-                            const storefrontData =
-                                await storefrontResponse.json();
-
-                            if (
-                                storefrontResponse.ok &&
-                                storefrontData.success &&
-                                storefrontData.storefront &&
-                                active
-                            ) {
-                                setSellerStorefront(
-                                    storefrontData.storefront
-                                );
-                            }
-                        } catch (
-                            storefrontError
-                        ) {
-                            console.error(
-                                "Seller storefront lookup error:",
-                                storefrontError
-                            );
-                        }
-                    }
-
-                    const productsResponse =
-                        await fetch(
-                            `${apiUrl}/api/products`,
-                            {
-                                cache:
-                                    "no-store",
-                            }
-                        );
-
-                    const productsData =
-                        await productsResponse.json();
-
-                    if (
-                        productsResponse.ok &&
-                        productsData.success &&
-                        active
-                    ) {
-                        setAllProducts(
-                            Array.isArray(
-                                productsData.products
-                            )
-                                ? productsData.products
-                                : []
-                        );
-                    }
-                } catch (
-                    err
-                ) {
-                    console.error(
-                        "Product page error:",
-                        err
-                    );
-
-                    if (
-                        active
-                    ) {
-                        setError(
-                            "Unable to load this listing."
-                        );
-                    }
-                } finally {
-                    if (
-                        active
-                    ) {
-                        setLoading(
-                            false
-                        );
-                    }
-                }
-            };
-
-        void loadProduct();
-
-        return () => {
-            active =
-                false;
-        };
-    }, [
-        apiUrl,
-        params.id,
-    ]);
-
-    /*
-     * =====================================================
-     * RECENTLY VIEWED
-     * =====================================================
-     */
-
-    useEffect(() => {
-        if (
-            !product
-        ) {
-            return;
-        }
-
-        const recent =
-            JSON.parse(
-                localStorage.getItem(
-                    "campusmart-recent-products"
-                ) ??
-                    "[]"
-            ) as number[];
-
-        const nextRecent =
-            [
-                product.id,
-
-                ...recent.filter(
-                    (
-                        id
-                    ) =>
-                        id !==
-                        product.id
-                ),
-            ].slice(
-                0,
-                6
+          if (
+            reviewsResponse.ok &&
+            reviewsData.success
+          ) {
+            setReviews(
+              Array.isArray(
+                reviewsData.reviews
+              )
+                ? reviewsData.reviews
+                : []
             );
 
-        localStorage.setItem(
-            "campusmart-recent-products",
-            JSON.stringify(
-                nextRecent
-            )
-        );
-
-        const resolved =
-            nextRecent
-                .map(
-                    (
-                        id
-                    ) =>
-                        allProducts.find(
-                            (
-                                item
-                            ) =>
-                                item.id ===
-                                id
-                        )
-                )
-                .filter(
-                    (
-                        item
-                    ): item is Product =>
-                        Boolean(
-                            item
-                        )
-                );
-
-        setRecentProducts(
-            resolved
-        );
-    }, [
-        product,
-        allProducts,
-    ]);
-
-    /*
-     * =====================================================
-     * REVIEWS
-     * =====================================================
-     */
-
-    useEffect(() => {
-        if (
-            !product
-        ) {
-            return;
-        }
-
-        const loadReviews =
-            () => {
-                setReviews(
-                    getReviews(
-                        product.id
-                    )
-                );
-            };
-
-        loadReviews();
-
-        window.addEventListener(
-            "campusmart-reviews-change",
-            loadReviews
-        );
-
-        return () => {
-            window.removeEventListener(
-                "campusmart-reviews-change",
-                loadReviews
+            setReviewAverage(
+              Number(
+                reviewsData.averageRating ??
+                  loadedProduct.rating ??
+                  0
+              )
             );
-        };
-    }, [
-        product,
-    ]);
 
-    /*
-     * =====================================================
-     * OPEN / START LISTING CONVERSATION
-     * =====================================================
-     */
+            setReviewCount(
+              Number(
+                reviewsData.reviewCount ??
+                  0
+              )
+            );
+          } else {
+            setReviewAverage(
+              loadedProduct.rating ??
+                0
+            );
+          }
 
-    const handleMessageSeller =
-        async () => {
-            if (
-                !user
-            ) {
-                openAuth(
-                    "login",
-                    "client"
-                );
-
-                return;
-            }
-
-            if (
-                !product?.vendorId
-            ) {
-                setMessageError(
-                    "Messaging is not available for this seller."
-                );
-
-                return;
-            }
-
-            if (
-                user.id ===
-                product.vendorId
-            ) {
-                setMessageError(
-                    "You cannot message your own listing."
-                );
-
-                return;
-            }
-
-            const token =
-                localStorage.getItem(
-                    "campusmart-token"
-                );
-
-            if (
-                !token
-            ) {
-                setMessageError(
-                    "Your session is unavailable. Sign in again to message the seller."
-                );
-
-                return;
-            }
-
+          if (
+            loadedProduct.vendorId
+          ) {
             try {
-                setOpeningMessages(
-                    true
+              const response =
+                await fetch(
+                  `${API_URL}/api/vendor/storefront/${encodeURIComponent(
+                    loadedProduct.vendorId
+                  )}`,
+                  {
+                    cache:
+                      "no-store",
+                  }
                 );
 
-                setMessageError(
-                    ""
+              const data =
+                await response.json();
+
+              if (
+                active &&
+                response.ok &&
+                data.success
+              ) {
+                setStorefront(
+                  data.storefront
                 );
-
-                /*
-                 * Look for an existing canonical listing
-                 * conversation first.
-                 *
-                 * If one exists, open it without creating
-                 * another thread or sending an unwanted
-                 * message.
-                 */
-
-                const response =
-                    await fetch(
-                        `${apiUrl}/api/messages/conversations`,
-                        {
-                            headers: {
-                                Authorization:
-                                    `Bearer ${token}`,
-                            },
-
-                            cache:
-                                "no-store",
-                        }
-                    );
-
-                const data =
-                    await response.json();
-
-                if (
-                    !response.ok ||
-                    !data.success
-                ) {
-                    throw new Error(
-                        data.message ||
-                            "Unable to open messaging."
-                    );
-                }
-
-                const conversations:
-                    ExistingConversation[] =
-                    Array.isArray(
-                        data.conversations
-                    )
-                        ? data.conversations
-                        : [];
-
-                const existingConversation =
-                    conversations.find(
-                        (
-                            conversation
-                        ) =>
-                            conversation.contextType ===
-                                "listing" &&
-                            conversation.product
-                                ?.id ===
-                                product.id &&
-                            conversation.otherParty
-                                ?.id ===
-                                product.vendorId
-                    );
-
-                if (
-                    existingConversation
-                ) {
-                    router.push(
-                        `/messages/${existingConversation.id}`
-                    );
-
-                    return;
-                }
-
-                /*
-                 * No conversation exists yet.
-                 *
-                 * Show the composer. We deliberately do
-                 * not create empty message threads.
-                 */
-
-                setMessageComposerOpen(
-                    true
-                );
+              }
             } catch (
-                messagingError
+              storefrontError
             ) {
-                console.error(
-                    "Open seller messaging error:",
-                    messagingError
-                );
+              console.error(
+                "Storefront lookup error:",
+                storefrontError
+              );
 
-                setMessageError(
-                    messagingError instanceof
-                        Error
-                        ? messagingError.message
-                        : "Unable to open messaging."
+              if (
+                active
+              ) {
+                setStorefront(
+                  null
                 );
-            } finally {
-                setOpeningMessages(
-                    false
-                );
+              }
             }
-        };
+          }
+        } catch (
+          loadError
+        ) {
+          console.error(
+            "Product page load error:",
+            loadError
+          );
 
-    /*
-     * =====================================================
-     * SEND FIRST LISTING MESSAGE
-     * =====================================================
-     */
+          if (
+            active
+          ) {
+            setError(
+              loadError instanceof
+                Error
+                ? loadError.message
+                : "Unable to load listing."
+            );
+          }
+        } finally {
+          if (
+            active
+          ) {
+            setLoading(
+              false
+            );
+          }
+        }
+      };
 
-    const startSellerConversation =
-        async (
-            event:
-                FormEvent<HTMLFormElement>
-        ) => {
-            event.preventDefault();
+    void load();
 
-            if (
-                !user ||
-                !product?.vendorId ||
-                sendingMessage
-            ) {
-                return;
-            }
+    return () => {
+      active =
+        false;
+    };
+  }, [
+    params.id,
+  ]);
 
-            if (
-                user.id ===
-                product.vendorId
-            ) {
-                setMessageError(
-                    "You cannot message your own listing."
-                );
+  /*
+   * =====================================================
+   * REVIEW ELIGIBILITY
+   * =====================================================
+   */
 
-                return;
-            }
-
-            const body =
-                messageDraft.trim();
-
-            if (
-                !body
-            ) {
-                setMessageError(
-                    "Write a message to the seller first."
-                );
-
-                return;
-            }
-
-            if (
-                body.length >
-                MESSAGE_MAX_LENGTH
-            ) {
-                setMessageError(
-                    `Messages can be up to ${MESSAGE_MAX_LENGTH} characters.`
-                );
-
-                return;
-            }
-
-            const token =
-                localStorage.getItem(
-                    "campusmart-token"
-                );
-
-            if (
-                !token
-            ) {
-                setMessageError(
-                    "Your session is unavailable. Sign in again to message the seller."
-                );
-
-                return;
-            }
-
-            try {
-                setSendingMessage(
-                    true
-                );
-
-                setMessageError(
-                    ""
-                );
-
-                const response =
-                    await fetch(
-                        `${apiUrl}/api/messages/conversations`,
-                        {
-                            method:
-                                "POST",
-
-                            headers: {
-                                "Content-Type":
-                                    "application/json",
-
-                                Authorization:
-                                    `Bearer ${token}`,
-                            },
-
-                            body:
-                                JSON.stringify({
-                                    contextType:
-                                        "listing",
-
-                                    productId:
-                                        product.id,
-
-                                    body,
-                                }),
-                        }
-                    );
-
-                const data =
-                    await response.json();
-
-                if (
-                    !response.ok ||
-                    !data.success
-                ) {
-                    if (
-                        data.code ===
-                        "MESSAGING_TEMPORARILY_RESTRICTED"
-                    ) {
-                        throw new Error(
-                            data.message ||
-                                "Messaging is temporarily restricted. You can still read your existing conversations."
-                        );
-                    }
-
-                    if (
-                        data.code ===
-                            "OFF_PLATFORM_ATTEMPT_BLOCKED" ||
-                        data.moderation
-                            ?.action ===
-                            "blocked"
-                    ) {
-                        throw new Error(
-                            data.message ||
-                                "That message was not sent because it appears to move the conversation off CampusMart."
-                        );
-                    }
-
-                    throw new Error(
-                        data.message ||
-                            "Unable to send your message."
-                    );
-                }
-
-                const conversationId =
-                    data.conversation
-                        ?.id;
-
-                if (
-                    !conversationId
-                ) {
-                    throw new Error(
-                        "The conversation was created, but CampusMart could not open it."
-                    );
-                }
-
-                if (
-                    data.moderation
-                        ?.action ===
-                    "redacted"
-                ) {
-                    window.dispatchEvent(
-                        new CustomEvent(
-                            "campusmart-toast",
-                            {
-                                detail: {
-                                    message:
-                                        "Message sent. Contact details were hidden to keep the conversation on CampusMart.",
-                                },
-                            }
-                        )
-                    );
-                } else {
-                    window.dispatchEvent(
-                        new CustomEvent(
-                            "campusmart-toast",
-                            {
-                                detail: {
-                                    message:
-                                        "Message sent",
-                                },
-                            }
-                        )
-                    );
-                }
-
-                setMessageDraft(
-                    ""
-                );
-
-                setMessageComposerOpen(
-                    false
-                );
-
-                router.push(
-                    `/messages/${conversationId}`
-                );
-            } catch (
-                messagingError
-            ) {
-                console.error(
-                    "Start seller conversation error:",
-                    messagingError
-                );
-
-                setMessageError(
-                    messagingError instanceof
-                        Error
-                        ? messagingError.message
-                        : "Unable to send your message."
-                );
-            } finally {
-                setSendingMessage(
-                    false
-                );
-            }
-        };
-
-    /*
-     * =====================================================
-     * LOADING
-     * =====================================================
-     */
-
+  useEffect(() => {
     if (
-        loading
+      !user ||
+      !product
     ) {
-        return (
-            <main className="main-container py-16 text-center">
-                <p className="text-sm text-slate-600">
-                    Loading listing...
-                </p>
-            </main>
-        );
+      setReviewEligibility(
+        null
+      );
+
+      return;
     }
 
-    /*
-     * =====================================================
-     * PRODUCT UNAVAILABLE
-     * =====================================================
-     */
+    const controller =
+      new AbortController();
 
-    if (
-        error ||
-        !product
-    ) {
-        return (
-            <main className="main-container py-16 text-center">
-                <h1 className="text-2xl font-bold text-black">
-                    Product not found
-                </h1>
+    const load =
+      async () => {
+        const token =
+          localStorage.getItem(
+            "campusmart-token"
+          );
 
-                <p className="mt-3 text-sm text-slate-600">
-                    This listing may
-                    have been archived
-                    or is currently
-                    unavailable.
-                </p>
+        if (
+          !token
+        ) {
+          return;
+        }
 
-                <Link
-                    href="/marketplace"
-                    className="mt-6 inline-flex items-center justify-center rounded-[10px] bg-black px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
-                >
-                    Back to marketplace
-                </Link>
-            </main>
-        );
-    }
+        try {
+          const response =
+            await fetch(
+              `${API_URL}/api/products/${product.id}/reviews/eligibility`,
+              {
+                headers: {
+                  Authorization:
+                    `Bearer ${token}`,
+                },
 
-    /*
-     * =====================================================
-     * PAGE DATA
-     * =====================================================
-     */
+                signal:
+                  controller.signal,
 
-    const handleAddToCart =
-        () => {
-            addToCart(
-                product
+                cache:
+                  "no-store",
+              }
             );
 
-            setAdded(
-                true
+          const data =
+            await response.json();
+
+          if (
+            response.ok &&
+            data.success
+          ) {
+            setReviewEligibility(
+              data.eligibility
             );
+          }
+        } catch (
+          eligibilityError
+        ) {
+          if (
+            eligibilityError instanceof
+              DOMException &&
+            eligibilityError.name ===
+              "AbortError"
+          ) {
+            return;
+          }
 
-            window.setTimeout(
-                () =>
-                    setAdded(
-                        false
-                    ),
-                1800
-            );
-        };
+          console.error(
+            "Review eligibility error:",
+            eligibilityError
+          );
+        }
+      };
 
-    const currentImage =
-        product.images[
-            activeImage
-        ];
+    void load();
 
-    const relatedProducts =
-        allProducts
-            .filter(
-                (
-                    item
-                ) =>
-                    item.id !==
-                        product.id &&
-                    item.category ===
-                        product.category
-            )
-            .slice(
-                0,
-                4
-            );
+    return () => {
+      controller.abort();
+    };
+  }, [
+    user,
+    product,
+  ]);
 
-    const sellerName =
-        sellerStorefront
-            ?.businessName ||
-        product.seller;
+  /*
+   * =====================================================
+   * DERIVED DATA
+   * =====================================================
+   */
 
-    const sellerUniversity =
-        sellerStorefront
-            ?.university;
+  const images =
+    product?.images ??
+    [];
 
-    const sellerUniversityLabel =
-        sellerUniversity
-            ? sellerUniversity.shortName ||
-              sellerUniversity.name
-            : "";
+  const sizes =
+    product?.sizes ??
+    [];
 
-    const sellerLocation =
-        sellerUniversity
-            ? [
-                  sellerUniversity.city,
-                  sellerUniversity.state,
-              ]
-                  .filter(
-                      Boolean
-                  )
-                  .join(
-                      ", "
-                  )
-            : "";
+  const colors =
+    product?.colors ??
+    [];
 
-    const sellerHref =
+  const currentImage =
+    images[
+      activeImage
+    ];
+
+  const ownListing =
+    Boolean(
+      user &&
+      product?.vendorId &&
+      user.id ===
         product.vendorId
-            ? `/seller/${product.vendorId}`
-            : null;
+    );
 
-    const averageRating =
-        getAverageRating(
-            product.id,
-            product.rating
+  const sellerName =
+    storefront?.businessName ||
+    product?.seller ||
+    "CampusMart seller";
+
+  const sellerHref =
+    product?.vendorId
+      ? `/seller/${product.vendorId}`
+      : null;
+
+  const ratingToDisplay =
+    reviewCount >
+    0
+      ? reviewAverage
+      : product?.rating ??
+        0;
+
+  const sizeGuides =
+    sizes
+      .map(
+        (
+          size
+        ) => ({
+          size,
+
+          guide:
+            getSizeGuide(
+              size
+            ),
+        })
+      )
+      .filter(
+        (
+          item
+        ): item is {
+          size: string;
+          guide: string;
+        } =>
+          Boolean(
+            item.guide
+          )
+      );
+
+  const relatedProducts =
+    useMemo(
+      () => {
+        if (
+          !product
+        ) {
+          return [];
+        }
+
+        return allProducts
+          .filter(
+            (
+              item
+            ) =>
+              item.id !==
+                product.id &&
+              item.category ===
+                product.category
+          )
+          .slice(
+            0,
+            7
+          );
+      },
+      [
+        allProducts,
+        product,
+      ]
+    );
+
+  const visibleReviews =
+    showAllReviews
+      ? reviews
+      : reviews.slice(
+          0,
+          3
         );
 
-    const ownListing =
-        Boolean(
-            user &&
-                product.vendorId &&
-                user.id ===
-                    product.vendorId
+  /*
+   * =====================================================
+   * IMAGE GALLERY
+   * =====================================================
+   */
+
+  const previousImage =
+    () => {
+      if (
+        images.length <=
+        1
+      ) {
+        return;
+      }
+
+      setActiveImage(
+        (
+          current
+        ) =>
+          current ===
+          0
+            ? images.length -
+              1
+            : current -
+              1
+      );
+    };
+
+  const nextImage =
+    () => {
+      if (
+        images.length <=
+        1
+      ) {
+        return;
+      }
+
+      setActiveImage(
+        (
+          current
+        ) =>
+          (
+            current +
+            1
+          ) %
+          images.length
+      );
+    };
+
+  /*
+   * =====================================================
+   * ADD TO CART
+   * =====================================================
+   */
+
+  const handleAddToCart =
+    () => {
+      if (
+        !product ||
+        ownListing
+      ) {
+        return;
+      }
+
+      if (
+        sizes.length >
+          0 &&
+        !selectedSize
+      ) {
+        setVariantError(
+          "Choose a size first."
         );
 
+        return;
+      }
+
+      if (
+        colors.length >
+          0 &&
+        !selectedColor
+      ) {
+        setVariantError(
+          "Choose a colour first."
+        );
+
+        return;
+      }
+
+      setVariantError(
+        ""
+      );
+
+      addToCart(
+        product,
+        1,
+        {
+          selectedSize:
+            selectedSize ||
+            undefined,
+
+          selectedColor:
+            selectedColor ||
+            undefined,
+        }
+      );
+
+      setAdded(
+        true
+      );
+
+      window.setTimeout(
+        () =>
+          setAdded(
+            false
+          ),
+        1500
+      );
+    };
+
+  /*
+   * =====================================================
+   * MESSAGING
+   * =====================================================
+   */
+
+  const handleMessageSeller =
+    async () => {
+      if (
+        !user
+      ) {
+        openAuth(
+          "login",
+          "client"
+        );
+
+        return;
+      }
+
+      if (
+        !product?.vendorId ||
+        ownListing
+      ) {
+        return;
+      }
+
+      const token =
+        localStorage.getItem(
+          "campusmart-token"
+        );
+
+      if (
+        !token
+      ) {
+        setMessageError(
+          "Sign in again to message this seller."
+        );
+
+        return;
+      }
+
+      try {
+        setOpeningMessages(
+          true
+        );
+
+        setMessageError(
+          ""
+        );
+
+        const response =
+          await fetch(
+            `${API_URL}/api/messages/conversations`,
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${token}`,
+              },
+
+              cache:
+                "no-store",
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          throw new Error(
+            data.message ||
+              "Unable to open messaging."
+          );
+        }
+
+        const conversations:
+          ExistingConversation[] =
+          Array.isArray(
+            data.conversations
+          )
+            ? data.conversations
+            : [];
+
+        const existing =
+          conversations.find(
+            (
+              conversation
+            ) =>
+              conversation.contextType ===
+                "listing" &&
+              conversation.product?.id ===
+                product.id &&
+              conversation.otherParty?.id ===
+                product.vendorId
+          );
+
+        if (
+          existing
+        ) {
+          router.push(
+            `/messages/${existing.id}`
+          );
+
+          return;
+        }
+
+        setMessageComposerOpen(
+          true
+        );
+      } catch (
+        messagingError
+      ) {
+        setMessageError(
+          messagingError instanceof
+            Error
+            ? messagingError.message
+            : "Unable to open messaging."
+        );
+      } finally {
+        setOpeningMessages(
+          false
+        );
+      }
+    };
+
+  const startSellerConversation =
+    async (
+      event:
+        FormEvent<HTMLFormElement>
+    ) => {
+      event.preventDefault();
+
+      if (
+        !product?.vendorId ||
+        !user
+      ) {
+        return;
+      }
+
+      const body =
+        messageDraft.trim();
+
+      if (
+        !body
+      ) {
+        setMessageError(
+          "Write a message first."
+        );
+
+        return;
+      }
+
+      const token =
+        localStorage.getItem(
+          "campusmart-token"
+        );
+
+      if (
+        !token
+      ) {
+        setMessageError(
+          "Sign in again to continue."
+        );
+
+        return;
+      }
+
+      try {
+        setSendingMessage(
+          true
+        );
+
+        setMessageError(
+          ""
+        );
+
+        const response =
+          await fetch(
+            `${API_URL}/api/messages/conversations`,
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+
+                Authorization:
+                  `Bearer ${token}`,
+              },
+
+              body:
+                JSON.stringify({
+                  contextType:
+                    "listing",
+
+                  productId:
+                    product.id,
+
+                  body,
+                }),
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          throw new Error(
+            data.message ||
+              "Unable to send message."
+          );
+        }
+
+        if (
+          data.moderation?.action ===
+          "redacted"
+        ) {
+          window.dispatchEvent(
+            new CustomEvent(
+              "campusmart-toast",
+              {
+                detail: {
+                  message:
+                    "Message sent. Contact details were hidden.",
+                },
+              }
+            )
+          );
+        }
+
+        const conversationId =
+          data.conversation?.id;
+
+        if (
+          !conversationId
+        ) {
+          throw new Error(
+            "Message sent, but the conversation could not be opened."
+          );
+        }
+
+        router.push(
+          `/messages/${conversationId}`
+        );
+      } catch (
+        sendError
+      ) {
+        setMessageError(
+          sendError instanceof
+            Error
+            ? sendError.message
+            : "Unable to send message."
+        );
+      } finally {
+        setSendingMessage(
+          false
+        );
+      }
+    };
+
+  /*
+   * =====================================================
+   * REVIEWS
+   * =====================================================
+   */
+
+  const postReview =
+    async (
+      event:
+        FormEvent<HTMLFormElement>
+    ) => {
+      event.preventDefault();
+
+      if (
+        !product ||
+        !reviewEligibility?.canReview
+      ) {
+        return;
+      }
+
+      const comment =
+        reviewComment.trim();
+
+      if (
+        !comment
+      ) {
+        setReviewError(
+          "Write a short review first."
+        );
+
+        return;
+      }
+
+      const token =
+        localStorage.getItem(
+          "campusmart-token"
+        );
+
+      if (
+        !token
+      ) {
+        setReviewError(
+          "Sign in again to post your review."
+        );
+
+        return;
+      }
+
+      try {
+        setPostingReview(
+          true
+        );
+
+        setReviewError(
+          ""
+        );
+
+        const response =
+          await fetch(
+            `${API_URL}/api/products/${product.id}/reviews`,
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+
+                Authorization:
+                  `Bearer ${token}`,
+              },
+
+              body:
+                JSON.stringify({
+                  rating:
+                    reviewRating,
+
+                  comment,
+                }),
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          throw new Error(
+            data.message ||
+              "Unable to post review."
+          );
+        }
+
+        setReviews(
+          (
+            current
+          ) => [
+            data.review,
+            ...current,
+          ]
+        );
+
+        setReviewAverage(
+          Number(
+            data.averageRating ??
+              reviewAverage
+          )
+        );
+
+        setReviewCount(
+          Number(
+            data.reviewCount ??
+              reviewCount +
+                1
+          )
+        );
+
+        setReviewComment(
+          ""
+        );
+
+        setReviewRating(
+          5
+        );
+
+        setReviewEligibility({
+          canReview:
+            false,
+
+          reason:
+            "already_reviewed",
+
+          eligibleAt:
+            null,
+        });
+
+        window.dispatchEvent(
+          new CustomEvent(
+            "campusmart-toast",
+            {
+              detail: {
+                message:
+                  "Review posted",
+              },
+            }
+          )
+        );
+      } catch (
+        postError
+      ) {
+        setReviewError(
+          postError instanceof
+            Error
+            ? postError.message
+            : "Unable to post review."
+        );
+      } finally {
+        setPostingReview(
+          false
+        );
+      }
+    };
+
+  /*
+   * =====================================================
+   * PAGE STATES
+   * =====================================================
+   */
+
+  if (
+    loading
+  ) {
     return (
-        <main className="main-container py-10 sm:py-12 lg:py-14">
-            {/*
-             * =================================================
-             * BREADCRUMB
-             * =================================================
-             */}
+      <main className="main-container py-8">
+        <div className="h-[430px] animate-pulse rounded-2xl bg-slate-100" />
+      </main>
+    );
+  }
 
-            <nav
-                className="flex items-center gap-1 text-sm font-semibold text-slate-500"
-                aria-label="Breadcrumb"
-            >
-                <Link
-                    href="/marketplace"
-                    className="transition hover:text-black"
+  if (
+    error ||
+    !product
+  ) {
+    return (
+      <main className="main-container py-16 text-center">
+        <h1 className="text-2xl font-black">
+          Product unavailable
+        </h1>
+
+        <p className="mt-2 text-sm text-slate-500">
+          This listing may have been removed or is no longer available.
+        </p>
+
+        <Link
+          href="/marketplace"
+          className="mt-6 inline-flex rounded-xl bg-accent-400 px-5 py-3 text-sm font-black"
+        >
+          Back to marketplace
+        </Link>
+      </main>
+    );
+  }
+
+  return (
+    <main className="main-container pb-28 pt-4 sm:pt-6 lg:pb-32">
+      <nav className="mb-3">
+        <Link
+          href="/marketplace"
+          className="inline-flex items-center gap-1.5 text-xs font-black text-slate-500 transition hover:text-black"
+        >
+          ← Marketplace
+        </Link>
+      </nav>
+
+      <section className="grid gap-4 lg:grid-cols-[0.92fr_1.08fr] lg:gap-7">
+        {/*
+         * =================================================
+         * GALLERY
+         * =================================================
+         */}
+
+        <div className="min-w-0">
+          <div className="relative aspect-[4/3] max-h-[470px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+            {currentImage ? (
+              <Image
+                src={
+                  currentImage
+                }
+                alt={
+                  product.title
+                }
+                fill
+                priority
+                sizes="(max-width: 1024px) 100vw, 45vw"
+                className="object-contain"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center bg-slate-900 text-sm font-black text-white">
+                CampusMart
+              </div>
+            )}
+
+            {images.length >
+            1 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={
+                    previousImage
+                  }
+                  className="absolute left-2.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/70 bg-white/80 text-xl font-black shadow-md backdrop-blur"
+                  aria-label="Previous image"
                 >
-                    Marketplace
+                  ‹
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    nextImage
+                  }
+                  className="absolute right-2.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/70 bg-white/80 text-xl font-black shadow-md backdrop-blur"
+                  aria-label="Next image"
+                >
+                  ›
+                </button>
+
+                <span className="absolute bottom-2.5 left-1/2 -translate-x-1/2 rounded-full bg-black/65 px-2.5 py-1 text-[9px] font-black text-white backdrop-blur">
+                  {activeImage +
+                    1}
+                  {" / "}
+                  {
+                    images.length
+                  }
+                </span>
+              </>
+            ) : null}
+          </div>
+
+          {images.length >
+          1 ? (
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {images.map(
+                (
+                  image,
+                  index
+                ) => (
+                  <button
+                    key={`${image}-${index}`}
+                    type="button"
+                    onClick={() =>
+                      setActiveImage(
+                        index
+                      )
+                    }
+                    className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 bg-slate-100 ${
+                      activeImage ===
+                      index
+                        ? "border-[#4A1724]"
+                        : "border-transparent"
+                    }`}
+                  >
+                    <Image
+                      src={
+                        image
+                      }
+                      alt=""
+                      fill
+                      sizes="56px"
+                      className="object-cover"
+                    />
+                  </button>
+                )
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        {/*
+         * =================================================
+         * BUYING PANEL
+         * =================================================
+         */}
+
+        <div className="min-w-0">
+          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-[#8A6670]">
+            {
+              product.category
+            }
+          </p>
+
+          <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+            <h1 className="min-w-0 text-2xl font-black leading-tight tracking-tight text-slate-950 sm:text-3xl">
+              {
+                product.title
+              }
+            </h1>
+
+            <p className="whitespace-nowrap text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
+              {formatNaira(
+                product.price
+              )}
+            </p>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
+            <span className="font-black text-slate-900">
+              ★{" "}
+              {Number(
+                ratingToDisplay ||
+                  0
+              ).toFixed(
+                1
+              )}
+            </span>
+
+            {reviewCount >
+            0 ? (
+              <>
+                <span>
+                  ·
+                </span>
+
+                <span>
+                  {reviewCount}{" "}
+                  {reviewCount ===
+                  1
+                    ? "review"
+                    : "reviews"}
+                </span>
+              </>
+            ) : null}
+
+            <span>
+              ·
+            </span>
+
+            <span>
+              Sold by{" "}
+
+              {sellerHref ? (
+                <Link
+                  href={
+                    sellerHref
+                  }
+                  className="font-black text-slate-950 underline decoration-slate-300 underline-offset-3"
+                >
+                  {
+                    sellerName
+                  }
+                </Link>
+              ) : (
+                <strong className="text-slate-950">
+                  {
+                    sellerName
+                  }
+                </strong>
+              )}
+            </span>
+
+            {storefront?.badges
+              .studentVerified ? (
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black text-emerald-700 ring-1 ring-emerald-200">
+                Verified student
+              </span>
+            ) : null}
+
+            {storefront?.badges
+              .vendorVerified ? (
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-black text-blue-700 ring-1 ring-blue-200">
+                Verified vendor
+              </span>
+            ) : null}
+          </div>
+
+          {/*
+           * =================================================
+           * OPTIONS
+           * =================================================
+           */}
+
+          {sizes.length >
+            0 ||
+          colors.length >
+            0 ? (
+            <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
+              {sizes.length >
+              0 ? (
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                      Size
+                    </p>
+
+                    {sizeGuides.length >
+                    0 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSizeGuideOpen(
+                            (
+                              open
+                            ) =>
+                              !open
+                          )
+                        }
+                        className="text-[10px] font-black text-[#6E3847] underline underline-offset-3"
+                      >
+                        {sizeGuideOpen
+                          ? "Hide guide"
+                          : "Size guide"}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    {sizes.map(
+                      (
+                        size
+                      ) => (
+                        <button
+                          key={
+                            size
+                          }
+                          type="button"
+                          onClick={() => {
+                            setSelectedSize(
+                              size
+                            );
+
+                            setVariantError(
+                              ""
+                            );
+                          }}
+                          className={`min-w-11 rounded-xl border px-3 py-2 text-xs font-black transition ${
+                            selectedSize ===
+                            size
+                              ? "border-[#4A1724] bg-[#4A1724] text-white"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-[#4A1724]"
+                          }`}
+                        >
+                          {
+                            size
+                          }
+                        </button>
+                      )
+                    )}
+                  </div>
+
+                  {sizeGuideOpen &&
+                  sizeGuides.length >
+                    0 ? (
+                    <div className="mt-3 flex flex-wrap gap-1.5 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                      {sizeGuides.map(
+                        (
+                          item
+                        ) => (
+                          <span
+                            key={
+                              item.size
+                            }
+                            className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600"
+                          >
+                            <strong className="text-slate-900">
+                              {
+                                item.size
+                              }
+                            </strong>
+                            {" · "}
+                            {
+                              item.guide
+                            }
+                          </span>
+                        )
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {colors.length >
+              0 ? (
+                <div
+                  className={
+                    sizes.length >
+                    0
+                      ? "mt-4 border-t border-slate-200 pt-3.5"
+                      : ""
+                  }
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                      Colour
+                    </p>
+
+                    {colors.length >
+                    1 ? (
+                      <span className="text-[9px] font-bold text-slate-400">
+                        Select one
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    {colors.map(
+                      (
+                        colour
+                      ) => {
+                        const swatch =
+                          getColourSwatch(
+                            colour
+                          );
+
+                        const selected =
+                          selectedColor ===
+                          colour;
+
+                        return (
+                          <button
+                            key={
+                              colour
+                            }
+                            type="button"
+                            onClick={() => {
+                              setSelectedColor(
+                                colour
+                              );
+
+                              setVariantError(
+                                ""
+                              );
+                            }}
+                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-black transition ${
+                              selected
+                                ? "border-[#4A1724] bg-white text-[#4A1724] ring-1 ring-[#4A1724]"
+                                : "border-slate-200 bg-white text-slate-700"
+                            }`}
+                          >
+                            {swatch ? (
+                              <span
+                                className="h-3.5 w-3.5 rounded-full border border-black/15"
+                                style={{
+                                  backgroundColor:
+                                    swatch,
+                                }}
+                              />
+                            ) : (
+                              <span className="h-3.5 w-3.5 rounded-full bg-gradient-to-br from-slate-200 to-slate-400 ring-1 ring-black/10" />
+                            )}
+
+                            {
+                              colour
+                            }
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {variantError ? (
+            <p
+              role="alert"
+              className="mt-2.5 text-xs font-bold text-red-600"
+            >
+              {
+                variantError
+              }
+            </p>
+          ) : null}
+
+          {/*
+           * =================================================
+           * PRIMARY ACTION
+           * =================================================
+           */}
+
+          <div className="mt-4">
+            <button
+              type="button"
+              disabled={
+                ownListing
+              }
+              onClick={
+                handleAddToCart
+              }
+              className="flex min-h-12 w-full items-center justify-center rounded-xl bg-accent-400 px-5 text-sm font-black text-black transition hover:bg-accent-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+            >
+              {ownListing
+                ? "This is your listing"
+                : added
+                  ? "Added to cart ✓"
+                  : "Add to cart"}
+            </button>
+
+            {!ownListing ? (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Link
+                  href="/cart"
+                  className="flex min-h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 transition hover:border-slate-400"
+                >
+                  View cart
                 </Link>
 
-                <ChevronRightIcon className="h-3.5 w-3.5" />
-
-                <span className="text-black">
-                    {
-                        product.category
+                {product.vendorId ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void handleMessageSeller()
                     }
+                    disabled={
+                      openingMessages
+                    }
+                    className="min-h-10 rounded-xl border border-[#4A1724] bg-white px-4 text-xs font-black text-[#4A1724] transition disabled:opacity-50"
+                  >
+                    {openingMessages
+                      ? "Opening..."
+                      : "Message seller"}
+                  </button>
+                ) : (
+                  <span />
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          {!ownListing && (
+            <Link href={`/report?targetType=product&targetId=${product.id}`} className="mt-3 inline-block text-xs font-semibold text-slate-500 underline underline-offset-2 hover:text-red-700">
+              Report this listing
+            </Link>
+          )}
+
+          {/*
+           * =================================================
+           * COLLAPSED DETAILS
+           * =================================================
+           */}
+
+          <details className="mt-3 rounded-xl border border-slate-200 bg-white">
+            <summary className="cursor-pointer list-none px-4 py-3 text-xs font-black text-slate-700">
+              Product details{" "}
+              <span className="ml-1 text-slate-400">
+                +
+              </span>
+            </summary>
+
+            <div className="border-t border-slate-100 px-4 py-3">
+              <p className="text-sm leading-6 text-slate-600">
+                {
+                  product.description
+                }
+              </p>
+            </div>
+          </details>
+
+          {/*
+           * =================================================
+           * MESSAGE COMPOSER
+           * =================================================
+           */}
+
+          {messageComposerOpen &&
+          !ownListing ? (
+            <form
+              onSubmit={
+                startSellerConversation
+              }
+              className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-black">
+                  Message{" "}
+                  {
+                    sellerName
+                  }
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMessageComposerOpen(
+                      false
+                    );
+
+                    setMessageError(
+                      ""
+                    );
+                  }}
+                  className="text-lg font-black text-slate-400"
+                >
+                  ×
+                </button>
+              </div>
+
+              <textarea
+                rows={
+                  3
+                }
+                maxLength={
+                  MESSAGE_MAX_LENGTH
+                }
+                value={
+                  messageDraft
+                }
+                onChange={(
+                  event
+                ) => {
+                  setMessageDraft(
+                    event.target.value
+                  );
+
+                  if (
+                    messageError
+                  ) {
+                    setMessageError(
+                      ""
+                    );
+                  }
+                }}
+                placeholder="Hi, is this still available?"
+                className="mt-3 w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#4A1724]"
+              />
+
+              <div className="mt-1 flex justify-between gap-3 text-[9px] text-slate-400">
+                <span>
+                  {
+                    messageDraft.length
+                  }
+                  /
+                  {
+                    MESSAGE_MAX_LENGTH
+                  }
                 </span>
-            </nav>
 
-            {/*
-             * =================================================
-             * PRODUCT
-             * =================================================
-             */}
+                <span>
+                  Contact details may be hidden
+                </span>
+              </div>
 
-            <div className="mt-6 grid gap-10 lg:grid-cols-2">
-                {/*
-                 * IMAGE GALLERY
-                 */}
+              {messageError ? (
+                <p className="mt-2 text-xs font-bold text-red-600">
+                  {
+                    messageError
+                  }
+                </p>
+              ) : null}
 
-                <div>
-                    <div className="relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                        {currentImage ? (
-                            <Image
-                                src={
-                                    currentImage
-                                }
-                                alt={
-                                    product.title
-                                }
-                                fill
-                                sizes="(max-width: 1024px) 100vw, 50vw"
-                                className="object-cover"
-                                priority
-                            />
-                        ) : (
-                            <div className="flex h-full items-center justify-center bg-slate-900 px-6 text-center text-sm font-semibold text-white">
-                                CampusMart
-                                listing image
-                            </div>
-                        )}
-                    </div>
+              <button
+                type="submit"
+                disabled={
+                  sendingMessage ||
+                  !messageDraft.trim()
+                }
+                className="mt-3 rounded-lg bg-slate-950 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50"
+              >
+                {sendingMessage
+                  ? "Sending..."
+                  : "Send message"}
+              </button>
+            </form>
+          ) : null}
 
-                    {product.images
-                        .length >
-                    1 ? (
-                        <div className="mt-3 flex gap-3 overflow-x-auto">
-                            {product.images.map(
-                                (
-                                    image,
-                                    index
-                                ) => (
-                                    <button
-                                        key={`${image}-${index}`}
-                                        type="button"
-                                        onClick={() =>
-                                            setActiveImage(
-                                                index
-                                            )
-                                        }
-                                        className={`relative h-20 w-20 shrink-0 overflow-hidden rounded-[10px] border-2 transition ${
-                                            index ===
-                                            activeImage
-                                                ? "border-accent-400"
-                                                : "border-transparent"
-                                        }`}
-                                        aria-label={`Show image ${
-                                            index +
-                                            1
-                                        }`}
-                                    >
-                                        <Image
-                                            src={
-                                                image
-                                            }
-                                            alt=""
-                                            fill
-                                            sizes="80px"
-                                            className="object-cover"
-                                        />
-                                    </button>
-                                )
-                            )}
-                        </div>
-                    ) : null}
-                </div>
+          {messageError &&
+          !messageComposerOpen ? (
+            <p className="mt-3 text-xs font-bold text-red-600">
+              {
+                messageError
+              }
+            </p>
+          ) : null}
+        </div>
+      </section>
 
-                {/*
-                 * PRODUCT INFORMATION
-                 */}
+      {/*
+       * =====================================================
+       * RELATED
+       * =====================================================
+       */}
 
-                <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-                        {
-                            product.category
-                        }
-                    </p>
+      {relatedProducts.length >
+      0 ? (
+        <section className="mt-8 border-t border-slate-200 pt-5">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-[#8A6670]">
+                Keep exploring
+              </p>
 
-                    <h1 className="mt-2 text-3xl font-bold tracking-tight text-black">
-                        {
-                            product.title
-                        }
-                    </h1>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-600">
-                        <span className="inline-flex items-center gap-1 font-semibold text-black">
-                            <svg
-                                viewBox="0 0 24 24"
-                                fill="currentColor"
-                                className="h-4 w-4 text-accent-500"
-                                aria-hidden="true"
-                            >
-                                <path d="M12 2.5l2.9 6.16 6.6.72-4.9 4.6 1.28 6.52L12 17.3l-5.88 3.2 1.28-6.52-4.9-4.6 6.6-.72L12 2.5Z" />
-                            </svg>
-
-                            {averageRating.toFixed(
-                                1
-                            )}
-                        </span>
-
-                        <span>
-                            ·
-                        </span>
-
-                        <span>
-                            Sold by{" "}
-                            {sellerHref ? (
-                                <Link
-                                    href={
-                                        sellerHref
-                                    }
-                                    className="font-bold text-black underline decoration-slate-300 underline-offset-4 transition hover:decoration-black"
-                                >
-                                    {
-                                        sellerName
-                                    }
-                                </Link>
-                            ) : (
-                                <span className="font-bold text-black">
-                                    {
-                                        sellerName
-                                    }
-                                </span>
-                            )}
-                        </span>
-                    </div>
-
-                    {/*
-                     * SELLER + EXCHANGE CARDS
-                     */}
-
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                        {sellerHref ? (
-                            <Link
-                                href={
-                                    sellerHref
-                                }
-                                className="group rounded-xl border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-400 hover:bg-white"
-                            >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                                            Seller
-                                        </p>
-
-                                        <p className="mt-2 font-bold text-slate-950">
-                                            {
-                                                sellerName
-                                            }
-                                        </p>
-                                    </div>
-
-                                    <span className="text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-black">
-                                        →
-                                    </span>
-                                </div>
-
-                                {sellerStorefront ? (
-                                    <>
-                                        <div className="mt-3 flex flex-wrap gap-1.5">
-                                            {sellerStorefront
-                                                .badges
-                                                .studentVerified ? (
-                                                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                                                    Verified
-                                                    student
-                                                </span>
-                                            ) : null}
-
-                                            {sellerStorefront
-                                                .badges
-                                                .vendorVerified ? (
-                                                <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700">
-                                                    Verified
-                                                    vendor
-                                                </span>
-                                            ) : null}
-                                        </div>
-
-                                        {sellerUniversityLabel ? (
-                                            <p className="mt-3 text-sm text-slate-600">
-                                                {
-                                                    sellerUniversityLabel
-                                                }
-                                                {sellerLocation
-                                                    ? ` · ${sellerLocation}`
-                                                    : ""}
-                                            </p>
-                                        ) : null}
-
-                                        <p className="mt-2 text-xs font-semibold text-slate-500">
-                                            {
-                                                sellerStorefront.listingCount
-                                            }{" "}
-                                            active{" "}
-                                            {sellerStorefront.listingCount ===
-                                            1
-                                                ? "listing"
-                                                : "listings"}
-                                        </p>
-                                    </>
-                                ) : (
-                                    <p className="mt-2 text-sm text-slate-600">
-                                        View seller
-                                        storefront
-                                        and other
-                                        listings.
-                                    </p>
-                                )}
-                            </Link>
-                        ) : (
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                                    Seller
-                                </p>
-
-                                <p className="mt-2 font-bold text-slate-950">
-                                    {
-                                        sellerName
-                                    }
-                                </p>
-                            </div>
-                        )}
-
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                                Exchange
-                            </p>
-
-                            <p className="mt-2 font-bold text-slate-950">
-                                Campus
-                                pickup
-                            </p>
-
-                            <p className="mt-1 text-sm leading-6 text-slate-600">
-                                Arrange
-                                pickup
-                                details
-                                through
-                                your
-                                CampusMart
-                                order.
-                            </p>
-                        </div>
-                    </div>
-
-                    <p className="mt-6 text-3xl font-bold text-black">
-                        {formatNaira(
-                            product.price
-                        )}
-                    </p>
-
-                    <p className="mt-6 text-[15px] leading-7 text-slate-600">
-                        {
-                            product.description
-                        }
-                    </p>
-
-                    {/*
-                     * =================================================
-                     * PURCHASE ACTIONS
-                     * =================================================
-                     */}
-
-                    <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                        <button
-                            type="button"
-                            onClick={
-                                handleAddToCart
-                            }
-                            className="inline-flex flex-1 items-center justify-center rounded-[10px] bg-accent-400 px-6 py-3.5 text-base font-bold text-black transition hover:bg-accent-500"
-                        >
-                            {added
-                                ? "Added to cart ✓"
-                                : "Add to cart"}
-                        </button>
-
-                        <Link
-                            href="/cart"
-                            className="inline-flex flex-1 items-center justify-center rounded-[10px] border border-slate-200 bg-white px-6 py-3.5 text-base font-bold text-black transition hover:bg-slate-50"
-                        >
-                            View cart
-                        </Link>
-                    </div>
-
-                    {/*
-                     * =================================================
-                     * MESSAGE SELLER
-                     * =================================================
-                     */}
-
-                    {product.vendorId ? (
-                        <div className="mt-3">
-                            <button
-                                type="button"
-                                disabled={
-                                    openingMessages ||
-                                    ownListing
-                                }
-                                onClick={() =>
-                                    void handleMessageSeller()
-                                }
-                                className="inline-flex w-full items-center justify-center rounded-[10px] border border-slate-900 bg-white px-6 py-3.5 text-base font-bold text-slate-950 transition hover:bg-slate-950 hover:text-white disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
-                            >
-                                {ownListing
-                                    ? "This is your listing"
-                                    : openingMessages
-                                      ? "Opening messages..."
-                                      : "Message seller"}
-                            </button>
-
-                            {!ownListing ? (
-                                <p className="mt-2 text-center text-xs leading-5 text-slate-500">
-                                    Ask about
-                                    availability,
-                                    condition or
-                                    campus pickup
-                                    before ordering.
-                                </p>
-                            ) : null}
-                        </div>
-                    ) : null}
-
-                    {/*
-                     * =================================================
-                     * FIRST MESSAGE COMPOSER
-                     * =================================================
-                     */}
-
-                    {messageComposerOpen &&
-                    !ownListing ? (
-                        <form
-                            onSubmit={
-                                startSellerConversation
-                            }
-                            className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5"
-                        >
-                            <div className="flex items-start justify-between gap-4">
-                                <div>
-                                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                                        Message seller
-                                    </p>
-
-                                    <h2 className="mt-1 text-lg font-black text-slate-950">
-                                        Ask about{" "}
-                                        {
-                                            product.title
-                                        }
-                                    </h2>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    disabled={
-                                        sendingMessage
-                                    }
-                                    onClick={() => {
-                                        setMessageComposerOpen(
-                                            false
-                                        );
-
-                                        setMessageError(
-                                            ""
-                                        );
-                                    }}
-                                    className="shrink-0 rounded-full px-2 py-1 text-lg font-bold text-slate-400 transition hover:bg-slate-200 hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
-                                    aria-label="Close message composer"
-                                >
-                                    ×
-                                </button>
-                            </div>
-
-                            <textarea
-                                value={
-                                    messageDraft
-                                }
-                                onChange={(
-                                    event
-                                ) => {
-                                    setMessageDraft(
-                                        event.target.value
-                                    );
-
-                                    if (
-                                        messageError
-                                    ) {
-                                        setMessageError(
-                                            ""
-                                        );
-                                    }
-                                }}
-                                rows={
-                                    4
-                                }
-                                maxLength={
-                                    MESSAGE_MAX_LENGTH
-                                }
-                                disabled={
-                                    sendingMessage
-                                }
-                                placeholder="Hi, is this still available?"
-                                className="mt-4 w-full resize-y rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            />
-
-                            <div className="mt-2 flex items-center justify-between gap-3">
-                                <p className="text-[11px] text-slate-400">
-                                    {
-                                        messageDraft.length
-                                    }
-                                    /
-                                    {
-                                        MESSAGE_MAX_LENGTH
-                                    }
-                                </p>
-
-                                <p className="text-[11px] text-slate-400">
-                                    Contact details may
-                                    be hidden.
-                                </p>
-                            </div>
-
-                            {messageError ? (
-                                <div
-                                    role="alert"
-                                    className="mt-3 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-semibold leading-5 text-red-700"
-                                >
-                                    {
-                                        messageError
-                                    }
-                                </div>
-                            ) : null}
-
-                            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                                <button
-                                    type="submit"
-                                    disabled={
-                                        sendingMessage ||
-                                        !messageDraft.trim()
-                                    }
-                                    className="inline-flex flex-1 items-center justify-center rounded-[10px] bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    {sendingMessage
-                                        ? "Sending..."
-                                        : "Send message"}
-                                </button>
-
-                                <button
-                                    type="button"
-                                    disabled={
-                                        sendingMessage
-                                    }
-                                    onClick={() => {
-                                        setMessageComposerOpen(
-                                            false
-                                        );
-
-                                        setMessageError(
-                                            ""
-                                        );
-                                    }}
-                                    className="inline-flex items-center justify-center rounded-[10px] border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        </form>
-                    ) : null}
-
-                    {/*
-                     * Message errors may also happen while
-                     * checking for an existing thread.
-                     */}
-
-                    {messageError &&
-                    !messageComposerOpen ? (
-                        <div
-                            role="alert"
-                            className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
-                        >
-                            {
-                                messageError
-                            }
-                        </div>
-                    ) : null}
-
-                    <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm leading-7 text-slate-600">
-                        Complete your
-                        order through
-                        CampusMart so
-                        the purchase,
-                        seller
-                        fulfilment and
-                        order history
-                        remain recorded
-                        on the
-                        platform.
-                    </div>
-                </div>
+              <h2 className="mt-1 text-lg font-black text-slate-950">
+                You may also like
+              </h2>
             </div>
 
-            {/*
-             * =================================================
-             * REVIEWS
-             * =================================================
-             */}
+            <Link
+              href="/marketplace"
+              className="text-[11px] font-black text-slate-500 transition hover:text-black"
+            >
+              Shop all →
+            </Link>
+          </div>
 
-            <section className="mt-16 border-t border-slate-200 pt-10">
-                <div className="flex flex-wrap items-end justify-between gap-4">
-                    <div>
-                        <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
-                            Customer
-                            reviews
-                        </p>
+          <div className="mt-3">
+            <AutoScrollProducts
+              products={
+                relatedProducts
+              }
+              size="small"
+            />
+          </div>
+        </section>
+      ) : null}
 
-                        <h2 className="mt-2 text-2xl font-bold text-black">
-                            What buyers
-                            are saying
-                        </h2>
-                    </div>
+      {/*
+       * =====================================================
+       * REVIEWS
+       * =====================================================
+       */}
 
-                    <p className="text-sm font-semibold text-slate-600">
-                        {
-                            reviews.length
-                        }{" "}
-                        review
-                        {reviews.length ===
-                        1
-                            ? ""
-                            : "s"}
-                    </p>
-                </div>
+      <section className="mt-8 border-t border-slate-200 pt-5">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-[#8A6670]">
+              Verified purchases
+            </p>
 
-                <div className="mt-6 grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
-                    <form
-                        onSubmit={(
-                            event
-                        ) => {
-                            event.preventDefault();
+            <h2 className="mt-1 text-lg font-black text-slate-950">
+              Reviews
+            </h2>
+          </div>
 
-                            if (
-                                !user
-                            ) {
-                                openAuth(
-                                    "login",
-                                    "client"
-                                );
+          <p className="text-[11px] font-bold text-slate-500">
+            {reviewCount}{" "}
+            {reviewCount ===
+            1
+              ? "review"
+              : "reviews"}
+          </p>
+        </div>
 
-                                return;
-                            }
+        <div className="mt-4 grid gap-4 lg:grid-cols-[0.7fr_1.3fr]">
+          <div>
+            {!user ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-black">
+                  Bought this product?
+                </p>
 
-                            if (
-                                user.role !==
-                                "client"
-                            ) {
-                                setReviewError(
-                                    "Only client accounts can leave product reviews."
-                                );
+                <p className="mt-1.5 text-xs leading-5 text-slate-500">
+                  Sign in to check whether your completed purchase can be reviewed.
+                </p>
 
-                                return;
-                            }
+                <button
+                  type="button"
+                  onClick={() =>
+                    openAuth(
+                      "login"
+                    )
+                  }
+                  className="mt-3 rounded-lg bg-accent-400 px-4 py-2.5 text-xs font-black"
+                >
+                  Sign in
+                </button>
+              </div>
+            ) : reviewEligibility
+                ?.canReview ? (
+              <form
+                onSubmit={
+                  postReview
+                }
+                className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+              >
+                <h3 className="text-sm font-black">
+                  Leave a review
+                </h3>
 
-                            if (
-                                !reviewComment.trim()
-                            ) {
-                                setReviewError(
-                                    "Write a short comment before submitting."
-                                );
+                <select
+                  value={
+                    reviewRating
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setReviewRating(
+                      Number(
+                        event.target.value
+                      )
+                    )
+                  }
+                  className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold"
+                >
+                  <option value="5">
+                    5 — Excellent
+                  </option>
 
-                                return;
-                            }
+                  <option value="4">
+                    4 — Good
+                  </option>
 
-                            addReview({
-                                productId:
-                                    product.id,
+                  <option value="3">
+                    3 — Average
+                  </option>
 
-                                author:
-                                    user.name,
+                  <option value="2">
+                    2 — Below average
+                  </option>
 
-                                rating:
-                                    reviewRating,
+                  <option value="1">
+                    1 — Poor
+                  </option>
+                </select>
 
-                                comment:
-                                    reviewComment.trim(),
-                            });
+                <textarea
+                  rows={
+                    3
+                  }
+                  maxLength={
+                    1000
+                  }
+                  value={
+                    reviewComment
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setReviewComment(
+                      event.target.value
+                    )
+                  }
+                  placeholder="How was the item?"
+                  className="mt-2.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm"
+                />
 
-                            setReviewComment(
-                                ""
-                            );
+                {reviewError ? (
+                  <p className="mt-2 text-xs font-bold text-red-600">
+                    {
+                      reviewError
+                    }
+                  </p>
+                ) : null}
 
-                            setReviewRating(
-                                5
-                            );
+                <button
+                  type="submit"
+                  disabled={
+                    postingReview
+                  }
+                  className="mt-2.5 rounded-lg bg-accent-400 px-4 py-2.5 text-xs font-black disabled:opacity-50"
+                >
+                  {postingReview
+                    ? "Posting..."
+                    : "Post review"}
+                </button>
+              </form>
+            ) : (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-black">
+                  {reviewEligibility?.reason ===
+                  "already_reviewed"
+                    ? "Review submitted"
+                    : reviewEligibility?.reason ===
+                        "wait_period"
+                      ? "Review unlocks soon"
+                      : "Completed purchase required"}
+                </p>
 
-                            setReviewError(
-                                ""
-                            );
-                        }}
-                        className="site-card space-y-4 p-5"
-                    >
-                        <h3 className="text-lg font-bold text-slate-950">
-                            Leave a
-                            review
-                        </h3>
+                <p className="mt-1.5 text-xs leading-5 text-slate-500">
+                  {reviewEligibility?.reason ===
+                  "already_reviewed"
+                    ? "You have already reviewed this product."
+                    : reviewEligibility?.reason ===
+                        "wait_period"
+                      ? `Reviews unlock 6 hours after fulfilment is completed.${
+                          reviewEligibility.eligibleAt
+                            ? ` You can review from ${formatEligibilityTime(
+                                reviewEligibility.eligibleAt
+                              )}.`
+                            : ""
+                        }`
+                      : "Only a buyer who completed an order for this product can leave a review."}
+                </p>
+              </div>
+            )}
+          </div>
 
-                        <label className="block text-sm font-semibold text-slate-700">
-                            Rating
-
-                            <select
-                                value={
-                                    reviewRating
-                                }
-                                onChange={(
-                                    event
-                                ) =>
-                                    setReviewRating(
-                                        Number(
-                                            event
-                                                .target
-                                                .value
-                                        )
-                                    )
-                                }
-                                className="mt-2 w-full rounded-[10px] border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900"
-                            >
-                                <option value="5">
-                                    5 -
-                                    Excellent
-                                </option>
-
-                                <option value="4">
-                                    4 -
-                                    Good
-                                </option>
-
-                                <option value="3">
-                                    3 -
-                                    Average
-                                </option>
-
-                                <option value="2">
-                                    2 -
-                                    Below
-                                    average
-                                </option>
-
-                                <option value="1">
-                                    1 -
-                                    Poor
-                                </option>
-                            </select>
-                        </label>
-
-                        <label className="block text-sm font-semibold text-slate-700">
-                            Comment
-
-                            <textarea
-                                value={
-                                    reviewComment
-                                }
-                                onChange={(
-                                    event
-                                ) =>
-                                    setReviewComment(
-                                        event
-                                            .target
-                                            .value
-                                    )
-                                }
-                                rows={4}
-                                className="mt-2 w-full resize-y rounded-[10px] border border-slate-200 bg-slate-50 px-3 py-3 text-slate-900"
-                                placeholder="Share your experience with this product."
-                            />
-                        </label>
-
-                        {reviewError ? (
-                            <p
-                                className="text-sm font-semibold text-red-600"
-                                role="alert"
-                            >
-                                {
-                                    reviewError
-                                }
-                            </p>
-                        ) : null}
-
-                        <button
-                            type="submit"
-                            className="rounded-[10px] bg-accent-400 px-4 py-3 text-sm font-bold text-black"
-                        >
-                            {user
-                                ? "Post review"
-                                : "Sign in to review"}
-                        </button>
-                    </form>
-
-                    <div className="space-y-3">
-                        {reviews.length ? (
-                            reviews.map(
-                                (
-                                    review
-                                ) => (
-                                    <article
-                                        key={
-                                            review.id
-                                        }
-                                        className="rounded-xl border border-slate-200 p-5"
-                                    >
-                                        <div className="flex items-center justify-between gap-3">
-                                            <p className="font-bold text-slate-950">
-                                                {
-                                                    review.author
-                                                }
-                                            </p>
-
-                                            <span className="text-sm font-bold text-slate-600">
-                                                {"★".repeat(
-                                                    review.rating
-                                                )}
-
-                                                {"☆".repeat(
-                                                    5 -
-                                                        review.rating
-                                                )}
-                                            </span>
-                                        </div>
-
-                                        <p className="mt-3 text-sm leading-7 text-slate-600">
-                                            {
-                                                review.comment
-                                            }
-                                        </p>
-                                    </article>
-                                )
-                            )
-                        ) : (
-                            <p className="rounded-xl border border-dashed border-slate-300 p-6 text-sm text-slate-600">
-                                No reviews
-                                yet. Be the
-                                first client
-                                to share
-                                your
-                                experience.
-                            </p>
-                        )}
-                    </div>
-                </div>
-            </section>
-
-            {/*
-             * =================================================
-             * RELATED PRODUCTS
-             * =================================================
-             */}
-
-            {relatedProducts.length >
+          <div className="space-y-2.5">
+            {visibleReviews.length >
             0 ? (
-                <section className="mt-16 border-t border-slate-200 pt-10">
-                    <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
-                        Keep exploring
-                    </p>
-
-                    <h2 className="mt-2 text-2xl font-bold text-black">
-                        You may also
-                        like
-                    </h2>
-
-                    <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                        {relatedProducts.map(
-                            (
-                                item
-                            ) => (
-                                <ProductCard
-                                    key={
-                                        item.id
-                                    }
-                                    product={
-                                        item
-                                    }
-                                />
-                            )
-                        )}
-                    </div>
-                </section>
-            ) : null}
-
-            {/*
-             * =================================================
-             * RECENTLY VIEWED
-             * =================================================
-             */}
-
-            {recentProducts.filter(
+              visibleReviews.map(
                 (
-                    item
-                ) =>
-                    item.id !==
-                    product.id
-            ).length >
-            0 ? (
-                <section className="mt-16 border-t border-slate-200 pt-10">
-                    <p className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
-                        Your trail
-                    </p>
+                  review
+                ) => (
+                  <article
+                    key={
+                      review.id
+                    }
+                    className="rounded-2xl border border-slate-200 bg-white p-4"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-black">
+                        {
+                          review.author.name
+                        }
+                      </p>
 
-                    <h2 className="mt-2 text-2xl font-bold text-black">
-                        Recently viewed
-                    </h2>
-
-                    <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                        {recentProducts
-                            .filter(
-                                (
-                                    item
-                                ) =>
-                                    item.id !==
-                                    product.id
-                            )
-                            .slice(
-                                0,
-                                4
-                            )
-                            .map(
-                                (
-                                    item
-                                ) => (
-                                    <ProductCard
-                                        key={
-                                            item.id
-                                        }
-                                        product={
-                                            item
-                                        }
-                                    />
-                                )
-                            )}
+                      <span className="text-xs font-black text-[#7A4B00]">
+                        {"★".repeat(
+                          review.rating
+                        )}
+                        {"☆".repeat(
+                          5 -
+                            review.rating
+                        )}
+                      </span>
                     </div>
-                </section>
+
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      {
+                        review.comment
+                      }
+                    </p>
+                  </article>
+                )
+              )
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">
+                No verified-purchase reviews yet.
+              </div>
+            )}
+
+            {reviews.length >
+            3 ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setShowAllReviews(
+                    (
+                      current
+                    ) =>
+                      !current
+                  )
+                }
+                className="text-xs font-black text-[#4A1724] underline underline-offset-3"
+              >
+                {showAllReviews
+                  ? "Show fewer reviews"
+                  : `Show all ${reviews.length} reviews`}
+              </button>
             ) : null}
-        </main>
-    );
+          </div>
+        </div>
+      </section>
+    </main>
+  );
 }

@@ -1,3 +1,4 @@
+
 generator client {
   provider            = "prisma-client"
   output              = "../src/generated/prisma"
@@ -55,11 +56,6 @@ enum VendorAccessStatus {
   suspended
 }
 
-/**
- * Temporary legacy configuration.
- * Keep this until the application has fully migrated
- * away from the old single verification-method model.
- */
 enum UniversityVerificationMethod {
   none
   manual
@@ -67,11 +63,6 @@ enum UniversityVerificationMethod {
   api
 }
 
-/**
- * Automated verification sources.
- * Manual review deliberately remains a separate
- * exception path.
- */
 enum UniversityVerificationSourceType {
   none
   university_api
@@ -79,9 +70,6 @@ enum UniversityVerificationSourceType {
   university_database
 }
 
-/**
- * Lifecycle of an imported university roster.
- */
 enum UniversityRosterImportStatus {
   processing
   active
@@ -129,20 +117,86 @@ enum PaymentStatus {
   refunded
 }
 
-/**
- * Why a buyer and seller are talking.
- */
+enum WalletEntryKind {
+  checkout_debit
+  seller_refund
+  service_fee_refund
+  seller_settlement
+  development_funding
+}
+
+enum WalletHoldStatus {
+  held
+  refunded
+  settled
+}
+
+enum MarketplaceTargetType {
+  user
+  product
+  order
+}
+
+enum MarketplaceReportCategory {
+  suspected_fraud
+  non_delivery
+  misleading_listing
+  harassment
+  prohibited_item
+  impersonation
+  privacy_violation
+  payment_dispute
+  unsafe_meetup
+  other
+}
+
+enum MarketplaceSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum MarketplaceCaseStatus {
+  open
+  investigating
+  action_taken
+  dismissed
+  closed
+}
+
+enum SellerBadgeKind {
+  rising_star
+  campus_favourite
+  top_seller
+}
+
+enum InstitutionKind {
+  university
+  polytechnic
+  other
+}
+
+enum RosterScope {
+  unspecified
+  institution
+  faculty
+  department
+}
+
+enum PickupPointType {
+  campus
+  hostel_block
+  faculty_building
+  custom
+}
+
 enum ConversationContextType {
   general
   listing
   order
 }
 
-/**
- * Categories recorded when CampusMart detects an
- * off-platform/contact-sharing attempt.
- * The sensitive value itself is NOT stored here.
- */
 enum MessagingModerationCategory {
   phone_number
   email
@@ -153,10 +207,6 @@ enum MessagingModerationCategory {
   circumvention
 }
 
-/**
- * Only suspicious attempts are recorded.
- * Allowed messages do not need moderation-event rows.
- */
 enum MessagingModerationAction {
   redacted
   blocked
@@ -166,6 +216,15 @@ enum MessagingModerationSeverity {
   low
   medium
   high
+}
+
+enum NotificationType {
+  order_received
+  order_confirmed
+  order_cancelled
+  order_completed
+  order_ready
+  university_available
 }
 
 model University {
@@ -182,44 +241,26 @@ model University {
   logoUrl String?
 
   active Boolean @default(true)
+  institutionKind InstitutionKind @default(university)
+  featuredInSignup Boolean @default(false)
+  sellerApplicationsOpen Boolean @default(false)
 
   studentVerificationEnabled Boolean @default(false)
 
-  /**
-   * Legacy compatibility field.
-   */
   verificationMethod UniversityVerificationMethod @default(none)
 
-  /**
-   * Source-aware verification architecture.
-   */
-  primaryVerificationSource UniversityVerificationSourceType @default(none)
-
+  primaryVerificationSource  UniversityVerificationSourceType @default(none)
   fallbackVerificationSource UniversityVerificationSourceType @default(none)
 
   manualReviewEnabled Boolean @default(false)
 
-  /**
-   * Matric-number format validation is only an
-   * input-quality check.
-   */
   matricValidationEnabled Boolean @default(false)
+  matricPattern           String?
+  matricFormatHint        String?
 
-  /**
-   * Private Admin/backend configuration.
-   */
-  matricPattern String?
-
-  /**
-   * Safe student-facing format hint.
-   */
-  matricFormatHint String?
-
-  users User[]
-
+  users               User[]
   verificationAppeals VerificationAppeal[]
-
-  rosterImports UniversityRosterImport[]
+  rosterImports       UniversityRosterImport[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -241,42 +282,22 @@ model User {
   phone String?
   bio   String?
 
-  /**
-   * Temporary legacy compatibility field.
-   */
   campus String?
 
   universityId String?
   university   University? @relation(fields: [universityId], references: [id], onDelete: SetNull)
 
-  /**
-   * Stored in normalized/canonical form.
-   */
   matricNumber String?
 
   studentVerificationStatus StudentVerificationStatus @default(not_started)
-
   studentVerificationSource StudentVerificationSource @default(none)
+  studentVerifiedAt         DateTime?
 
-  studentVerifiedAt DateTime?
-
-  /**
-   * Used where the student's university is not currently
-   * represented by a managed CampusMart University row.
-   */
   fallbackUniversityName String?
   fallbackState          String?
   fallbackCity           String?
 
-  /**
-   * Messaging-only restriction.
-   */
-  messagingRestrictedUntil DateTime?
-
-  /**
-   * Internal reason/code only.
-   * Never store copied sensitive values here.
-   */
+  messagingRestrictedUntil   DateTime?
   messagingRestrictionReason String?
 
   createdAt DateTime @default(now())
@@ -285,6 +306,17 @@ model User {
   products Product[]
 
   vendorProfile VendorProfile?
+  sellerBadges SellerBadgeAward[]
+  submittedReports MarketplaceReport[] @relation("MarketplaceReportAuthor")
+  accountFlaggedAt DateTime?
+  accountFlagReason String? @db.Text
+  accountSuspendedAt DateTime?
+  accountSuspensionReason String? @db.Text
+  moderationSellerAccessBeforeSuspension VendorAccessStatus?
+
+  vendorPickupPoints VendorPickupPoint[] @relation("VendorPickupPoints")
+
+  vendorPickupSelections OrderVendorPickupSelection[] @relation("VendorPickupSelections")
 
   verificationAppeals VerificationAppeal[]
 
@@ -301,6 +333,12 @@ model User {
   sentMessages Message[] @relation("SentMessages")
 
   messagingModerationEvents MessagingModerationEvent[] @relation("MessagingModerationActor")
+
+  notifications Notification[]
+
+  productReviews ProductReview[] @relation("BuyerProductReviews")
+  wallet Wallet?
+  walletEntries WalletEntry[]
 
   @@unique([universityId, matricNumber])
   @@index([universityId])
@@ -329,6 +367,9 @@ model Admin {
 
   createdAdmins Admin[] @relation("AdminCreatedBy")
 
+  auditLogs AdminAuditLog[] @relation("AdminAuditActor")
+  grantedSellerBadges SellerBadgeAward[] @relation("SellerBadgeGrantAdmin")
+
   reviewedVerificationAppeals VerificationAppeal[] @relation("VerificationAppealReviewer")
 
   importedUniversityRosters UniversityRosterImport[] @relation("UniversityRosterImportedBy")
@@ -349,11 +390,9 @@ model VendorProfile {
 
   businessName        String
   businessDescription String
-  pickupLocation      String
 
-  /**
-   * Temporary legacy compatibility field.
-   */
+  pickupLocation String
+
   verified Boolean @default(false)
 
   accessStatus VendorAccessStatus @default(active)
@@ -371,11 +410,35 @@ model VendorProfile {
   @@index([vendorVerificationStatus])
 }
 
+model VendorPickupPoint {
+  id String @id @default(uuid())
+
+  vendorId String
+
+  vendor User @relation("VendorPickupPoints", fields: [vendorId], references: [id], onDelete: Cascade)
+
+  type PickupPointType
+
+  label String
+
+  detail String?
+
+  isActive Boolean @default(true)
+
+  orderSelections OrderVendorPickupSelection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([vendorId, isActive])
+  @@index([vendorId, createdAt])
+}
+
 model VerificationAppeal {
   id String @id @default(uuid())
 
   userId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   universityId String?
   university   University? @relation(fields: [universityId], references: [id], onDelete: SetNull)
@@ -457,6 +520,11 @@ model UniversityRosterImport {
   sourceIssuer String
 
   sourceReference String?
+
+  currentStudentsOnlyDeclared Boolean @default(false)
+  rosterScope RosterScope @default(unspecified)
+  sourceUnit String?
+  trustedForAutomatedVerification Boolean @default(false)
 
   originalFileName String
 
@@ -549,16 +617,24 @@ model Product {
 
   images String[]
 
+  sizes String[] @default([])
+
+  colors String[] @default([])
+
   vendorId String
-  vendor   User @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendor   User   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   isArchived Boolean @default(false)
+  moderationHiddenAt DateTime?
+  moderationHiddenReason String? @db.Text
 
   archivedAt DateTime?
 
   orderItems OrderItem[]
 
   conversations Conversation[]
+
+  reviews ProductReview[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -567,11 +643,32 @@ model Product {
   @@index([vendorId, isArchived])
 }
 
+model ProductReview {
+  id String @id @default(uuid())
+
+  productId Int
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  buyerId String
+  buyer   User @relation("BuyerProductReviews", fields: [buyerId], references: [id], onDelete: Cascade)
+
+  rating Int
+
+  comment String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, buyerId])
+  @@index([productId, createdAt])
+  @@index([buyerId, createdAt])
+}
+
 model Order {
   id String @id @default(uuid())
 
   buyerId String
-  buyer   User @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
+  buyer   User   @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
 
   status OrderStatus @default(pending)
 
@@ -586,12 +683,19 @@ model Order {
   pickupLocation String?
 
   preferredSlot String?
+  secondaryPhone String?
+  checkoutKey String? @unique
+  walletHolds WalletHold[]
 
   items OrderItem[]
 
   vendorFulfillments OrderVendorFulfillment[]
 
+  vendorPickupSelections OrderVendorPickupSelection[]
+
   conversations Conversation[]
+
+  notifications Notification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -601,13 +705,13 @@ model OrderItem {
   id String @id @default(uuid())
 
   orderId String
-  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   productId Int?
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   vendorId String
-  vendor   User @relation("VendorOrderItems", fields: [vendorId], references: [id], onDelete: Restrict)
+  vendor   User   @relation("VendorOrderItems", fields: [vendorId], references: [id], onDelete: Restrict)
 
   productTitle String
 
@@ -616,6 +720,10 @@ model OrderItem {
   quantity Int
 
   lineTotal Int
+
+  selectedSize String?
+
+  selectedColor String?
 
   status OrderStatus @default(pending)
 
@@ -626,14 +734,40 @@ model OrderItem {
   @@index([productId])
 }
 
+model OrderVendorPickupSelection {
+  id String @id @default(uuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  vendorId String
+  vendor   User   @relation("VendorPickupSelections", fields: [vendorId], references: [id], onDelete: Restrict)
+
+  pickupPointId String?
+
+  pickupPoint VendorPickupPoint? @relation(fields: [pickupPointId], references: [id], onDelete: SetNull)
+
+  type PickupPointType
+
+  label String
+
+  detail String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([orderId, vendorId])
+  @@index([vendorId])
+  @@index([pickupPointId])
+}
+
 model OrderVendorFulfillment {
   id String @id @default(uuid())
 
   orderId String
-  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   vendorId String
-  vendor   User @relation("VendorFulfillments", fields: [vendorId], references: [id], onDelete: Restrict)
+  vendor   User   @relation("VendorFulfillments", fields: [vendorId], references: [id], onDelete: Restrict)
 
   codeHash String
 
@@ -642,6 +776,11 @@ model OrderVendorFulfillment {
   codeCreatedAt DateTime @default(now())
 
   verifiedAt DateTime?
+
+  // Set once when this vendor confirms its portion.
+  confirmedAt DateTime?
+  deliveryDueAt DateTime?
+  readyAt DateTime?
 
   failedAttemptCount Int @default(0)
 
@@ -656,31 +795,21 @@ model OrderVendorFulfillment {
   @@index([orderId])
   @@index([vendorId])
   @@index([vendorId, verifiedAt])
+  @@index([verifiedAt, vendorId])
   @@index([lockedUntil])
 }
 
-/**
- * =======================================================
- * CONVERSATION
- * =======================================================
- */
 model Conversation {
   id String @id @default(uuid())
 
   buyerId String
-  buyer   User @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Restrict)
+  buyer   User   @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Restrict)
 
   vendorId String
-  vendor   User @relation("VendorConversations", fields: [vendorId], references: [id], onDelete: Restrict)
+  vendor   User   @relation("VendorConversations", fields: [vendorId], references: [id], onDelete: Restrict)
 
   contextType ConversationContextType @default(general)
 
-  /**
-   * Examples:
-   * general
-   * listing:42
-   * order:<uuid>
-   */
   contextKey String
 
   productId Int?
@@ -689,21 +818,9 @@ model Conversation {
   orderId String?
   order   Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
-  /**
-   * =====================================================
-   * DELIVERY RECEIPTS
-   * =====================================================
-   */
-
   buyerLastDeliveredAt DateTime?
 
   vendorLastDeliveredAt DateTime?
-
-  /**
-   * =====================================================
-   * READ RECEIPTS
-   * =====================================================
-   */
 
   buyerLastReadAt DateTime?
 
@@ -726,11 +843,6 @@ model Conversation {
   @@index([contextType])
 }
 
-/**
- * =======================================================
- * MESSAGE
- * =======================================================
- */
 model Message {
   id String @id @default(uuid())
 
@@ -738,27 +850,9 @@ model Message {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   senderId String
-  sender   User @relation("SentMessages", fields: [senderId], references: [id], onDelete: Restrict)
+  sender   User   @relation("SentMessages", fields: [senderId], references: [id], onDelete: Restrict)
 
-  /**
-   * Only the allowed or sanitized message reaches this
-   * field.
-   */
   body String
-
-  /**
-   * =====================================================
-   * MESSAGE REPLIES
-   * =====================================================
-   *
-   * The backend must verify that the target message
-   * belongs to this same conversation before saving the
-   * relationship.
-   *
-   * If the original Message row is ever physically
-   * deleted, existing replies survive and this foreign
-   * key becomes null.
-   */
 
   replyToMessageId String?
 
@@ -770,12 +864,6 @@ model Message {
 
   deletedAt DateTime?
 
-  /**
-   * At most one moderation event belongs to the message
-   * attempt that produced this stored message.
-   *
-   * Blocked attempts have no Message row at all.
-   */
   moderationEvent MessagingModerationEvent?
 
   createdAt DateTime @default(now())
@@ -786,41 +874,20 @@ model Message {
   @@index([replyToMessageId])
 }
 
-/**
- * =======================================================
- * MESSAGING MODERATION EVENT
- * =======================================================
- */
 model MessagingModerationEvent {
   id String @id @default(uuid())
 
-  /**
-   * User who attempted to send the suspicious message.
-   */
   userId String
-  user   User @relation("MessagingModerationActor", fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation("MessagingModerationActor", fields: [userId], references: [id], onDelete: Cascade)
 
-  /**
-   * Existing conversation when available.
-   */
   conversationId String?
   conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
 
-  /**
-   * Stored sanitized message when the action was
-   * `redacted`.
-   *
-   * Null for blocked attempts.
-   */
   messageId String? @unique
   message   Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
 
   contextType ConversationContextType?
 
-  /**
-   * Categories only.
-   * Never store detected raw values here.
-   */
   categories MessagingModerationCategory[]
 
   action MessagingModerationAction
@@ -841,5 +908,142 @@ model MessagingModerationEvent {
   @@index([conversationId, createdAt])
   @@index([action, createdAt])
   @@index([severity, createdAt])
-  @@index([requiresReview, createdAt])
+  @@index([requiresReview])
+}
+
+model Notification {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type NotificationType
+
+  title String
+
+  message String
+
+  href String?
+
+  orderId String?
+  order   Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt, createdAt])
+  @@index([orderId])
+}
+
+model Wallet {
+  userId String @id
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  balance Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WalletEntry {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  reference String @unique
+  kind WalletEntryKind
+  amount Int
+  orderId String?
+  vendorId String?
+  createdAt DateTime @default(now())
+  @@index([userId, createdAt])
+  @@index([orderId])
+}
+
+model WalletHold {
+  id String @id @default(uuid())
+  orderId String
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  vendorId String
+  amount Int
+  status WalletHoldStatus @default(held)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([orderId, vendorId])
+  @@index([vendorId, status])
+}
+
+
+/// Immutable-by-application administrator activity record.
+/// Sensitive documents, passwords and tokens must never be copied into the log.
+model AdminAuditLog {
+  id String @id @default(uuid())
+  actorAdminId String
+  actor Admin @relation("AdminAuditActor", fields: [actorAdminId], references: [id], onDelete: Restrict)
+  action String
+  targetType String
+  targetId String
+  reason String?
+  beforeState String? @db.Text
+  afterState String? @db.Text
+  outcome String @default("success")
+  createdAt DateTime @default(now())
+
+  @@index([actorAdminId, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([createdAt])
+}
+
+/// Performance badge; audit records preserve full grant/revoke history.
+model SellerBadgeAward {
+  id String @id @default(uuid())
+  vendorId String
+  vendor User @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  kind SellerBadgeKind
+  active Boolean @default(true)
+  reason String @db.Text
+  grantedByAdminId String
+  grantedByAdmin Admin @relation("SellerBadgeGrantAdmin", fields: [grantedByAdminId], references: [id], onDelete: Restrict)
+  grantedAt DateTime @default(now())
+  revokedAt DateTime?
+  revokedReason String? @db.Text
+  updatedAt DateTime @updatedAt
+  @@unique([vendorId, kind])
+  @@index([kind, active])
+  @@index([vendorId, active])
+}
+
+/// One reviewable case per reported target; users cannot escalate priority by repeatedly reporting it.
+model MarketplaceCase {
+  id String @id @default(uuid())
+  targetType MarketplaceTargetType
+  targetId String
+  universityId String?
+  status MarketplaceCaseStatus @default(open)
+  highestSeverity MarketplaceSeverity @default(low)
+  reportCount Int @default(0)
+  priorityScore Int @default(0)
+  lastReportedAt DateTime @default(now())
+  resolutionNote String? @db.Text
+  reports MarketplaceReport[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([targetType, targetId])
+  @@index([status, priorityScore, lastReportedAt])
+  @@index([targetType, status])
+  @@index([universityId, status, priorityScore])
+}
+
+model MarketplaceReport {
+  id String @id @default(uuid())
+  caseId String
+  case MarketplaceCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  reporterId String
+  reporter User @relation("MarketplaceReportAuthor", fields: [reporterId], references: [id], onDelete: Restrict)
+  category MarketplaceReportCategory
+  severity MarketplaceSeverity
+  details String @db.Text
+  createdAt DateTime @default(now())
+  @@unique([caseId, reporterId])
+  @@index([reporterId, createdAt])
+  @@index([caseId, createdAt])
 }

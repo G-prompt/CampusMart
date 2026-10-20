@@ -77,6 +77,7 @@ type Storefront = {
 
     vendorVerified:
       boolean;
+    recognition?: ("rising_star" | "campus_favourite" | "top_seller")[];
   };
 
   memberSince:
@@ -976,6 +977,11 @@ export default function Page() {
                     </span>
                   ) : null}
 
+                  {(storefront.badges.recognition || []).map(kind => <span key={kind}
+                    className="rounded-full border border-amber-300/30 bg-amber-400/15 px-3 py-1 text-xs font-bold text-amber-100">
+                      {kind === "top_seller" ? "★ Top Seller" : kind === "campus_favourite" ? "♥ Campus Favourite" : "✦ Rising Star"}
+                    </span>)}
+
                   {storefront.badges
                     .studentVerified ? (
                     <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-200">
@@ -1047,6 +1053,12 @@ export default function Page() {
                     ? "Opening messages..."
                     : "Message seller"}
               </button>
+
+              {!ownStorefront && storefront ? (
+                <Link href={`/report?targetType=user&targetId=${encodeURIComponent(storefront.sellerId)}`} className="mt-3 block text-xs text-slate-300 underline underline-offset-2 hover:text-white">
+                  Report this seller
+                </Link>
+              ) : null}
 
               {!ownStorefront ? (
                 <p className="mt-2 max-w-52 text-xs leading-5 text-slate-400">

@@ -14,10 +14,16 @@ import type {
 type Props = {
   products:
     Product[];
+
+  size?:
+    | "default"
+    | "small";
 };
 
 export default function AutoScrollProducts({
   products,
+  size =
+    "default",
 }: Props) {
   const scrollerRef =
     useRef<HTMLDivElement>(
@@ -29,10 +35,6 @@ export default function AutoScrollProducts({
       false
     );
 
-  /*
-   * 1 = scrolling right
-   * -1 = scrolling left
-   */
   const directionRef =
     useRef<
       1 | -1
@@ -58,9 +60,6 @@ export default function AutoScrollProducts({
     let previousTime =
       performance.now();
 
-    /*
-     * Roughly 50px/sec.
-     */
     const speed =
       0.05;
 
@@ -86,11 +85,6 @@ export default function AutoScrollProducts({
               scroller.clientWidth
           );
 
-        /*
-         * If every card already fits
-         * on screen, there is nothing
-         * to auto-scroll.
-         */
         if (
           maxScroll >
             1 &&
@@ -101,11 +95,6 @@ export default function AutoScrollProducts({
             speed *
             directionRef.current;
 
-          /*
-           * Reverse naturally at the
-           * far right instead of
-           * cloning products.
-           */
           if (
             scroller.scrollLeft >=
             maxScroll -
@@ -118,10 +107,6 @@ export default function AutoScrollProducts({
               -1;
           }
 
-          /*
-           * Reverse again when we
-           * return to the beginning.
-           */
           if (
             scroller.scrollLeft <=
             1
@@ -166,20 +151,10 @@ export default function AutoScrollProducts({
         scrollerRef
       }
       onPointerDown={() => {
-        /*
-         * Pause only while the user
-         * is actively interacting
-         * with the product rail.
-         */
         userInteractingRef.current =
           true;
       }}
       onPointerUp={() => {
-        /*
-         * Allow manual scrolling to
-         * settle before auto-scroll
-         * resumes.
-         */
         window.setTimeout(
           () => {
             userInteractingRef.current =
@@ -193,14 +168,10 @@ export default function AutoScrollProducts({
           false;
       }}
       onPointerLeave={() => {
-        if (
-          userInteractingRef.current
-        ) {
-          userInteractingRef.current =
-            false;
-        }
+        userInteractingRef.current =
+          false;
       }}
-      className="flex gap-3 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="flex gap-2.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {products.map(
         (
@@ -210,7 +181,12 @@ export default function AutoScrollProducts({
             key={
               product.id
             }
-            className="w-[190px] shrink-0 sm:w-[205px] lg:w-[220px]"
+            className={
+              size ===
+              "small"
+                ? "w-[145px] shrink-0 sm:w-[160px] lg:w-[175px]"
+                : "w-[180px] shrink-0 sm:w-[195px] lg:w-[210px]"
+            }
           >
             <ProductCard
               product={

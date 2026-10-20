@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-
 import {
   ChangeEvent,
   FormEvent,
@@ -10,17 +8,21 @@ import {
   useState,
 } from "react";
 
+import Link from "next/link";
+
 import {
   useRouter,
 } from "next/navigation";
 
 import PageShell from "@/components/common/PageShell";
+import ProductOptionsEditor from "@/components/common/ProductOptionsEditor";
 
 import {
   useAuth,
 } from "@/components/common/AuthContext";
 
 import {
+  categories,
   formatNaira,
 } from "@/lib/products";
 
@@ -30,112 +32,19 @@ const API_URL =
 
 type Product = {
   id: number;
-  slug?: string;
   title: string;
   category: string;
   price: number;
   description: string;
   images: string[];
+  sizes?: string[];
+  colors?: string[];
 };
-
-type SellerNextAction =
-  | "not_a_seller"
-  | "complete_university_details"
-  | "add_matric_number"
-  | "verify_student_identity"
-  | "complete_seller_profile"
-  | "seller_access_pending"
-  | "seller_access_restricted"
-  | "seller_access_suspended"
-  | "ready_to_sell";
 
 type SellerEligibility = {
   canSell: boolean;
-
-  nextRequiredAction:
-    SellerNextAction;
-
   message: string;
 };
-
-function getSetupAction(
-  action:
-    SellerNextAction
-) {
-  switch (action) {
-    case "complete_university_details":
-      return {
-        label:
-          "Complete university details",
-
-        href:
-          "/profile",
-      };
-
-    case "add_matric_number":
-      return {
-        label:
-          "Add matric number",
-
-        href:
-          "/profile",
-      };
-
-    case "verify_student_identity":
-      return {
-        label:
-          "Complete verification",
-
-        href:
-          "/profile",
-      };
-
-    case "complete_seller_profile":
-      return {
-        label:
-          "Complete seller profile",
-
-        href:
-          "/profile",
-      };
-
-    case "seller_access_pending":
-      return {
-        label:
-          "Review seller setup",
-
-        href:
-          "/profile",
-      };
-
-    case "seller_access_restricted":
-      return {
-        label:
-          "Review account",
-
-        href:
-          "/profile",
-      };
-
-    case "seller_access_suspended":
-      return {
-        label:
-          "Review account",
-
-        href:
-          "/profile",
-      };
-
-    default:
-      return {
-        label:
-          "Complete seller setup",
-
-        href:
-          "/profile",
-      };
-  }
-}
 
 export default function Page() {
   const router =
@@ -155,14 +64,6 @@ export default function Page() {
       number | null
     >(
       null
-    );
-
-  const [
-    invalidProductId,
-    setInvalidProductId,
-  ] =
-    useState(
-      false
     );
 
   const [
@@ -218,11 +119,19 @@ export default function Page() {
     );
 
   const [
-    imageUrl,
-    setImageUrl,
+    sizes,
+    setSizes,
   ] =
-    useState(
-      ""
+    useState<string[]>(
+      []
+    );
+
+  const [
+    colors,
+    setColors,
+  ] =
+    useState<string[]>(
+      []
     );
 
   const [
@@ -231,6 +140,14 @@ export default function Page() {
   ] =
     useState<File[]>(
       []
+    );
+
+  const [
+    imageUrl,
+    setImageUrl,
+  ] =
+    useState(
+      ""
     );
 
   const [
@@ -257,73 +174,41 @@ export default function Page() {
       ""
     );
 
-  const [
-    message,
-    setMessage,
-  ] =
-    useState(
-      ""
-    );
-
-  /*
-   * =====================================================
-   * READ LISTING ID
-   * =====================================================
-   */
-
   useEffect(() => {
-    const params =
+    const rawId =
       new URLSearchParams(
         window.location.search
-      );
-
-    const rawId =
-      params.get(
+      ).get(
         "id"
       );
 
-    const parsedId =
+    const id =
       Number(
         rawId
       );
 
     if (
-      !rawId ||
       !Number.isInteger(
-        parsedId
+        id
       ) ||
-      parsedId <= 0
+      id <=
+        0
     ) {
-      setInvalidProductId(
-        true
-      );
-
       setLoading(
         false
+      );
+
+      setError(
+        "This edit link does not contain a valid listing ID."
       );
 
       return;
     }
 
     setProductId(
-      parsedId
+      id
     );
   }, []);
-
-  /*
-   * =====================================================
-   * LOAD OWN LISTING + SELLER ELIGIBILITY
-   * =====================================================
-   *
-   * We deliberately use /products/mine instead of the
-   * public product endpoint.
-   *
-   * This means the frontend only accepts a product ID that
-   * appears in the authenticated seller's own listings.
-   *
-   * The backend PATCH route still performs its own
-   * ownership check as the authoritative security layer.
-   */
 
   useEffect(() => {
     if (
@@ -347,15 +232,11 @@ export default function Page() {
     const controller =
       new AbortController();
 
-    const loadPage =
+    const load =
       async () => {
         try {
           setLoading(
             true
-          );
-
-          setError(
-            ""
           );
 
           const token =
@@ -363,9 +244,11 @@ export default function Page() {
               "campusmart-token"
             );
 
-          if (!token) {
+          if (
+            !token
+          ) {
             throw new Error(
-              "Your session could not be verified. Please sign in again."
+              "Your session has expired."
             );
           }
 
@@ -383,10 +266,8 @@ export default function Page() {
                 `${API_URL}/api/products/mine`,
                 {
                   headers,
-
                   signal:
                     controller.signal,
-
                   cache:
                     "no-store",
                 }
@@ -396,10 +277,8 @@ export default function Page() {
                 `${API_URL}/api/vendor/eligibility`,
                 {
                   headers,
-
                   signal:
                     controller.signal,
-
                   cache:
                     "no-store",
                 }
@@ -431,77 +310,64 @@ export default function Page() {
           ) {
             throw new Error(
               eligibilityData.message ||
-                "Unable to confirm seller access."
+                "Unable to check seller access."
             );
           }
 
-          const products:
-            Product[] =
-              Array.isArray(
-                productsData.products
-              )
-                ? productsData.products
-                : [];
-
-          const selectedProduct =
-            products.find(
+          const selected =
+            (
+              productsData.products as
+                Product[]
+            ).find(
               (
                 item
               ) =>
-                Number(
-                  item.id
-                ) ===
+                item.id ===
                 productId
             );
 
           if (
-            !selectedProduct
+            !selected
           ) {
-            setProduct(
-              null
-            );
-
-            setEligibility(
-              eligibilityData
-                .eligibility
-            );
-
-            setError(
+            throw new Error(
               "This listing could not be found in your seller account."
             );
-
-            return;
           }
 
           setProduct(
-            selectedProduct
+            selected
           );
 
           setEligibility(
-            eligibilityData
-              .eligibility
+            eligibilityData.eligibility
           );
 
           setTitle(
-            selectedProduct.title ??
-              ""
+            selected.title
           );
 
           setCategory(
-            selectedProduct.category ??
-              ""
+            selected.category
           );
 
           setPrice(
             String(
-              selectedProduct.price ??
-                ""
+              selected.price
             )
           );
 
           setDescription(
-            selectedProduct.description ??
-              ""
+            selected.description
+          );
+
+          setSizes(
+            selected.sizes ??
+              []
+          );
+
+          setColors(
+            selected.colors ??
+              []
           );
         } catch (
           loadError
@@ -514,11 +380,6 @@ export default function Page() {
           ) {
             return;
           }
-
-          console.error(
-            "Edit listing load error:",
-            loadError
-          );
 
           setError(
             loadError instanceof
@@ -538,21 +399,14 @@ export default function Page() {
         }
       };
 
-    void loadPage();
+    void load();
 
-    return () => {
+    return () =>
       controller.abort();
-    };
   }, [
     productId,
     user,
   ]);
-
-  /*
-   * =====================================================
-   * LOCAL IMAGE PREVIEWS
-   * =====================================================
-   */
 
   const imagePreviews =
     useMemo(
@@ -575,32 +429,21 @@ export default function Page() {
       imagePreviews.forEach(
         (
           preview
-        ) => {
+        ) =>
           URL.revokeObjectURL(
             preview
-          );
-        }
+          )
       );
     };
   }, [
     imagePreviews,
   ]);
 
-  /*
-   * =====================================================
-   * IMAGE SELECTION
-   * =====================================================
-   */
-
   const handleImages =
     (
       event:
         ChangeEvent<HTMLInputElement>
     ) => {
-      setError(
-        ""
-      );
-
       const files =
         Array.from(
           event.target.files ??
@@ -609,33 +452,10 @@ export default function Page() {
 
       if (
         files.length >
-        5
+        6
       ) {
         setError(
-          "You can upload a maximum of 5 images."
-        );
-
-        event.target.value =
-          "";
-
-        return;
-      }
-
-      const invalidFile =
-        files.find(
-          (
-            file
-          ) =>
-            !file.type.startsWith(
-              "image/"
-            )
-        );
-
-      if (
-        invalidFile
-      ) {
-        setError(
-          "Please select image files only."
+          "Choose a maximum of 6 replacement images."
         );
 
         event.target.value =
@@ -647,13 +467,11 @@ export default function Page() {
       setImageFiles(
         files
       );
-    };
 
-  /*
-   * =====================================================
-   * SAVE LISTING
-   * =====================================================
-   */
+      setError(
+        ""
+      );
+    };
 
   const saveListing =
     async (
@@ -663,20 +481,12 @@ export default function Page() {
       event.preventDefault();
 
       if (
-        saving ||
+        !product ||
         !productId ||
-        !product
+        saving
       ) {
         return;
       }
-
-      setError(
-        ""
-      );
-
-      setMessage(
-        ""
-      );
 
       if (
         !eligibility?.canSell
@@ -689,58 +499,23 @@ export default function Page() {
         return;
       }
 
-      const cleanTitle =
-        title.trim();
-
-      const cleanCategory =
-        category.trim();
-
-      const cleanDescription =
-        description.trim();
-
       const numericPrice =
         Number(
           price
         );
 
       if (
-        !cleanTitle
-      ) {
-        setError(
-          "Enter a listing title."
-        );
-
-        return;
-      }
-
-      if (
-        !cleanCategory
-      ) {
-        setError(
-          "Enter a category."
-        );
-
-        return;
-      }
-
-      if (
+        !title.trim() ||
+        !category.trim() ||
+        !description.trim() ||
         !Number.isFinite(
           numericPrice
         ) ||
-        numericPrice <= 0
+        numericPrice <=
+          0
       ) {
         setError(
-          "Enter a valid price greater than zero."
-        );
-
-        return;
-      }
-
-      if (
-        !cleanDescription
-      ) {
-        setError(
-          "Enter a listing description."
+          "Complete all required listing details."
         );
 
         return;
@@ -751,9 +526,11 @@ export default function Page() {
           "campusmart-token"
         );
 
-      if (!token) {
+      if (
+        !token
+      ) {
         setError(
-          "Your session could not be verified. Please sign in again."
+          "Your session has expired."
         );
 
         return;
@@ -764,17 +541,21 @@ export default function Page() {
           true
         );
 
+        setError(
+          ""
+        );
+
         const formData =
           new FormData();
 
         formData.append(
           "title",
-          cleanTitle
+          title.trim()
         );
 
         formData.append(
           "category",
-          cleanCategory
+          category
         );
 
         formData.append(
@@ -786,29 +567,39 @@ export default function Page() {
 
         formData.append(
           "description",
-          cleanDescription
+          description.trim()
+        );
+
+        formData.append(
+          "sizes",
+          JSON.stringify(
+            sizes
+          )
+        );
+
+        formData.append(
+          "colors",
+          JSON.stringify(
+            colors
+          )
         );
 
         imageFiles.forEach(
           (
             file
-          ) => {
+          ) =>
             formData.append(
               "images",
               file
-            );
-          }
+            )
         );
 
-        const cleanImageUrl =
-          imageUrl.trim();
-
         if (
-          cleanImageUrl
+          imageUrl.trim()
         ) {
           formData.append(
             "imageUrl",
-            cleanImageUrl
+            imageUrl.trim()
           );
         }
 
@@ -832,12 +623,6 @@ export default function Page() {
         const data =
           await response.json();
 
-        /*
-         * Seller eligibility may have changed since page
-         * load, so use the backend's current state when it
-         * provides one.
-         */
-
         if (
           data.eligibility
         ) {
@@ -856,26 +641,17 @@ export default function Page() {
           );
         }
 
-        setMessage(
-          "Listing updated successfully."
-        );
-
         window.dispatchEvent(
           new CustomEvent(
             "campusmart-toast",
             {
               detail: {
                 message:
-                  "Listing updated successfully",
+                  "Listing updated",
               },
             }
           )
         );
-
-        /*
-         * Return to the seller's listing manager after a
-         * successful edit.
-         */
 
         router.push(
           "/vendor/listings"
@@ -883,11 +659,6 @@ export default function Page() {
       } catch (
         saveError
       ) {
-        console.error(
-          "Edit listing error:",
-          saveError
-        );
-
         setError(
           saveError instanceof
             Error
@@ -901,12 +672,6 @@ export default function Page() {
       }
     };
 
-  /*
-   * =====================================================
-   * NON-VENDOR
-   * =====================================================
-   */
-
   if (
     user?.role !==
     "vendor"
@@ -914,20 +679,12 @@ export default function Page() {
     return (
       <PageShell
         title="Edit listing"
-        description="Update your marketplace listing."
+        description="Update your CampusMart listing."
       >
-        <div className="site-card max-w-md p-8 text-center">
-          <h2 className="text-2xl font-bold text-slate-950">
-            Seller account
-            required
+        <section className="site-card max-w-lg p-7 text-center">
+          <h2 className="text-2xl font-black">
+            Seller access required
           </h2>
-
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Sign in with your
-            seller account to
-            edit CampusMart
-            listings.
-          </p>
 
           <button
             type="button"
@@ -937,57 +694,14 @@ export default function Page() {
                 "vendor"
               )
             }
-            className="mt-6 rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black"
+            className="mt-6 rounded-xl bg-accent-400 px-5 py-3 text-sm font-black"
           >
-            Sign in as seller
+            Sign in
           </button>
-        </div>
+        </section>
       </PageShell>
     );
   }
-
-  /*
-   * =====================================================
-   * INVALID ID
-   * =====================================================
-   */
-
-  if (
-    invalidProductId
-  ) {
-    return (
-      <PageShell
-        title="Edit listing"
-        description="Update your marketplace listing."
-      >
-        <div className="site-card max-w-xl p-8 text-center">
-          <h2 className="text-2xl font-bold text-slate-950">
-            Invalid listing
-          </h2>
-
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            This edit link does
-            not contain a valid
-            CampusMart listing
-            ID.
-          </p>
-
-          <Link
-            href="/vendor/listings"
-            className="mt-6 inline-flex rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black"
-          >
-            Back to my listings
-          </Link>
-        </div>
-      </PageShell>
-    );
-  }
-
-  /*
-   * =====================================================
-   * LOADING
-   * =====================================================
-   */
 
   if (
     loading
@@ -995,22 +709,12 @@ export default function Page() {
     return (
       <PageShell
         title="Edit listing"
-        description="Update your marketplace listing."
+        description="Update your CampusMart listing."
       >
-        <div className="grid gap-6 lg:grid-cols-[1fr_0.7fr]">
-          <div className="site-card h-[560px] animate-pulse bg-slate-100" />
-
-          <div className="site-card h-[360px] animate-pulse bg-slate-100" />
-        </div>
+        <div className="site-card h-96 max-w-4xl animate-pulse bg-slate-100" />
       </PageShell>
     );
   }
-
-  /*
-   * =====================================================
-   * LISTING NOT FOUND / NOT OWNED
-   * =====================================================
-   */
 
   if (
     !product
@@ -1018,581 +722,360 @@ export default function Page() {
     return (
       <PageShell
         title="Edit listing"
-        description="Update your marketplace listing."
+        description="Update your CampusMart listing."
       >
-        <div className="site-card max-w-xl p-8 text-center">
-          <h2 className="text-2xl font-bold text-slate-950">
+        <section className="site-card max-w-xl p-7 text-center">
+          <h2 className="text-2xl font-black">
             Listing unavailable
           </h2>
 
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            {error ||
-              "This listing could not be found in your seller account."}
+          <p className="mt-3 text-sm text-slate-600">
+            {
+              error
+            }
           </p>
 
           <Link
             href="/vendor/listings"
-            className="mt-6 inline-flex rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black"
+            className="mt-6 inline-flex rounded-xl bg-accent-400 px-5 py-3 text-sm font-black"
           >
-            Back to my listings
+            My listings
           </Link>
-        </div>
+        </section>
       </PageShell>
     );
   }
 
-  const canSell =
-    eligibility
-      ?.canSell ??
-    false;
-
-  const setupAction =
-    getSetupAction(
-      eligibility
-        ?.nextRequiredAction ??
-        "not_a_seller"
-    );
-
-  /*
-   * =====================================================
-   * SELLER NOT CURRENTLY ELIGIBLE
-   * =====================================================
-   */
-
   if (
-    !canSell
+    !eligibility?.canSell
   ) {
     return (
       <PageShell
         title="Edit listing"
-        description="Update your marketplace listing."
+        description="Update your CampusMart listing."
       >
-        <div className="grid gap-6 lg:grid-cols-[1fr_0.8fr]">
-          <section className="site-card overflow-hidden">
-            {product.images
-              ?.length ? (
-              <img
-                src={
-                  product
-                    .images[0]
-                }
-                alt={
-                  product.title
-                }
-                className="h-72 w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-72 items-center justify-center bg-slate-950 px-6 text-center font-bold text-white">
-                CampusMart
-                listing
-              </div>
-            )}
+        <section className="max-w-2xl rounded-2xl border border-amber-200 bg-amber-50 p-7">
+          <h2 className="text-2xl font-black text-amber-950">
+            Editing is currently unavailable
+          </h2>
 
-            <div className="p-6">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-                {
-                  product.category
-                }
-              </p>
+          <p className="mt-3 text-sm leading-6 text-amber-800">
+            {eligibility?.message ||
+              "Complete your seller requirements before editing listings."}
+          </p>
 
-              <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                {
-                  product.title
-                }
-              </h2>
-
-              <p className="mt-3 text-xl font-bold text-slate-950">
-                {formatNaira(
-                  product.price
-                )}
-              </p>
-
-              <p className="mt-4 text-sm leading-7 text-slate-600">
-                {
-                  product.description
-                }
-              </p>
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">
-              Editing unavailable
-            </p>
-
-            <h2 className="mt-2 text-2xl font-bold text-amber-950">
-              Complete your seller
-              requirements
-            </h2>
-
-            <p className="mt-3 text-sm leading-7 text-amber-800">
-              {eligibility
-                ?.message ||
-                "Your seller account is not currently eligible to edit listings."}
-            </p>
-
-            <p className="mt-3 text-xs leading-5 text-amber-700">
-              Your existing listing
-              remains visible in your
-              seller account, but
-              editing requires active
-              seller access.
-            </p>
-
-            <div className="mt-6 flex flex-col gap-3">
-              <Link
-                href={
-                  setupAction.href
-                }
-                className="rounded-[10px] bg-accent-400 px-5 py-3 text-center text-sm font-bold text-black"
-              >
-                {
-                  setupAction.label
-                }
-              </Link>
-
-              <Link
-                href="/vendor/listings"
-                className="rounded-[10px] border border-amber-200 bg-white px-5 py-3 text-center text-sm font-bold text-amber-900"
-              >
-                Back to my listings
-              </Link>
-            </div>
-          </section>
-        </div>
+          <Link
+            href="/profile"
+            className="mt-6 inline-flex rounded-xl bg-accent-400 px-5 py-3 text-sm font-black"
+          >
+            Review seller setup
+          </Link>
+        </section>
       </PageShell>
     );
   }
 
-  /*
-   * =====================================================
-   * EDIT FORM
-   * =====================================================
-   */
-
   return (
     <PageShell
       title="Edit listing"
-      description="Update your listing details and media."
+      description="Update your product details, options and images."
     >
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/vendor/listings"
-          className="text-sm font-bold text-slate-600 transition hover:text-black"
+          className="text-sm font-bold text-slate-500"
         >
-          ← Back to my listings
+          ← My listings
         </Link>
 
         <Link
           href={`/marketplace/products/${product.id}`}
-          className="rounded-[10px] border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:border-black hover:text-black"
+          className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold"
         >
           View listing
         </Link>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <form
-          onSubmit={
-            saveListing
-          }
-          className="site-card p-6 sm:p-8"
-        >
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
-              Seller access active
-            </p>
+      <form
+        onSubmit={
+          saveListing
+        }
+        className="site-card max-w-4xl space-y-6 p-5 sm:p-7"
+      >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <label className="text-sm font-bold">
+            Product name
 
-            <h2 className="mt-2 text-2xl font-bold text-slate-950">
-              Listing details
-            </h2>
-
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Update the information
-              buyers see in the
-              marketplace.
-            </p>
-          </div>
-
-          {error ? (
-            <div
-              className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
-              role="alert"
-            >
-              {
-                error
+            <input
+              value={
+                title
               }
-            </div>
-          ) : null}
-
-          {message ? (
-            <div
-              className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
-              role="status"
-            >
-              {
-                message
+              onChange={(
+                event
+              ) =>
+                setTitle(
+                  event.target.value
+                )
               }
-            </div>
-          ) : null}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
+            />
+          </label>
 
-          <div className="mt-7 space-y-6">
-            <div>
-              <label
-                htmlFor="title"
-                className="text-sm font-bold text-slate-950"
-              >
-                Product title
-              </label>
+          <label className="text-sm font-bold">
+            Category
 
-              <input
-                id="title"
-                type="text"
-                value={
-                  title
-                }
-                onChange={(
-                  event
-                ) =>
-                  setTitle(
-                    event.target
-                      .value
-                  )
-                }
-                className="mt-2 w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-black"
-                placeholder="Product title"
-                required
-              />
-            </div>
-
-            <div className="grid gap-5 sm:grid-cols-2">
-              <div>
-                <label
-                  htmlFor="category"
-                  className="text-sm font-bold text-slate-950"
-                >
-                  Category
-                </label>
-
-                <input
-                  id="category"
-                  type="text"
-                  value={
-                    category
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setCategory(
-                      event.target
-                        .value
-                    )
-                  }
-                  className="mt-2 w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-black"
-                  placeholder="e.g. Electronics"
-                  required
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="price"
-                  className="text-sm font-bold text-slate-950"
-                >
-                  Price (₦)
-                </label>
-
-                <input
-                  id="price"
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={
-                    price
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setPrice(
-                      event.target
-                        .value
-                    )
-                  }
-                  className="mt-2 w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-black"
-                  placeholder="0"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label
-                htmlFor="description"
-                className="text-sm font-bold text-slate-950"
-              >
-                Description
-              </label>
-
-              <textarea
-                id="description"
-                rows={
-                  6
-                }
-                value={
-                  description
-                }
-                onChange={(
-                  event
-                ) =>
-                  setDescription(
-                    event.target
-                      .value
-                  )
-                }
-                className="mt-2 w-full resize-y rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-950 outline-none transition focus:border-black"
-                placeholder="Describe the product..."
-                required
-              />
-            </div>
-
-            <div className="border-t border-slate-200 pt-6">
-              <div>
-                <p className="text-sm font-bold text-slate-950">
-                  Product images
-                </p>
-
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Leave both fields
-                  below empty to keep
-                  the current images.
-                  If you upload any new
-                  images or provide a
-                  new image URL, the
-                  current image gallery
-                  will be replaced.
-                </p>
-              </div>
-
-              <div className="mt-5">
-                <label
-                  htmlFor="images"
-                  className="text-sm font-bold text-slate-950"
-                >
-                  Upload replacement
-                  images
-                </label>
-
-                <input
-                  id="images"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={
-                    handleImages
-                  }
-                  className="mt-2 block w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-md file:border-0 file:bg-slate-950 file:px-4 file:py-2 file:text-xs file:font-bold file:text-white"
-                />
-
-                <p className="mt-2 text-xs text-slate-500">
-                  Maximum 5 images.
-                </p>
-              </div>
-
-              <div className="mt-5">
-                <label
-                  htmlFor="imageUrl"
-                  className="text-sm font-bold text-slate-950"
-                >
-                  Image URL{" "}
-                  <span className="font-normal text-slate-400">
-                    optional
-                  </span>
-                </label>
-
-                <input
-                  id="imageUrl"
-                  type="url"
-                  value={
-                    imageUrl
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setImageUrl(
-                      event.target
-                        .value
-                    )
-                  }
-                  className="mt-2 w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-black"
-                  placeholder="https://..."
-                />
-              </div>
-
-              {imageFiles.length >
-              0 ? (
-                <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                  <p className="text-sm font-bold text-amber-950">
-                    Replacement
-                    gallery selected
-                  </p>
-
-                  <p className="mt-1 text-xs leading-5 text-amber-800">
-                    Saving this listing
-                    will replace the
-                    current gallery with
-                    the new images below
-                    {imageUrl.trim()
-                      ? " and the image URL you provided."
-                      : "."}
-                  </p>
-                </div>
-              ) : imageUrl.trim() ? (
-                <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                  <p className="text-sm font-bold text-amber-950">
-                    Replacement image
-                    URL selected
-                  </p>
-
-                  <p className="mt-1 text-xs leading-5 text-amber-800">
-                    Saving will replace
-                    the current gallery
-                    with the new image
-                    URL.
-                  </p>
-                </div>
-              ) : null}
-
-              {imagePreviews.length >
-              0 ? (
-                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {imagePreviews.map(
-                    (
-                      preview,
-                      index
-                    ) => (
-                      <div
-                        key={
-                          preview
-                        }
-                        className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
-                      >
-                        <img
-                          src={
-                            preview
-                          }
-                          alt={`Replacement preview ${index + 1}`}
-                          className="aspect-square w-full object-cover"
-                        />
-                      </div>
-                    )
-                  )}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-3 border-t border-slate-200 pt-6 sm:flex-row">
-              <button
-                type="submit"
-                disabled={
-                  saving
-                }
-                className="rounded-[10px] bg-accent-400 px-6 py-3 text-sm font-bold text-black transition hover:bg-accent-500 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving
-                  ? "Saving changes..."
-                  : "Save changes"}
-              </button>
-
-              <Link
-                href="/vendor/listings"
-                className="rounded-[10px] border border-slate-200 bg-white px-6 py-3 text-center text-sm font-bold text-slate-700 transition hover:border-black hover:text-black"
-              >
-                Cancel
-              </Link>
-            </div>
-          </div>
-        </form>
-
-        <aside className="space-y-6">
-          <section className="site-card overflow-hidden">
-            <div className="p-6">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-                Current listing
-              </p>
-
-              <h2 className="mt-2 text-xl font-bold text-slate-950">
-                {
-                  product.title
-                }
-              </h2>
-
-              <p className="mt-2 text-lg font-bold text-slate-950">
-                {formatNaira(
-                  product.price
-                )}
-              </p>
-            </div>
-
-            {product.images
-              ?.length ? (
-              <div className="grid grid-cols-2 gap-px bg-slate-200">
-                {product.images.map(
+            <select
+              value={
+                category
+              }
+              onChange={(
+                event
+              ) =>
+                setCategory(
+                  event.target.value
+                )
+              }
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+            >
+              {categories
+                .filter(
                   (
-                    image,
-                    index
+                    item
+                  ) =>
+                    item !==
+                    "All"
+                )
+                .map(
+                  (
+                    item
                   ) => (
-                    <div
-                      key={`${image}-${index}`}
-                      className={
-                        product.images
-                          .length ===
-                          1
-                          ? "col-span-2"
-                          : ""
+                    <option
+                      key={
+                        item
                       }
                     >
-                      <img
-                        src={
-                          image
-                        }
-                        alt={`${product.title} ${index + 1}`}
-                        className="aspect-square w-full bg-white object-cover"
-                      />
-                    </div>
+                      {
+                        item
+                      }
+                    </option>
                   )
                 )}
-              </div>
-            ) : (
-              <div className="flex h-56 items-center justify-center bg-slate-950 px-6 text-center text-sm font-bold text-white">
-                No current product
-                images
-              </div>
+            </select>
+          </label>
+        </div>
+
+        <label className="block text-sm font-bold">
+          Price
+
+          <input
+            type="number"
+            min="1"
+            value={
+              price
+            }
+            onChange={(
+              event
+            ) =>
+              setPrice(
+                event.target.value
+              )
+            }
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+          />
+        </label>
+
+        <label className="block text-sm font-bold">
+          Description
+
+          <textarea
+            rows={
+              5
+            }
+            value={
+              description
+            }
+            onChange={(
+              event
+            ) =>
+              setDescription(
+                event.target.value
+              )
+            }
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+          />
+        </label>
+
+        <ProductOptionsEditor
+          sizes={
+            sizes
+          }
+          colors={
+            colors
+          }
+          onSizesChange={
+            setSizes
+          }
+          onColorsChange={
+            setColors
+          }
+        />
+
+        <section className="rounded-2xl border border-slate-200 p-5">
+          <h2 className="font-black">
+            Product images
+          </h2>
+
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Leave this section unchanged to keep the current gallery. Selecting replacement images replaces the gallery.
+          </p>
+
+          {product.images.length >
+          0 ? (
+            <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {product.images.map(
+                (
+                  image,
+                  index
+                ) => (
+                  <div
+                    key={`${image}-${index}`}
+                    className="relative overflow-hidden rounded-xl border border-slate-200"
+                  >
+                    <img
+                      src={
+                        image
+                      }
+                      alt=""
+                      className="aspect-square w-full object-cover"
+                    />
+
+                    <span className="absolute bottom-1 left-1 rounded-full bg-black/70 px-2 py-1 text-[8px] font-black text-white">
+                      {index ===
+                      0
+                        ? "Main"
+                        : `Preview ${index}`}
+                    </span>
+                  </div>
+                )
+              )}
+            </div>
+          ) : null}
+
+          <label className="mt-5 block text-sm font-bold">
+            Replacement images
+
+            <input
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp,image/avif"
+              onChange={
+                handleImages
+              }
+              className="mt-2 block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+            />
+          </label>
+
+          <p className="mt-2 text-xs text-slate-500">
+            Up to 6 replacement images. The first becomes the main image.
+          </p>
+
+          <label className="mt-4 block text-sm font-bold">
+            Replacement image URL{" "}
+
+            <span className="font-normal text-slate-400">
+              optional
+            </span>
+
+            <input
+              type="url"
+              value={
+                imageUrl
+              }
+              onChange={(
+                event
+              ) =>
+                setImageUrl(
+                  event.target.value
+                )
+              }
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+              placeholder="https://..."
+            />
+          </label>
+
+          {imagePreviews.length >
+          0 ? (
+            <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {imagePreviews.map(
+                (
+                  image,
+                  index
+                ) => (
+                  <div
+                    key={
+                      image
+                    }
+                    className="relative overflow-hidden rounded-xl border border-amber-200"
+                  >
+                    <img
+                      src={
+                        image
+                      }
+                      alt=""
+                      className="aspect-square w-full object-cover"
+                    />
+
+                    <span className="absolute bottom-1 left-1 rounded-full bg-black/70 px-2 py-1 text-[8px] font-black text-white">
+                      {index ===
+                      0
+                        ? "New main"
+                        : `Preview ${index}`}
+                    </span>
+                  </div>
+                )
+              )}
+            </div>
+          ) : null}
+        </section>
+
+        <div className="rounded-xl bg-slate-50 p-4">
+          <p className="text-sm font-black">
+            Current price:{" "}
+            {formatNaira(
+              product.price
             )}
-          </section>
+          </p>
+        </div>
 
-          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <p className="text-sm font-bold text-slate-950">
-              Image replacement
-              behaviour
-            </p>
+        {error ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {
+              error
+            }
+          </div>
+        ) : null}
 
-            <p className="mt-2 text-xs leading-6 text-slate-600">
-              CampusMart currently
-              keeps your existing
-              images when you edit only
-              the text details.
-            </p>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <button
+            type="submit"
+            disabled={
+              saving
+            }
+            className="rounded-xl bg-accent-400 px-6 py-3 text-sm font-black disabled:opacity-50"
+          >
+            {saving
+              ? "Saving..."
+              : "Save changes"}
+          </button>
 
-            <p className="mt-2 text-xs leading-6 text-slate-600">
-              Supplying any new image
-              replaces the entire
-              current gallery. Up to 5
-              replacement images can be
-              saved.
-            </p>
-          </section>
-        </aside>
-      </div>
+          <Link
+            href="/vendor/listings"
+            className="rounded-xl border border-slate-200 px-6 py-3 text-center text-sm font-bold"
+          >
+            Cancel
+          </Link>
+        </div>
+      </form>
     </PageShell>
   );
 }

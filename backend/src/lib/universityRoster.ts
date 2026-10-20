@@ -805,9 +805,27 @@ function isBlankCsvRow(
  * MAIN ROSTER VALIDATION
  * =======================================================
  */
+export type RosterImportOptions = {
+  flexibleHeaders?: boolean;
+  currentStudentsOnly?: boolean;
+};
+
+const HEADER_ALIASES: Record<string,string> = {
+  matric_no:"matric_number", matric_num:"matric_number", matriculation_number:"matric_number",
+  registration_number:"matric_number", reg_number:"matric_number", student_number:"matric_number",
+  student_id:"matric_number", id_number:"matric_number",
+  student_name:"full_name", name:"full_name", fullname:"full_name", full_names:"full_name",
+  first_name:"first_name", firstname:"first_name", given_name:"first_name",
+  middle_name:"middle_name", middlename:"middle_name", other_names:"middle_name",
+  surname:"last_name", last_name:"last_name", lastname:"last_name", family_name:"last_name",
+  status:"student_status", enrollment_status:"student_status", enrolment_status:"student_status",
+  current_status:"student_status", active_status:"student_status",
+  student_email:"institutional_email", school_email:"institutional_email", email_address:"institutional_email",
+};
+
 export function parseUniversityRosterCsv(
-  csvText:
-    string
+  csvText: string,
+  options: RosterImportOptions = {}
 ): UniversityRosterParseResult {
   const emptyResult:
     UniversityRosterParseResult = {
@@ -920,10 +938,10 @@ export function parseUniversityRosterCsv(
     };
   }
 
-  const headers =
-    rawHeaders.map(
-      normalizeRosterHeader
-    );
+  const headers = rawHeaders.map((header) => {
+    const clean = normalizeRosterHeader(header);
+    return options.flexibleHeaders ? (HEADER_ALIASES[clean] || clean) : clean;
+  });
 
   const fileErrors:
     UniversityRosterFileError[] =
@@ -972,11 +990,7 @@ export function parseUniversityRosterCsv(
       header
     );
 
-    if (
-      !ALLOWED_ROSTER_HEADERS.has(
-        header
-      )
-    ) {
+    if (!options.flexibleHeaders && !ALLOWED_ROSTER_HEADERS.has(header)) {
       fileErrors.push({
         code:
           "UNSUPPORTED_HEADER",
@@ -987,10 +1001,19 @@ export function parseUniversityRosterCsv(
     }
   }
 
-  for (
-    const requiredHeader
-    of REQUIRED_ROSTER_HEADERS
-  ) {
+  const requiredHeaders = options.flexibleHeaders
+    ? ["matric_number"]
+    : [...REQUIRED_ROSTER_HEADERS];
+  if (options.flexibleHeaders) {
+    if (!seenHeaders.has("full_name") &&
+       !(seenHeaders.has("first_name") && seenHeaders.has("last_name"))) {
+      fileErrors.push({code:"MISSING_REQUIRED_HEADER",message:"Use a full_name column or first_name plus last_name."});
+    }
+    if (!seenHeaders.has("student_status") && !options.currentStudentsOnly) {
+      fileErrors.push({code:"MISSING_REQUIRED_HEADER",message:"No student status column. Tick 'Official current students only' if the university has confirmed this roster contains only current students."});
+    }
+  }
+  for (const requiredHeader of requiredHeaders) {
     if (
       !seenHeaders.has(
         requiredHeader
@@ -1071,15 +1094,12 @@ export function parseUniversityRosterCsv(
       "matric_number"
     )!;
 
-  const fullNameIndex =
-    headerIndex.get(
-      "full_name"
-    )!;
+  const fullNameIndex = headerIndex.get("full_name");
+  const firstNameIndex = headerIndex.get("first_name");
+  const middleNameIndex = headerIndex.get("middle_name");
+  const lastNameIndex = headerIndex.get("last_name");
 
-  const statusIndex =
-    headerIndex.get(
-      "student_status"
-    )!;
+  const statusIndex = headerIndex.get("student_status");
 
   const emailIndex =
     headerIndex.get(
@@ -1191,11 +1211,14 @@ export function parseUniversityRosterCsv(
       continue;
     }
 
+    const rawName = fullNameIndex !== undefined
+      ? row[fullNameIndex]
+      : [firstNameIndex, middleNameIndex, lastNameIndex]
+          .filter((index): index is number => index !== undefined)
+          .map(index => row[index] || "").filter(Boolean).join(" ");
     const fullName =
       (
-        row[
-          fullNameIndex
-        ] || ""
+        rawName || ""
       )
         .normalize(
           "NFKC"
@@ -1258,9 +1281,8 @@ export function parseUniversityRosterCsv(
 
     const studentStatus =
       (
-        row[
-          statusIndex
-        ] || ""
+        (statusIndex !== undefined ? row[statusIndex] : null) ||
+        (statusIndex === undefined && options.currentStudentsOnly ? "active" : "")
       )
         .normalize(
           "NFKC"

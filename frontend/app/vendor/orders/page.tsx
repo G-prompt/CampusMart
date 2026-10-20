@@ -1,4 +1,6 @@
 "use client";
+import { useCampusMartConfirm } from "@/components/common/CampusMartConfirm";
+
 
 import Link from "next/link";
 
@@ -15,6 +17,9 @@ import {
 } from "next/navigation";
 
 import PageShell from "@/components/common/PageShell";
+import { displayPhone } from "@/lib/phone";
+
+import { OrderDeadline, useOrderTimings } from "@/components/orders/OrderDeadline";
 
 import {
   useAuth,
@@ -62,17 +67,21 @@ type SellerNextAction =
   | "ready_to_sell";
 
 type SellerEligibility = {
-  canSell: boolean;
+  canSell:
+    boolean;
 
   nextRequiredAction:
     SellerNextAction;
 
-  message: string;
+  message:
+    string;
 
   sellerProfile: {
-    exists: boolean;
+    exists:
+      boolean;
 
-    complete: boolean;
+    complete:
+      boolean;
 
     accessStatus:
       | VendorAccessStatus
@@ -81,7 +90,8 @@ type SellerEligibility = {
 };
 
 type VendorOrderItem = {
-  id: string;
+  id:
+    string;
 
   productId:
     | number
@@ -99,22 +109,47 @@ type VendorOrderItem = {
   lineTotal:
     number;
 
+  selectedSize:
+    | string
+    | null;
+
+  selectedColor:
+    | string
+    | null;
+
   status:
     OrderStatus;
 
   product?: {
-    id: number;
+    id:
+      number;
 
-    slug: string;
+    slug:
+      string;
 
-    title: string;
+    title:
+      string;
 
-    images: string[];
+    images:
+      string[];
   } | null;
 };
 
+type OrderPickupPoint = {
+  type:
+    string;
+
+  label:
+    string;
+
+  detail:
+    | string
+    | null;
+} | null;
+
 type VendorOrder = {
-  id: string;
+  id:
+    string;
 
   status:
     OrderStatus;
@@ -129,17 +164,35 @@ type VendorOrder = {
     | string
     | null;
 
+  pickupPoint:
+    OrderPickupPoint;
+
+  pickupLocationUnlocked:
+    boolean;
+
+  pickupLocationAvailable:
+    boolean;
+
   preferredSlot:
     | string
     | null;
+
+  preferredSlotUnlocked:
+    boolean;
+
+  preferredSlotAvailable:
+    boolean;
 
   createdAt:
     string;
 
   buyer: {
-    id: string;
+    secondaryPhone?: string | null;
+    id:
+      string;
 
-    name: string;
+    name:
+      string;
 
     campus:
       | string
@@ -161,13 +214,17 @@ type VendorOrder = {
 };
 
 type VendorSummary = {
-  orderCount: number;
+  orderCount:
+    number;
 
-  pendingOrderCount: number;
+  pendingOrderCount:
+    number;
 
-  itemCount: number;
+  itemCount:
+    number;
 
-  revenue: number;
+  revenue:
+    number;
 };
 
 type FilterStatus =
@@ -175,7 +232,8 @@ type FilterStatus =
   | OrderStatus;
 
 type FulfillmentFeedback = {
-  message: string;
+  message:
+    string;
 
   lockedUntil?:
     string | null;
@@ -185,7 +243,8 @@ type FulfillmentFeedback = {
 };
 
 type ExistingConversation = {
-  id: string;
+  id:
+    string;
 
   contextType:
     | "general"
@@ -194,12 +253,14 @@ type ExistingConversation = {
 
   order:
     | {
-        id: string;
+        id:
+          string;
       }
     | null;
 
   otherParty: {
-    id: string;
+    id:
+      string;
   };
 };
 
@@ -243,7 +304,6 @@ function statusClasses(
     case "cancelled":
       return "border-red-200 bg-red-50 text-red-700";
 
-    case "pending":
     default:
       return "border-amber-200 bg-amber-50 text-amber-700";
   }
@@ -300,7 +360,8 @@ function paymentClasses(
 }
 
 function shortOrderId(
-  id: string
+  id:
+    string
 ) {
   if (
     id.length <=
@@ -317,7 +378,8 @@ function shortOrderId(
 }
 
 function formatDate(
-  value: string
+  value:
+    string
 ) {
   const date =
     new Date(
@@ -355,7 +417,9 @@ function formatDate(
 
 function formatLockedUntil(
   value:
-    string | null | undefined
+    | string
+    | null
+    | undefined
 ) {
   if (
     !value
@@ -385,6 +449,31 @@ function formatLockedUntil(
       minute:
         "2-digit",
     }
+  );
+}
+
+function pickupText(
+  order:
+    VendorOrder
+) {
+  if (
+    order.pickupPoint
+  ) {
+    return [
+      order.pickupPoint.label,
+      order.pickupPoint.detail,
+    ]
+      .filter(
+        Boolean
+      )
+      .join(
+        " - "
+      );
+  }
+
+  return (
+    order.pickupLocation ||
+    "Pickup point unavailable"
   );
 }
 
@@ -450,7 +539,7 @@ function StatusBadge({
 }) {
   return (
     <span
-      className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${statusClasses(
+      className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${statusClasses(
         status
       )}`}
     >
@@ -462,6 +551,8 @@ function StatusBadge({
 }
 
 export default function Page() {
+  const campusMartConfirm = useCampusMartConfirm();
+
   const router =
     useRouter();
 
@@ -471,15 +562,15 @@ export default function Page() {
   } =
     useAuth();
 
+  const { timings, now, refreshTimings } = useOrderTimings(user?.role === "vendor" ? user.id : null);
+
   const [
     orders,
     setOrders,
   ] =
     useState<
       VendorOrder[]
-    >(
-      []
-    );
+    >([]);
 
   const [
     summary,
@@ -570,11 +661,15 @@ export default function Page() {
       >
     >({});
 
-  /*
-   * =====================================================
-   * FULFILMENT
-   * =====================================================
-   */
+  const [
+    handoffOrderId,
+    setHandoffOrderId,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    );
 
   const [
     fulfillmentCodes,
@@ -597,12 +692,6 @@ export default function Page() {
         FulfillmentFeedback
       >
     >({});
-
-  /*
-   * =====================================================
-   * ORDER MESSAGING
-   * =====================================================
-   */
 
   const [
     messageComposerOrderId,
@@ -655,12 +744,6 @@ export default function Page() {
     >(
       null
     );
-
-  /*
-   * =====================================================
-   * LOAD ORDER HISTORY
-   * =====================================================
-   */
 
   const loadOrders =
     useCallback(
@@ -717,16 +800,12 @@ export default function Page() {
           );
         }
 
-        const nextOrders:
-          VendorOrder[] =
+        setOrders(
           Array.isArray(
             data.orders
           )
             ? data.orders
-            : [];
-
-        setOrders(
-          nextOrders
+            : []
         );
 
         setSummary({
@@ -758,46 +837,11 @@ export default function Page() {
             ) ||
             0,
         });
-
-        setExpandedOrders(
-          (
-            current
-          ) => {
-            if (
-              Object.keys(
-                current
-              ).length >
-              0
-            ) {
-              return current;
-            }
-
-            const firstOrder =
-              nextOrders[0];
-
-            if (
-              !firstOrder
-            ) {
-              return {};
-            }
-
-            return {
-              [firstOrder.id]:
-                true,
-            };
-          }
-        );
       },
       [
         user,
       ]
     );
-
-  /*
-   * =====================================================
-   * LOAD SELLER ACCESS
-   * =====================================================
-   */
 
   const loadEligibility =
     useCallback(
@@ -867,12 +911,6 @@ export default function Page() {
       ]
     );
 
-  /*
-   * =====================================================
-   * INITIAL LOAD
-   * =====================================================
-   */
-
   useEffect(() => {
     if (
       user?.role !==
@@ -918,11 +956,6 @@ export default function Page() {
             return;
           }
 
-          console.error(
-            "Vendor orders error:",
-            orderError
-          );
-
           setError(
             orderError instanceof
               Error
@@ -947,11 +980,6 @@ export default function Page() {
             return;
           }
 
-          console.error(
-            "Seller order access check error:",
-            accessError
-          );
-
           setEligibilityError(
             accessError instanceof
               Error
@@ -961,8 +989,7 @@ export default function Page() {
         }
 
         if (
-          !controller.signal
-            .aborted
+          !controller.signal.aborted
         ) {
           setLoading(
             false
@@ -980,12 +1007,6 @@ export default function Page() {
     loadOrders,
     loadEligibility,
   ]);
-
-  /*
-   * =====================================================
-   * SELLER ACCESS
-   * =====================================================
-   */
 
   const accessStatus =
     eligibility
@@ -1017,12 +1038,6 @@ export default function Page() {
         ?.nextRequiredAction ??
         "not_a_seller"
     );
-
-  /*
-   * =====================================================
-   * FILTERS
-   * =====================================================
-   */
 
   const statusCounts =
     useMemo(
@@ -1073,43 +1088,25 @@ export default function Page() {
 
   const filteredOrders =
     useMemo(
-      () => {
-        if (
-          filter ===
-          "all"
-        ) {
-          return orders;
-        }
-
-        return orders.filter(
-          (
-            order
-          ) =>
-            order.vendorStatus ===
-            filter
-        );
-      },
+      () =>
+        filter ===
+        "all"
+          ? orders
+          : orders.filter(
+              (
+                order
+              ) =>
+                order.vendorStatus ===
+                filter
+            ),
       [
         orders,
         filter,
       ]
     );
 
-  /*
-   * =====================================================
-   * REFRESH
-   * =====================================================
-   */
-
   const refreshPage =
     async () => {
-      if (
-        user?.role !==
-        "vendor"
-      ) {
-        return;
-      }
-
       try {
         setRefreshing(
           true
@@ -1119,26 +1116,14 @@ export default function Page() {
           ""
         );
 
-        await loadOrders();
+        await Promise.all([loadOrders(), refreshTimings()]);
 
         try {
           await loadEligibility();
-        } catch (
-          accessError
-        ) {
-          console.warn(
-            "Unable to refresh seller eligibility:",
-            accessError
-          );
-        }
+        } catch {}
       } catch (
         refreshError
       ) {
-        console.error(
-          "Refresh seller orders error:",
-          refreshError
-        );
-
         setError(
           refreshError instanceof
             Error
@@ -1151,12 +1136,6 @@ export default function Page() {
         );
       }
     };
-
-  /*
-   * =====================================================
-   * OPEN ORDER CONVERSATION
-   * =====================================================
-   */
 
   const handleMessageBuyer =
     async (
@@ -1178,17 +1157,6 @@ export default function Page() {
       if (
         !token
       ) {
-        setMessageErrors(
-          (
-            current
-          ) => ({
-            ...current,
-
-            [order.id]:
-              "Your session is unavailable. Sign in again to message the buyer.",
-          })
-        );
-
         return;
       }
 
@@ -1207,12 +1175,6 @@ export default function Page() {
               "",
           })
         );
-
-        /*
-         * Find the exact existing order thread.
-         *
-         * On the seller side, otherParty is the buyer.
-         */
 
         const response =
           await fetch(
@@ -1274,23 +1236,23 @@ export default function Page() {
           return;
         }
 
-        /*
-         * No conversation exists yet.
-         *
-         * Do not create an empty thread.
-         */
-
         setMessageComposerOrderId(
           order.id
+        );
+
+        setExpandedOrders(
+          (
+            current
+          ) => ({
+            ...current,
+
+            [order.id]:
+              true,
+          })
         );
       } catch (
         messagingError
       ) {
-        console.error(
-          "Open buyer conversation error:",
-          messagingError
-        );
-
         setMessageErrors(
           (
             current
@@ -1310,12 +1272,6 @@ export default function Page() {
         );
       }
     };
-
-  /*
-   * =====================================================
-   * START ORDER CONVERSATION AS SELLER
-   * =====================================================
-   */
 
   const startBuyerConversation =
     async (
@@ -1345,35 +1301,6 @@ export default function Page() {
       if (
         !body
       ) {
-        setMessageErrors(
-          (
-            current
-          ) => ({
-            ...current,
-
-            [order.id]:
-              "Write a message to the buyer first.",
-          })
-        );
-
-        return;
-      }
-
-      if (
-        body.length >
-        MESSAGE_MAX_LENGTH
-      ) {
-        setMessageErrors(
-          (
-            current
-          ) => ({
-            ...current,
-
-            [order.id]:
-              `Messages can be up to ${MESSAGE_MAX_LENGTH} characters.`,
-          })
-        );
-
         return;
       }
 
@@ -1385,34 +1312,12 @@ export default function Page() {
       if (
         !token
       ) {
-        setMessageErrors(
-          (
-            current
-          ) => ({
-            ...current,
-
-            [order.id]:
-              "Your session is unavailable. Sign in again to message the buyer.",
-          })
-        );
-
         return;
       }
 
       try {
         setSendingMessageOrderId(
           order.id
-        );
-
-        setMessageErrors(
-          (
-            current
-          ) => ({
-            ...current,
-
-            [order.id]:
-              "",
-          })
         );
 
         const response =
@@ -1438,11 +1343,6 @@ export default function Page() {
                   orderId:
                     order.id,
 
-                  /*
-                   * The vendor is explicitly supplied so
-                   * the backend resolves this seller's
-                   * portion of a multi-vendor order.
-                   */
                   vendorId:
                     user.id,
 
@@ -1458,29 +1358,6 @@ export default function Page() {
           !response.ok ||
           !data.success
         ) {
-          if (
-            data.code ===
-            "MESSAGING_TEMPORARILY_RESTRICTED"
-          ) {
-            throw new Error(
-              data.message ||
-                "Messaging is temporarily restricted. You can still read your existing conversations."
-            );
-          }
-
-          if (
-            data.code ===
-              "OFF_PLATFORM_ATTEMPT_BLOCKED" ||
-            data.moderation
-              ?.action ===
-              "blocked"
-          ) {
-            throw new Error(
-              data.message ||
-                "That message was not sent because it appears to move the conversation off CampusMart."
-            );
-          }
-
           throw new Error(
             data.message ||
               "Unable to send your message."
@@ -1495,54 +1372,9 @@ export default function Page() {
           !conversationId
         ) {
           throw new Error(
-            "The conversation was created, but CampusMart could not open it."
+            "CampusMart could not open the conversation."
           );
         }
-
-        if (
-          data.moderation
-            ?.action ===
-          "redacted"
-        ) {
-          window.dispatchEvent(
-            new CustomEvent(
-              "campusmart-toast",
-              {
-                detail: {
-                  message:
-                    "Message sent. Contact details were hidden to keep the conversation on CampusMart.",
-                },
-              }
-            )
-          );
-        } else {
-          window.dispatchEvent(
-            new CustomEvent(
-              "campusmart-toast",
-              {
-                detail: {
-                  message:
-                    "Message sent",
-                },
-              }
-            )
-          );
-        }
-
-        setMessageDrafts(
-          (
-            current
-          ) => ({
-            ...current,
-
-            [order.id]:
-              "",
-          })
-        );
-
-        setMessageComposerOrderId(
-          null
-        );
 
         router.push(
           `/messages/${conversationId}`
@@ -1550,11 +1382,6 @@ export default function Page() {
       } catch (
         messagingError
       ) {
-        console.error(
-          "Start buyer conversation error:",
-          messagingError
-        );
-
         setMessageErrors(
           (
             current
@@ -1575,17 +1402,25 @@ export default function Page() {
       }
     };
 
-  /*
-   * =====================================================
-   * UPDATE ORDER STATUS
-   * =====================================================
-   */
+  const markReady = async (orderId: string) => {
+    const token=localStorage.getItem("campusmart-token");
+    if(!token) return;
+    try {
+      setUpdatingOrderId(orderId);
+      setError("");
+      const response=await fetch(`${API_URL}/api/orders/vendor/${orderId}/ready`, {method:"POST",headers:{Authorization:`Bearer ${token}`}});
+      const data=await response.json();
+      if(!response.ok || !data.success) throw Error(data.message || "Unable to mark ready.");
+      await Promise.all([loadOrders(),refreshTimings()]);
+      window.dispatchEvent(new CustomEvent("campusmart-toast",{detail:{message:"Buyer notified: ready for pickup"}}));
+    } catch(error) {setError(error instanceof Error ? error.message : "Unable to mark ready.");}
+    finally {setUpdatingOrderId(null);}
+  };
 
   const updateStatus =
     async (
       orderId:
         string,
-
       status:
         | "confirmed"
         | "cancelled"
@@ -1595,7 +1430,7 @@ export default function Page() {
       ) {
         setError(
           eligibility?.message ||
-            "Order actions are not currently available for this seller account."
+            "Order actions are not currently available."
         );
 
         return;
@@ -1604,9 +1439,7 @@ export default function Page() {
       if (
         status ===
           "cancelled" &&
-        !window.confirm(
-          "Cancel your part of this order? This cannot be undone."
-        )
+        !await campusMartConfirm({ title: "Confirm action", description: "Cancel your part of this order?", danger: true })
       ) {
         return;
       }
@@ -1619,10 +1452,6 @@ export default function Page() {
       if (
         !token
       ) {
-        setError(
-          "Your session is unavailable."
-        );
-
         return;
       }
 
@@ -1661,14 +1490,6 @@ export default function Page() {
           await response.json();
 
         if (
-          data.eligibility
-        ) {
-          setEligibility(
-            data.eligibility
-          );
-        }
-
-        if (
           !response.ok ||
           !data.success
         ) {
@@ -1678,18 +1499,7 @@ export default function Page() {
           );
         }
 
-        await loadOrders();
-
-        try {
-          await loadEligibility();
-        } catch (
-          refreshError
-        ) {
-          console.warn(
-            "Unable to refresh seller access after order update:",
-            refreshError
-          );
-        }
+        await Promise.all([loadOrders(), refreshTimings()]);
 
         window.dispatchEvent(
           new CustomEvent(
@@ -1708,11 +1518,6 @@ export default function Page() {
       } catch (
         updateError
       ) {
-        console.error(
-          "Order status update error:",
-          updateError
-        );
-
         setError(
           updateError instanceof
             Error
@@ -1726,28 +1531,11 @@ export default function Page() {
       }
     };
 
-  /*
-   * =====================================================
-   * COMPLETE HANDOFF USING BUYER CODE
-   * =====================================================
-   */
-
   const submitFulfillmentCode =
     async (
       orderId:
         string
     ) => {
-      if (
-        !canFulfilExistingOrders
-      ) {
-        setError(
-          eligibility?.message ||
-            "Order actions are not currently available for this seller account."
-        );
-
-        return;
-      }
-
       const code =
         (
           fulfillmentCodes[
@@ -1785,36 +1573,12 @@ export default function Page() {
       if (
         !token
       ) {
-        setError(
-          "Your session is unavailable."
-        );
-
         return;
       }
 
       try {
         setUpdatingOrderId(
           orderId
-        );
-
-        setError(
-          ""
-        );
-
-        setFulfillmentFeedback(
-          (
-            current
-          ) => {
-            const next = {
-              ...current,
-            };
-
-            delete next[
-              orderId
-            ];
-
-            return next;
-          }
         );
 
         const response =
@@ -1857,17 +1621,12 @@ export default function Page() {
               "number"
           ) {
             message =
-              `${message} ${data.attemptsRemaining} ${
-                data.attemptsRemaining ===
-                1
-                  ? "attempt"
-                  : "attempts"
-              } remaining.`;
+              `${message} ${data.attemptsRemaining} attempts remaining.`;
           }
 
           if (
             data.code ===
-              "FULFILLMENT_CODE_LOCKED"
+            "FULFILLMENT_CODE_LOCKED"
           ) {
             const unlockTime =
               formatLockedUntil(
@@ -1890,16 +1649,6 @@ export default function Page() {
 
               [orderId]: {
                 message,
-
-                lockedUntil:
-                  data.lockedUntil ??
-                  null,
-
-                attemptsRemaining:
-                  typeof data.attemptsRemaining ===
-                    "number"
-                    ? data.attemptsRemaining
-                    : undefined,
               },
             })
           );
@@ -1918,34 +1667,11 @@ export default function Page() {
           })
         );
 
-        setFulfillmentFeedback(
-          (
-            current
-          ) => {
-            const next = {
-              ...current,
-            };
-
-            delete next[
-              orderId
-            ];
-
-            return next;
-          }
+        setHandoffOrderId(
+          null
         );
 
-        await loadOrders();
-
-        try {
-          await loadEligibility();
-        } catch (
-          refreshError
-        ) {
-          console.warn(
-            "Unable to refresh seller access after fulfilment:",
-            refreshError
-          );
-        }
+        await Promise.all([loadOrders(), refreshTimings()]);
 
         window.dispatchEvent(
           new CustomEvent(
@@ -1953,7 +1679,7 @@ export default function Page() {
             {
               detail: {
                 message:
-                  "Handoff verified — order completed",
+                  "Handoff verified - order completed",
               },
             }
           )
@@ -1961,11 +1687,6 @@ export default function Page() {
       } catch (
         fulfillmentError
       ) {
-        console.error(
-          "Fulfillment verification error:",
-          fulfillmentError
-        );
-
         setFulfillmentFeedback(
           (
             current
@@ -1988,12 +1709,6 @@ export default function Page() {
       }
     };
 
-  /*
-   * =====================================================
-   * NON-SELLER
-   * =====================================================
-   */
-
   if (
     user?.role !==
     "vendor"
@@ -2003,21 +1718,10 @@ export default function Page() {
         title="Seller orders"
         description="Manage incoming CampusMart orders."
       >
-        <section className="site-card mx-auto max-w-lg p-8 text-center sm:p-10">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-950 text-sm font-black text-white">
-            CM
-          </div>
-
-          <h2 className="mt-5 text-2xl font-bold text-slate-950">
+        <section className="site-card mx-auto max-w-lg p-8 text-center">
+          <h2 className="text-2xl font-black">
             Seller access required
           </h2>
-
-          <p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-slate-600">
-            Sign in with a seller
-            account to view and manage
-            orders containing your
-            products.
-          </p>
 
           <button
             type="button"
@@ -2027,120 +1731,66 @@ export default function Page() {
                 "vendor"
               )
             }
-            className="mt-6 rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-accent-500"
+            className="mt-6 rounded-xl bg-accent-400 px-5 py-3 text-sm font-black"
           >
-            Sign in as seller
+            Sign in
           </button>
         </section>
       </PageShell>
     );
   }
 
-  /*
-   * =====================================================
-   * PAGE
-   * =====================================================
-   */
-
   return (
     <PageShell
       title="Seller orders"
-      description="Manage incoming orders and complete secure buyer handoffs."
+      description="Review orders, pickup details and handoffs."
     >
       {pendingReview ? (
-        <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">
-                Seller access
-              </p>
+        <section className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div>
+            <p className="font-black text-amber-950">
+              New selling is paused
+            </p>
 
-              <h2 className="mt-2 text-xl font-bold text-amber-950">
-                New selling is paused
-              </h2>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-amber-800">
-                You can still fulfil
-                orders that already
-                exist, but new selling
-                activity remains paused
-                until your seller
-                requirements are
-                complete.
-              </p>
-            </div>
-
-            <Link
-              href={
-                accountAction.href
-              }
-              className="shrink-0 rounded-[10px] bg-accent-400 px-5 py-3 text-center text-sm font-bold text-black transition hover:bg-accent-500"
-            >
-              {
-                accountAction.label
-              }
-            </Link>
+            <p className="mt-1 text-xs text-amber-800">
+              Existing orders can still be fulfilled.
+            </p>
           </div>
+
+          <Link
+            href={
+              accountAction.href
+            }
+            className="rounded-lg bg-accent-400 px-4 py-2 text-xs font-black"
+          >
+            {
+              accountAction.label
+            }
+          </Link>
         </section>
       ) : null}
 
       {restricted ||
       suspended ? (
-        <section className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-5 sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-700">
-                Seller access
-              </p>
-
-              <h2 className="mt-2 text-xl font-bold text-red-950">
-                {suspended
-                  ? "Order actions suspended"
-                  : "Order actions restricted"}
-              </h2>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-red-800">
-                {eligibility
-                  ?.message ||
-                  "You can still view your existing order history, but order actions are currently unavailable."}
-              </p>
-            </div>
-
-            <Link
-              href="/profile"
-              className="shrink-0 rounded-[10px] border border-red-200 bg-white px-5 py-3 text-center text-sm font-bold text-red-800 transition hover:border-red-400"
-            >
-              Review account
-            </Link>
-          </div>
+        <section className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 font-bold text-red-800">
+          Order actions are currently unavailable.
         </section>
       ) : null}
 
       {eligibilityError ? (
-        <section className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm font-bold text-amber-900">
-            Order-action access
-            could not be confirmed.
-          </p>
-
-          <p className="mt-1 text-xs leading-5 text-amber-700">
-            Your order history remains
-            available, but status
-            changes are disabled until
-            CampusMart confirms your
-            seller access.
-          </p>
+        <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+          Seller access could not be confirmed.
         </section>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <p className="text-sm text-slate-600">
+      <div className="flex items-center justify-between gap-3">
+        <p className="truncate text-sm text-slate-600">
           Signed in as{" "}
-          <span className="font-bold text-slate-950">
+          <strong className="text-slate-950">
             {
               user.name
             }
-          </span>
+          </strong>
         </p>
 
         <button
@@ -2151,85 +1801,68 @@ export default function Page() {
           onClick={() =>
             void refreshPage()
           }
-          className="rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-black"
         >
           {refreshing
             ? "Refreshing..."
-            : "Refresh orders"}
+            : "Refresh"}
         </button>
       </div>
 
-      <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="site-card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-            Orders
-          </p>
+      <section className="site-card mt-4 overflow-hidden">
+        <div className="grid grid-cols-4 divide-x divide-slate-200">
+          <div className="p-3 sm:p-4">
+            <p className="text-[9px] font-black uppercase text-slate-400">
+              Orders
+            </p>
 
-          <p className="mt-2 text-3xl font-black text-slate-950">
-            {
-              summary.orderCount
-            }
-          </p>
+            <p className="mt-1 text-xl font-black">
+              {
+                summary.orderCount
+              }
+            </p>
+          </div>
 
-          <p className="mt-1 text-sm text-slate-600">
-            Buyer orders received
-          </p>
-        </div>
+          <div className="p-3 sm:p-4">
+            <p className="text-[9px] font-black uppercase text-slate-400">
+              Awaiting
+            </p>
 
-        <div className="site-card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-            Awaiting response
-          </p>
+            <p className="mt-1 text-xl font-black">
+              {
+                summary.pendingOrderCount
+              }
+            </p>
+          </div>
 
-          <p className="mt-2 text-3xl font-black text-slate-950">
-            {
-              summary.pendingOrderCount
-            }
-          </p>
+          <div className="p-3 sm:p-4">
+            <p className="text-[9px] font-black uppercase text-slate-400">
+              Items
+            </p>
 
-          <p className="mt-1 text-sm text-slate-600">
-            Need your attention
-          </p>
-        </div>
+            <p className="mt-1 text-xl font-black">
+              {
+                summary.itemCount
+              }
+            </p>
+          </div>
 
-        <div className="site-card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-            Items
-          </p>
+          <div className="p-3 sm:p-4">
+            <p className="text-[9px] font-black uppercase text-slate-400">
+              Revenue
+            </p>
 
-          <p className="mt-2 text-3xl font-black text-slate-950">
-            {
-              summary.itemCount
-            }
-          </p>
-
-          <p className="mt-1 text-sm text-slate-600">
-            Products ordered
-          </p>
-        </div>
-
-        <div className="site-card p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-            Revenue
-          </p>
-
-          <p className="mt-2 text-2xl font-black text-slate-950">
-            {formatNaira(
-              summary.revenue
-            )}
-          </p>
-
-          <p className="mt-1 text-sm text-slate-600">
-            Paid + completed only
-          </p>
+            <p className="mt-1 truncate text-sm font-black sm:text-lg">
+              {formatNaira(
+                summary.revenue
+              )}
+            </p>
+          </div>
         </div>
       </section>
 
       {error ? (
-        <div
-          className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
-          role="alert"
-        >
+        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
           {
             error
           }
@@ -2237,50 +1870,19 @@ export default function Page() {
       ) : null}
 
       {loading ? (
-        <div className="mt-8 space-y-4">
-          {[
-            1,
-            2,
-            3,
-          ].map(
-            (
-              item
-            ) => (
-              <div
-                key={
-                  item
-                }
-                className="site-card h-44 animate-pulse bg-slate-100"
-              />
-            )
-          )}
+        <div className="mt-5 space-y-3">
+          <div className="site-card h-32 animate-pulse bg-slate-100" />
+          <div className="site-card h-32 animate-pulse bg-slate-100" />
         </div>
       ) : null}
 
       {!loading &&
       orders.length ===
         0 ? (
-        <section className="site-card mt-8 flex flex-col items-center px-6 py-14 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-950 text-sm font-black text-white">
-            CM
-          </div>
-
-          <h2 className="mt-5 text-2xl font-bold text-slate-950">
+        <section className="site-card mt-5 p-10 text-center">
+          <h2 className="text-xl font-black">
             No orders yet
           </h2>
-
-          <p className="mt-2 max-w-md text-sm leading-6 text-slate-600">
-            When a buyer orders one
-            of your products, the
-            order will appear here.
-          </p>
-
-          <Link
-            href="/vendor/listings"
-            className="mt-6 rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-accent-500"
-          >
-            View your listings
-          </Link>
         </section>
       ) : null}
 
@@ -2288,7 +1890,7 @@ export default function Page() {
       orders.length >
         0 ? (
         <>
-          <div className="mt-8 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="mt-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <div className="flex min-w-max gap-2">
               {(
                 [
@@ -2296,22 +1898,18 @@ export default function Page() {
                     "all",
                     "All",
                   ],
-
                   [
                     "pending",
                     "Awaiting",
                   ],
-
                   [
                     "confirmed",
                     "Confirmed",
                   ],
-
                   [
                     "completed",
                     "Completed",
                   ],
-
                   [
                     "cancelled",
                     "Cancelled",
@@ -2323,68 +1921,42 @@ export default function Page() {
                     value,
                     label,
                   ]
-                ) => {
-                  const active =
-                    filter ===
-                    value;
-
-                  return (
-                    <button
-                      key={
+                ) => (
+                  <button
+                    key={
+                      value
+                    }
+                    type="button"
+                    onClick={() =>
+                      setFilter(
                         value
-                      }
-                      type="button"
-                      onClick={() =>
-                        setFilter(
-                          value
-                        )
-                      }
-                      className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
-                        active
-                          ? "border-slate-950 bg-slate-950 text-white"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-400 hover:text-black"
-                      }`}
-                    >
-                      {
-                        label
-                      }
+                      )
+                    }
+                    className={`rounded-full border px-4 py-2 text-sm font-black ${
+                      filter ===
+                      value
+                        ? "border-slate-950 bg-slate-950 text-white"
+                        : "border-slate-200 bg-white text-slate-600"
+                    }`}
+                  >
+                    {
+                      label
+                    }
 
-                      <span
-                        className={`ml-2 ${
-                          active
-                            ? "text-slate-300"
-                            : "text-slate-400"
-                        }`}
-                      >
-                        {
-                          statusCounts[
-                            value
-                          ]
-                        }
-                      </span>
-                    </button>
-                  );
-                }
+                    <span className="ml-2 opacity-60">
+                      {
+                        statusCounts[
+                          value
+                        ]
+                      }
+                    </span>
+                  </button>
+                )
               )}
             </div>
           </div>
 
-          {filteredOrders.length ===
-          0 ? (
-            <section className="site-card mt-5 p-8 text-center">
-              <h2 className="text-xl font-bold text-slate-950">
-                No orders here
-              </h2>
-
-              <p className="mt-2 text-sm text-slate-600">
-                There are currently
-                no orders with this
-                status.
-              </p>
-            </section>
-          ) : null}
-
-          <section className="mt-5 space-y-5">
+          <section className="mt-4 space-y-3">
             {filteredOrders.map(
               (
                 order
@@ -2418,13 +1990,13 @@ export default function Page() {
                     ]
                   );
 
+                const handoffOpen =
+                  handoffOrderId ===
+                  order.id;
+
                 const busy =
                   updatingOrderId ===
                   order.id;
-
-                const actionsDisabled =
-                  !canFulfilExistingOrders ||
-                  busy;
 
                 const enteredCode =
                   fulfillmentCodes[
@@ -2437,16 +2009,11 @@ export default function Page() {
                     order.id
                   ];
 
-                const buyerPhoneUnlocked =
-                  order.buyer
-                    .phoneUnlocked ===
-                  true;
-
                 const buyerPhoneAvailable =
-                  buyerPhoneUnlocked &&
                   order.buyer
-                    .phoneAvailable ===
-                    true &&
+                    .phoneUnlocked &&
+                  order.buyer
+                    .phoneAvailable &&
                   Boolean(
                     order.buyer.phone
                   );
@@ -2475,6 +2042,11 @@ export default function Page() {
                   sendingMessageOrderId ===
                   order.id;
 
+                const selectedPickup =
+                  pickupText(
+                    order
+                  );
+
                 return (
                   <article
                     key={
@@ -2482,202 +2054,311 @@ export default function Page() {
                     }
                     className="site-card overflow-hidden"
                   >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExpandedOrders(
-                          (
-                            current
-                          ) => ({
-                            ...current,
+                    <div className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="font-black">
+                              Order #
+                              {shortOrderId(
+                                order.id
+                              )}
+                            </h2>
 
-                            [order.id]:
-                              !expanded,
-                          })
-                        )
-                      }
-                      className="flex w-full flex-col gap-4 p-5 text-left transition hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
-                      aria-expanded={
-                        expanded
-                      }
-                    >
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-lg font-black text-slate-950">
-                            Order #
-                            {shortOrderId(
-                              order.id
-                            )}
-                          </h2>
+                            <StatusBadge
+                              status={
+                                order.vendorStatus
+                              }
+                            />
 
-                          <StatusBadge
-                            status={
-                              order.vendorStatus
+                            <span
+                              className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-black ${paymentClasses(
+                                order.paymentStatus
+                              )}`}
+                            >
+                              {paymentLabel(
+                                order.paymentStatus
+                              )}
+                            </span>
+                          </div>
+
+                          <p className="mt-1 text-xs text-slate-500">
+                            {
+                              order.buyer.name
                             }
-                          />
-
-                          <span
-                            className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${paymentClasses(
-                              order.paymentStatus
-                            )}`}
-                          >
-                            {paymentLabel(
-                              order.paymentStatus
+                            {" - "}
+                            {formatDate(
+                              order.createdAt
                             )}
-                          </span>
-                        </div>
-
-                        <p className="mt-2 text-sm text-slate-500">
-                          {
-                            order.buyer.name
-                          }
-                          {" · "}
-                          {formatDate(
-                            order.createdAt
-                          )}
-                          {" · "}
-                          {
-                            itemQuantity
-                          }{" "}
-                          {itemQuantity ===
-                          1
-                            ? "item"
-                            : "items"}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-5 sm:justify-end">
-                        <div className="text-left sm:text-right">
-                          <p className="text-xs font-semibold text-slate-500">
-                            Your total
                           </p>
 
-                          <p className="mt-1 text-lg font-black text-slate-950">
+                          <div className="mt-2 flex items-start gap-1.5 text-xs">
+                            <span className="shrink-0 font-black text-[#6E3847]">
+                              Pickup:
+                            </span>
+
+                            <span className="line-clamp-2 font-semibold text-slate-700">
+                              {
+                                selectedPickup
+                              }
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-black">
                             {formatNaira(
                               vendorTotal
                             )}
                           </p>
-                        </div>
 
-                        <span
-                          className={`text-xl text-slate-500 transition ${
-                            expanded
-                              ? "rotate-180"
-                              : ""
-                          }`}
-                          aria-hidden="true"
-                        >
-                          ⌄
-                        </span>
+                          <p className="mt-0.5 text-[10px] text-slate-400">
+                            {itemQuantity}{" "}
+                            {itemQuantity ===
+                            1
+                              ? "item"
+                              : "items"}
+                          </p>
+                        </div>
                       </div>
-                    </button>
+
+                      <div className="mt-3">
+                        <OrderDeadline
+                          timing={timings[`${order.id}:${user.id}`]}
+                          status={timings[`${order.id}:${user.id}`]?.status ?? order.vendorStatus}
+                          now={now}
+                          perspective="seller"
+                        />
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {order.vendorStatus ===
+                          "pending" &&
+                        canFulfilExistingOrders ? (
+                          <button
+                            type="button"
+                            disabled={
+                              busy
+                            }
+                            onClick={() =>
+                              void updateStatus(
+                                order.id,
+                                "confirmed"
+                              )
+                            }
+                            className="rounded-lg bg-accent-400 px-4 py-2.5 text-xs font-black"
+                          >
+                            {busy
+                              ? "Updating..."
+                              : "Confirm"}
+                          </button>
+                        ) : null}
+
+                        {order.vendorStatus === "confirmed" &&
+                          !timings[`${order.id}:${user.id}`]?.readyAt && order.paymentStatus === "paid" && canFulfilExistingOrders ? (
+                          <button type="button" disabled={busy} onClick={() => void markReady(order.id)}
+                            className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-xs font-black text-emerald-800">
+                            {busy ? "Updating..." : "Mark ready for pickup"}
+                          </button>
+                        ) : null}
+                        {order.vendorStatus === "confirmed" && timings[`${order.id}:${user.id}`]?.readyAt ? (
+                          <span className="self-center text-xs font-black text-emerald-700">Ready for pickup</span>
+                        ) : null}
+                        {order.vendorStatus ===
+                          "confirmed" &&
+                        canFulfilExistingOrders ? (
+                          handoffOpen ? (
+                            <>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                maxLength={
+                                  4
+                                }
+                                value={
+                                  enteredCode
+                                }
+                                onChange={(
+                                  event
+                                ) =>
+                                  setFulfillmentCodes(
+                                    (
+                                      current
+                                    ) => ({
+                                      ...current,
+
+                                      [order.id]:
+                                        event.target.value
+                                          .replace(
+                                            /\D/g,
+                                            ""
+                                          )
+                                          .slice(
+                                            0,
+                                            4
+                                          ),
+                                    })
+                                  )
+                                }
+                                placeholder="Code"
+                                className="h-10 w-24 rounded-lg border border-slate-300 px-3 text-center font-mono font-black"
+                              />
+
+                              <button
+                                type="button"
+                                disabled={
+                                  busy ||
+                                  enteredCode.length !==
+                                    4
+                                }
+                                onClick={() =>
+                                  void submitFulfillmentCode(
+                                    order.id
+                                  )
+                                }
+                                className="h-10 rounded-lg bg-emerald-600 px-4 text-xs font-black text-white disabled:opacity-40"
+                              >
+                                Verify
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setHandoffOrderId(
+                                  order.id
+                                )
+                              }
+                              className="rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-black text-white"
+                            >
+                              Handoff
+                            </button>
+                          )
+                        ) : null}
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedOrders(
+                              (
+                                current
+                              ) => ({
+                                ...current,
+
+                                [order.id]:
+                                  !expanded,
+                              })
+                            )
+                          }
+                          className="ml-auto rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-black"
+                        >
+                          {expanded
+                            ? "Hide details"
+                            : "Details"}
+                        </button>
+                      </div>
+
+                      {handoffOpen &&
+                      fulfillmentIssue ? (
+                        <p className="mt-3 text-xs font-semibold text-red-600">
+                          {
+                            fulfillmentIssue.message
+                          }
+                        </p>
+                      ) : null}
+                    </div>
 
                     {expanded ? (
                       <div className="border-t border-slate-200">
-                        <div className="grid gap-5 bg-slate-50 p-5 sm:grid-cols-2 lg:grid-cols-4">
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                        <div className="grid grid-cols-2 gap-px bg-slate-200">
+                          <div className="bg-slate-50 p-3">
+                            <p className="text-[9px] font-black uppercase text-slate-400">
                               Buyer
                             </p>
 
-                            <p className="mt-2 text-sm font-bold text-slate-950">
+                            <p className="mt-1 text-xs font-black sm:text-sm">
                               {
                                 order.buyer.name
                               }
                             </p>
-
-                            {order.buyer
-                              .campus ? (
-                              <p className="mt-1 text-xs leading-5 text-slate-500">
-                                {
-                                  order.buyer.campus
-                                }
-                              </p>
-                            ) : null}
                           </div>
 
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                              Pickup
-                            </p>
-
-                            <p className="mt-2 text-sm font-bold text-slate-950">
-                              {order.pickupLocation ||
-                                "Campus pickup"}
-                            </p>
-                          </div>
-
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                              Preferred time
-                            </p>
-
-                            <p className="mt-2 text-sm font-bold text-slate-950">
-                              {order.preferredSlot ||
-                                "Not specified"}
-                            </p>
-                          </div>
-
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                          <div className="bg-slate-50 p-3">
+                            <p className="text-[9px] font-black uppercase text-slate-400">
                               Payment
                             </p>
 
-                            <p className="mt-2 text-sm font-bold text-slate-950">
+                            <p className="mt-1 text-xs font-black sm:text-sm">
                               {paymentLabel(
                                 order.paymentStatus
                               )}
                             </p>
                           </div>
+
+                          <div className="bg-slate-50 p-3 sm:col-span-2">
+                            <p className="text-[9px] font-black uppercase text-slate-400">
+                              Pickup
+                            </p>
+
+                            <p className="mt-1 text-xs font-black leading-5 sm:text-sm">
+                              {
+                                selectedPickup
+                              }
+                            </p>
+                          </div>
+
                         </div>
 
-                        {/*
-                         * =================================
-                         * BUYER COMMUNICATION
-                         * =================================
-                         */}
-
-                        <div className="border-t border-slate-200 bg-white px-5 py-5">
-                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="border-t border-slate-200 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
-                              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                              <p className="text-xs font-black">
                                 Buyer communication
                               </p>
 
-                              <p className="mt-2 text-sm font-bold text-slate-950">
-                                Message{" "}
-                                {
-                                  order.buyer.name
-                                }
-                              </p>
-
-                              <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">
-                                Use the order
-                                conversation for
-                                questions, updates
-                                and handoff
-                                coordination.
+                              <p className="mt-1 text-[11px] text-slate-500">
+                                Use CampusMart messages for order coordination.
                               </p>
                             </div>
 
-                            <button
-                              type="button"
-                              disabled={
-                                openingMessage ||
-                                sendingMessage
-                              }
-                              onClick={() =>
-                                void handleMessageBuyer(
-                                  order
-                                )
-                              }
-                              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-[10px] bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {openingMessage
-                                ? "Opening..."
-                                : "Message buyer"}
-                            </button>
+                            <div className="flex gap-2">
+                              {buyerPhoneAvailable && order.buyer.secondaryPhone ? (
+                                <a href={`tel:${order.buyer.secondaryPhone}`} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-black">Call alternate</a>
+                              ) : null}
+                              {buyerPhoneAvailable ? (
+                                <a
+                                  href={`tel:${order.buyer.phone}`}
+                                  className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-800"
+                                >
+                                  Call buyer
+                                </a>
+                              ) : null}
+
+                              <button
+                                type="button"
+                                disabled={
+                                  openingMessage ||
+                                  sendingMessage
+                                }
+                                onClick={() =>
+                                  void handleMessageBuyer(
+                                    order
+                                  )
+                                }
+                                className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white"
+                              >
+                                {openingMessage
+                                  ? "Opening..."
+                                  : "Message buyer"}
+                              </button>
+                            </div>
                           </div>
+
+                          <p className="mt-2 text-[10px] text-slate-400">
+                            {buyerPhoneAvailable
+                              ? `Buyer primary phone: ${displayPhone(order.buyer.phone)}${order.buyer.secondaryPhone ? ` · Secondary: ${displayPhone(order.buyer.secondaryPhone)}` : ""}`
+                              : "Direct phone access remains protected until handoff coordination is active."}
+                          </p>
 
                           {messageComposerOpen ? (
                             <form
@@ -2689,61 +2370,21 @@ export default function Page() {
                                   order
                                 )
                               }
-                              className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4"
+                              className="mt-3 rounded-xl bg-slate-50 p-3"
                             >
-                              <div className="flex items-start justify-between gap-4">
-                                <div>
-                                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
-                                    Order message
-                                  </p>
-
-                                  <h3 className="mt-1 text-sm font-black text-slate-950">
-                                    Message{" "}
-                                    {
-                                      order.buyer.name
-                                    }{" "}
-                                    about order #
-                                    {shortOrderId(
-                                      order.id
-                                    )}
-                                  </h3>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  disabled={
-                                    sendingMessage
-                                  }
-                                  onClick={() => {
-                                    setMessageComposerOrderId(
-                                      null
-                                    );
-
-                                    setMessageErrors(
-                                      (
-                                        current
-                                      ) => ({
-                                        ...current,
-
-                                        [order.id]:
-                                          "",
-                                      })
-                                    );
-                                  }}
-                                  className="shrink-0 rounded-full px-2 py-1 text-lg font-bold text-slate-400 transition hover:bg-slate-200 hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
-                                  aria-label="Close message composer"
-                                >
-                                  ×
-                                </button>
-                              </div>
-
                               <textarea
+                                rows={
+                                  3
+                                }
+                                maxLength={
+                                  MESSAGE_MAX_LENGTH
+                                }
                                 value={
                                   messageDraft
                                 }
                                 onChange={(
                                   event
-                                ) => {
+                                ) =>
                                   setMessageDrafts(
                                     (
                                       current
@@ -2753,216 +2394,60 @@ export default function Page() {
                                       [order.id]:
                                         event.target.value,
                                     })
-                                  );
-
-                                  if (
-                                    messageError
-                                  ) {
-                                    setMessageErrors(
-                                      (
-                                        current
-                                      ) => ({
-                                        ...current,
-
-                                        [order.id]:
-                                          "",
-                                      })
-                                    );
-                                  }
-                                }}
-                                rows={
-                                  3
+                                  )
                                 }
-                                maxLength={
-                                  MESSAGE_MAX_LENGTH
-                                }
-                                disabled={
-                                  sendingMessage
-                                }
-                                placeholder="Hi, I have an update about your order..."
-                                className="mt-4 w-full resize-y rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                placeholder="Write an order update..."
+                                className="w-full rounded-lg border border-slate-200 bg-white p-3 text-sm"
                               />
 
-                              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                                <p className="text-[11px] text-slate-400">
-                                  {
-                                    messageDraft.length
-                                  }
-                                  /
-                                  {
-                                    MESSAGE_MAX_LENGTH
-                                  }
-                                </p>
-
-                                <p className="text-[11px] text-slate-400">
-                                  Contact details may
-                                  be hidden by
-                                  CampusMart.
-                                </p>
-                              </div>
-
                               {messageError ? (
-                                <div
-                                  role="alert"
-                                  className="mt-3 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-semibold leading-5 text-red-700"
-                                >
+                                <p className="mt-2 text-xs font-bold text-red-600">
                                   {
                                     messageError
                                   }
-                                </div>
+                                </p>
                               ) : null}
 
-                              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                              <div className="mt-2 flex gap-2">
                                 <button
                                   type="submit"
                                   disabled={
                                     sendingMessage ||
                                     !messageDraft.trim()
                                   }
-                                  className="inline-flex items-center justify-center rounded-[10px] bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="rounded-lg bg-slate-950 px-4 py-2 text-xs font-black text-white"
                                 >
-                                  {sendingMessage
-                                    ? "Sending..."
-                                    : "Send message"}
+                                  Send
                                 </button>
 
                                 <button
                                   type="button"
-                                  disabled={
-                                    sendingMessage
-                                  }
-                                  onClick={() => {
+                                  onClick={() =>
                                     setMessageComposerOrderId(
                                       null
-                                    );
-
-                                    setMessageErrors(
-                                      (
-                                        current
-                                      ) => ({
-                                        ...current,
-
-                                        [order.id]:
-                                          "",
-                                      })
-                                    );
-                                  }}
-                                  className="inline-flex items-center justify-center rounded-[10px] border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                                    )
+                                  }
+                                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-black"
                                 >
                                   Cancel
                                 </button>
                               </div>
                             </form>
                           ) : messageError ? (
-                            <div
-                              role="alert"
-                              className="mt-4 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-semibold leading-5 text-red-700"
-                            >
+                            <p className="mt-3 text-xs font-bold text-red-600">
                               {
                                 messageError
                               }
-                            </div>
+                            </p>
                           ) : null}
                         </div>
 
-                        {/*
-                         * =================================
-                         * BUYER PHONE
-                         * =================================
-                         */}
+                        <div className="border-t border-slate-200 p-4">
+                          <h3 className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                            Items
+                          </h3>
 
-                        <div className="border-t border-slate-200 bg-white px-5 py-4">
-                          {buyerPhoneAvailable ? (
-                            <div className="flex flex-col gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                              <div>
-                                <p className="text-xs font-black uppercase tracking-[0.14em] text-emerald-700">
-                                  Buyer contact unlocked
-                                </p>
-
-                                <p className="mt-2 text-lg font-black text-emerald-950">
-                                  {
-                                    order.buyer.phone
-                                  }
-                                </p>
-
-                                <p className="mt-1 max-w-xl text-xs leading-5 text-emerald-800">
-                                  This number is available
-                                  during the active handoff
-                                  window so you can contact
-                                  the buyer if they are not
-                                  responding in CampusMart.
-                                </p>
-                              </div>
-
-                              <a
-                                href={`tel:${order.buyer.phone}`}
-                                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-[10px] bg-emerald-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-emerald-800"
-                              >
-                                Call buyer
-                              </a>
-                            </div>
-                          ) : buyerPhoneUnlocked ? (
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                              <p className="text-sm font-bold text-slate-900">
-                                Buyer contact unavailable
-                              </p>
-
-                              <p className="mt-1 text-xs leading-5 text-slate-600">
-                                Contact access is unlocked
-                                for this order, but the
-                                buyer does not currently
-                                have a phone number
-                                available.
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                              <p className="text-sm font-bold text-slate-900">
-                                Buyer phone is protected
-                              </p>
-
-                              <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600">
-                                Use CampusMart messaging
-                                while the phone number is
-                                protected. Buyer phone
-                                becomes available only
-                                during an active paid and
-                                confirmed handoff.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-
-                        {/*
-                         * =================================
-                         * ITEMS
-                         * =================================
-                         */}
-
-                        <div className="p-5">
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                                Your items
-                              </p>
-
-                              <h3 className="mt-1 text-lg font-black text-slate-950">
-                                What to fulfil
-                              </h3>
-                            </div>
-
-                            <p className="text-sm font-bold text-slate-600">
-                              {
-                                itemQuantity
-                              }{" "}
-                              {itemQuantity ===
-                              1
-                                ? "item"
-                                : "items"}
-                            </p>
-                          </div>
-
-                          <div className="mt-4 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+                          <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
                             {order.items.map(
                               (
                                 item
@@ -2977,136 +2462,99 @@ export default function Page() {
                                     key={
                                       item.id
                                     }
-                                    className="flex gap-4 bg-white p-4"
+                                    className="flex gap-3 bg-white p-3"
                                   >
                                     {image ? (
                                       <img
                                         src={
                                           image
                                         }
-                                        alt=""
-                                        className="h-20 w-20 shrink-0 rounded-[10px] object-cover"
+                                        alt={
+                                          item.productTitle
+                                        }
+                                        className="h-16 w-14 shrink-0 rounded-lg object-cover"
                                       />
                                     ) : (
-                                      <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[10px] bg-slate-900 px-2 text-center text-[10px] font-bold text-white">
-                                        CampusMart
+                                      <div className="flex h-16 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-[9px] font-black text-white">
+                                        CM
                                       </div>
                                     )}
 
                                     <div className="min-w-0 flex-1">
-                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                        <div>
-                                          <p className="font-bold text-slate-950">
-                                            {
-                                              item.productTitle
-                                            }
-                                          </p>
+                                      <p className="line-clamp-2 text-sm font-black">
+                                        {
+                                          item.productTitle
+                                        }
+                                      </p>
 
-                                          <p className="mt-1 text-xs text-slate-500">
-                                            {
-                                              item.quantity
-                                            }{" "}
-                                            ×{" "}
-                                            {formatNaira(
-                                              item.unitPrice
-                                            )}
-                                          </p>
-                                        </div>
-
-                                        <p className="shrink-0 font-black text-slate-950">
-                                          {formatNaira(
-                                            item.lineTotal
-                                          )}
-                                        </p>
-                                      </div>
-
-                                      <div className="mt-3 flex flex-wrap items-center gap-3">
-                                        <StatusBadge
-                                          status={
-                                            item.status
-                                          }
-                                        />
-
-                                        {item.product ? (
-                                          <Link
-                                            href={`/marketplace/products/${item.product.id}`}
-                                            className="text-xs font-bold text-slate-600 transition hover:text-black hover:underline"
-                                          >
-                                            View listing
-                                          </Link>
-                                        ) : (
-                                          <span className="text-xs font-semibold text-slate-400">
-                                            Original listing unavailable
-                                          </span>
+                                      <p className="mt-1 text-xs text-slate-500">
+                                        {
+                                          item.quantity
+                                        }{" "}
+                                        x{" "}
+                                        {formatNaira(
+                                          item.unitPrice
                                         )}
-                                      </div>
+                                      </p>
+
+                                      {item.selectedSize ||
+                                      item.selectedColor ? (
+                                        <div className="mt-1.5 flex flex-wrap gap-1">
+                                          {item.selectedSize ? (
+                                            <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black">
+                                              Size{" "}
+                                              {
+                                                item.selectedSize
+                                              }
+                                            </span>
+                                          ) : null}
+
+                                          {item.selectedColor ? (
+                                            <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black">
+                                              {
+                                                item.selectedColor
+                                              }
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      ) : null}
+
+                                      {item.product ? (
+                                        <Link
+                                          href={`/marketplace/products/${item.product.id}`}
+                                          className="mt-2 inline-block text-[10px] font-bold text-slate-500 underline"
+                                        >
+                                          View listing
+                                        </Link>
+                                      ) : null}
                                     </div>
+
+                                    <p className="shrink-0 text-sm font-black">
+                                      {formatNaira(
+                                        item.lineTotal
+                                      )}
+                                    </p>
                                   </div>
                                 );
                               }
                             )}
                           </div>
+                        </div>
 
-                          <div className="mt-5 flex items-center justify-between border-t border-slate-200 pt-5">
-                            <span className="text-sm font-bold text-slate-600">
-                              Your order total
-                            </span>
-
-                            <span className="text-xl font-black text-slate-950">
-                              {formatNaira(
-                                vendorTotal
-                              )}
-                            </span>
-                          </div>
-
-                          {!canFulfilExistingOrders &&
-                          order.vendorStatus !==
-                            "completed" &&
-                          order.vendorStatus !==
-                            "cancelled" ? (
-                            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                              <p className="text-sm font-bold text-slate-800">
-                                Order actions unavailable
+                        {order.vendorStatus ===
+                          "pending" &&
+                        canFulfilExistingOrders ? (
+                          <div className="border-t border-amber-200 bg-amber-50 p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <p className="text-sm font-black text-amber-950">
+                                Review the pickup location before responding.
                               </p>
 
-                              <p className="mt-1 text-xs leading-5 text-slate-500">
-                                You can still
-                                view this order
-                                and its message
-                                history, but your
-                                current seller
-                                access does not
-                                allow fulfilment
-                                status changes.
-                              </p>
-                            </div>
-                          ) : null}
-
-                          {order.vendorStatus ===
-                            "pending" &&
-                          canFulfilExistingOrders ? (
-                            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                              <p className="font-bold text-amber-950">
-                                Buyer is waiting
-                                for your response
-                              </p>
-
-                              <p className="mt-1 text-xs leading-5 text-amber-800">
-                                Confirm the order
-                                if you can fulfil
-                                it. Buyer contact
-                                stays protected
-                                until CampusMart
-                                has a paid order
-                                and your portion
-                                is confirmed.
-                              </p>
-
-                              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                              <div className="flex gap-2">
                                 <button
                                   type="button"
                                   disabled={
-                                    actionsDisabled
+                                    busy
                                   }
                                   onClick={() =>
                                     void updateStatus(
@@ -3114,17 +2562,15 @@ export default function Page() {
                                       "confirmed"
                                     )
                                   }
-                                  className="rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-accent-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="rounded-lg bg-accent-400 px-4 py-2 text-xs font-black"
                                 >
-                                  {busy
-                                    ? "Updating..."
-                                    : "Confirm order"}
+                                  Confirm
                                 </button>
 
                                 <button
                                   type="button"
                                   disabled={
-                                    actionsDisabled
+                                    busy
                                   }
                                   onClick={() =>
                                     void updateStatus(
@@ -3132,227 +2578,28 @@ export default function Page() {
                                       "cancelled"
                                     )
                                   }
-                                  className="rounded-[10px] border border-red-200 bg-white px-5 py-3 text-sm font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="rounded-lg border border-red-200 bg-white px-4 py-2 text-xs font-black text-red-600"
                                 >
-                                  Cancel order
+                                  Cancel
                                 </button>
                               </div>
                             </div>
-                          ) : null}
+                          </div>
+                        ) : null}
 
-                          {order.vendorStatus ===
-                            "confirmed" &&
-                          canFulfilExistingOrders ? (
-                            <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:p-5">
-                              <p className="text-xs font-black uppercase tracking-[0.14em] text-blue-700">
-                                Secure handoff
-                              </p>
+                        {order.vendorStatus ===
+                        "completed" ? (
+                          <div className="border-t border-emerald-200 bg-emerald-50 p-3 text-sm font-black text-emerald-800">
+                            Handoff completed.
+                          </div>
+                        ) : null}
 
-                              <h3 className="mt-2 text-lg font-black text-blue-950">
-                                Enter the buyer&apos;s
-                                4-digit code
-                              </h3>
-
-                              <p className="mt-2 max-w-xl text-sm leading-6 text-blue-800">
-                                The buyer should
-                                give you their
-                                private handoff
-                                code only after
-                                they have received
-                                and checked the
-                                items.
-                              </p>
-
-                              <div className="mt-5 flex max-w-md flex-col gap-3 sm:flex-row">
-                                <input
-                                  type="text"
-                                  inputMode="numeric"
-                                  pattern="[0-9]*"
-                                  maxLength={
-                                    4
-                                  }
-                                  value={
-                                    enteredCode
-                                  }
-                                  disabled={
-                                    busy
-                                  }
-                                  onChange={(
-                                    event
-                                  ) => {
-                                    const code =
-                                      event.target.value
-                                        .replace(
-                                          /\D/g,
-                                          ""
-                                        )
-                                        .slice(
-                                          0,
-                                          4
-                                        );
-
-                                    setFulfillmentCodes(
-                                      (
-                                        current
-                                      ) => ({
-                                        ...current,
-
-                                        [order.id]:
-                                          code,
-                                      })
-                                    );
-
-                                    if (
-                                      fulfillmentFeedback[
-                                        order.id
-                                      ]
-                                    ) {
-                                      setFulfillmentFeedback(
-                                        (
-                                          current
-                                        ) => {
-                                          const next = {
-                                            ...current,
-                                          };
-
-                                          delete next[
-                                            order.id
-                                          ];
-
-                                          return next;
-                                        }
-                                      );
-                                    }
-                                  }}
-                                  onKeyDown={(
-                                    event
-                                  ) => {
-                                    if (
-                                      event.key ===
-                                        "Enter" &&
-                                      enteredCode.length ===
-                                        4 &&
-                                      !busy
-                                    ) {
-                                      void submitFulfillmentCode(
-                                        order.id
-                                      );
-                                    }
-                                  }}
-                                  placeholder="0000"
-                                  aria-label="Buyer handoff code"
-                                  className="min-h-12 w-full rounded-[10px] border border-blue-200 bg-white px-4 text-center font-mono text-xl font-black tracking-[0.3em] text-slate-950 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:w-40"
-                                />
-
-                                <button
-                                  type="button"
-                                  disabled={
-                                    busy ||
-                                    enteredCode.length !==
-                                      4
-                                  }
-                                  onClick={() =>
-                                    void submitFulfillmentCode(
-                                      order.id
-                                    )
-                                  }
-                                  className="min-h-12 rounded-[10px] bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {busy
-                                    ? "Verifying..."
-                                    : "Complete handoff"}
-                                </button>
-                              </div>
-
-                              {fulfillmentIssue ? (
-                                <div
-                                  role="alert"
-                                  className="mt-4 rounded-[10px] border border-red-200 bg-red-50 p-3"
-                                >
-                                  <p className="text-sm font-bold text-red-700">
-                                    {
-                                      fulfillmentIssue.message
-                                    }
-                                  </p>
-                                </div>
-                              ) : null}
-
-                              <div className="mt-4 rounded-[10px] border border-blue-200 bg-white/70 p-3">
-                                <p className="text-xs font-bold text-slate-800">
-                                  Do not ask the
-                                  buyer for the
-                                  code before
-                                  handoff.
-                                </p>
-
-                                <p className="mt-1 text-xs leading-5 text-slate-600">
-                                  A successful
-                                  code check is
-                                  CampusMart&apos;s
-                                  confirmation
-                                  that this seller
-                                  portion was
-                                  handed over.
-                                </p>
-                              </div>
-
-                              <button
-                                type="button"
-                                disabled={
-                                  actionsDisabled
-                                }
-                                onClick={() =>
-                                  void updateStatus(
-                                    order.id,
-                                    "cancelled"
-                                  )
-                                }
-                                className="mt-4 text-xs font-bold text-red-600 underline-offset-4 transition hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                Cancel this order instead
-                              </button>
-                            </div>
-                          ) : null}
-
-                          {order.vendorStatus ===
-                          "completed" ? (
-                            <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                              <p className="font-bold text-emerald-800">
-                                Handoff completed
-                              </p>
-
-                              <p className="mt-1 text-xs leading-5 text-emerald-700">
-                                The buyer&apos;s
-                                handoff code was
-                                successfully
-                                verified and your
-                                seller portion of
-                                this order is
-                                complete. Buyer
-                                phone access has
-                                been closed again.
-                              </p>
-                            </div>
-                          ) : null}
-
-                          {order.vendorStatus ===
-                          "cancelled" ? (
-                            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
-                              <p className="font-bold text-red-700">
-                                Order cancelled
-                              </p>
-
-                              <p className="mt-1 text-xs leading-5 text-red-600">
-                                Your seller
-                                portion of this
-                                order has been
-                                cancelled. Buyer
-                                phone access is
-                                not available.
-                              </p>
-                            </div>
-                          ) : null}
-                        </div>
+                        {order.vendorStatus ===
+                        "cancelled" ? (
+                          <div className="border-t border-red-200 bg-red-50 p-3 text-sm font-black text-red-700">
+                            Order cancelled.
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </article>

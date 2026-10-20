@@ -7,26 +7,48 @@ const allowedImageTypes = [
   "image/avif",
 ];
 
-const storage = multer.memoryStorage();
+const storage =
+  multer.memoryStorage();
 
-export const productImageUpload = multer({
-  storage,
+export const productImageUpload =
+  multer({
+    storage,
 
-  limits: {
-    fileSize: 5 * 1024 * 1024,
-    files: 5,
-  },
+    limits: {
+      fileSize:
+        5 * 1024 * 1024,
 
-  fileFilter: (_req, file, callback) => {
-    if (!allowedImageTypes.includes(file.mimetype)) {
-      callback(
-        new Error(
-          "Only JPG, PNG, WebP and AVIF images are allowed."
-        )
-      );
-      return;
-    }
+      /*
+       * One required main image +
+       * up to five additional images.
+       */
+      files:
+        6,
+    },
 
-    callback(null, true);
-  },
-});
+    fileFilter:
+      (
+        _req,
+        file,
+        callback
+      ) => {
+        if (
+          !allowedImageTypes.includes(
+            file.mimetype
+          )
+        ) {
+          callback(
+            new Error(
+              "Only JPG, PNG, WebP and AVIF images are allowed."
+            )
+          );
+
+          return;
+        }
+
+        callback(
+          null,
+          true
+        );
+      },
+  });

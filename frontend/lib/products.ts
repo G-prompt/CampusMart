@@ -8,6 +8,16 @@ export type Product = {
   seller: string;
   description: string;
   images: string[];
+
+  sizes?: string[];
+  colors?: string[];
+
+  vendorId?: string;
+
+  sellerCampus?: string | null;
+  sellerUniversityId?: string | null;
+
+  demandScore?: number;
 };
 
 const IMG = {
@@ -30,9 +40,16 @@ export const products: Product[] = [
     price: 18000,
     rating: 4.8,
     seller: "Campus Nightlife Co.",
-    description: "A pair of entry passes to the biggest student club night on campus this Friday. Includes fast-track entry and one welcome drink each. Great for a night out with a friend or as a surprise gift.",
-    images: [IMG.club, IMG.clubAlt],
+    description:
+      "A pair of entry passes to the biggest student club night on campus this Friday.",
+    images: [
+      IMG.club,
+      IMG.clubAlt,
+    ],
+    sizes: [],
+    colors: [],
   },
+
   {
     id: 2,
     slug: "rooftop-movie-night-passes",
@@ -41,9 +58,16 @@ export const products: Product[] = [
     price: 9500,
     rating: 4.6,
     seller: "Campus Nightlife Co.",
-    description: "Two passes to the weekend rooftop cinema series overlooking the main quad. Bring a blanket and enjoy a curated double feature under the stars with fellow students.",
-    images: [IMG.clubAlt, IMG.club],
+    description:
+      "Two passes to the weekend rooftop cinema series.",
+    images: [
+      IMG.clubAlt,
+      IMG.club,
+    ],
+    sizes: [],
+    colors: [],
   },
+
   {
     id: 3,
     slug: "design-photography-hardback",
@@ -52,9 +76,16 @@ export const products: Product[] = [
     price: 12000,
     rating: 4.9,
     seller: "Amina's Book Corner",
-    description: "A beautifully illustrated hardback covering modern design and photography principles. Gently used with no markings, perfect for design, art, or media students.",
-    images: [IMG.book, IMG.bookAlt],
+    description:
+      "A beautifully illustrated hardback covering modern design and photography principles.",
+    images: [
+      IMG.book,
+      IMG.bookAlt,
+    ],
+    sizes: [],
+    colors: [],
   },
+
   {
     id: 4,
     slug: "chemistry-past-questions-pack",
@@ -63,9 +94,16 @@ export const products: Product[] = [
     price: 4500,
     rating: 4.7,
     seller: "Amina's Book Corner",
-    description: "Five years of compiled past questions and worked solutions for organic chemistry courses. Spiral-bound and printed on quality paper, ideal for exam revision.",
-    images: [IMG.bookAlt, IMG.book],
+    description:
+      "Five years of compiled past questions and worked solutions.",
+    images: [
+      IMG.bookAlt,
+      IMG.book,
+    ],
+    sizes: [],
+    colors: [],
   },
+
   {
     id: 5,
     slug: "dinner-for-two-garden-room",
@@ -74,9 +112,16 @@ export const products: Product[] = [
     price: 35000,
     rating: 4.9,
     seller: "The Garden Room",
-    description: "A reserved table for two at The Garden Room, including a three-course set menu. A perfect way to treat yourself or someone special near campus.",
-    images: [IMG.dinner, IMG.dinnerAlt],
+    description:
+      "A reserved table for two at The Garden Room.",
+    images: [
+      IMG.dinner,
+      IMG.dinnerAlt,
+    ],
+    sizes: [],
+    colors: [],
   },
+
   {
     id: 6,
     slug: "campus-cafe-breakfast-voucher",
@@ -85,9 +130,16 @@ export const products: Product[] = [
     price: 6000,
     rating: 4.5,
     seller: "The Garden Room",
-    description: "A breakfast voucher redeemable at the campus café, covering a hot meal and a drink of your choice. Valid any weekday morning before 11am.",
-    images: [IMG.dinnerAlt, IMG.dinner],
+    description:
+      "A breakfast voucher redeemable at the campus café.",
+    images: [
+      IMG.dinnerAlt,
+      IMG.dinner,
+    ],
+    sizes: [],
+    colors: [],
   },
+
   {
     id: 7,
     slug: "wireless-headphones-excellent-condition",
@@ -96,9 +148,16 @@ export const products: Product[] = [
     price: 28000,
     rating: 4.8,
     seller: "Tunde's Tech Store",
-    description: "Lightly used over-ear wireless headphones with strong battery life and noise isolation, great for lectures and study sessions. Comes with charging cable and case.",
-    images: [IMG.headphones, IMG.headphonesAlt],
+    description:
+      "Lightly used over-ear wireless headphones.",
+    images: [
+      IMG.headphones,
+      IMG.headphonesAlt,
+    ],
+    sizes: [],
+    colors: [],
   },
+
   {
     id: 8,
     slug: "laptop-stand-fast-charger-bundle",
@@ -107,8 +166,14 @@ export const products: Product[] = [
     price: 18500,
     rating: 4.7,
     seller: "Tunde's Tech Store",
-    description: "A portable, foldable laptop stand paired with a compact fast charger. Ideal for study sessions in the library or hostel, keeps your setup ergonomic and charged.",
-    images: [IMG.headphonesAlt, IMG.headphones],
+    description:
+      "A portable laptop stand paired with a compact fast charger.",
+    images: [
+      IMG.headphonesAlt,
+      IMG.headphones,
+    ],
+    sizes: [],
+    colors: [],
   },
 ];
 
@@ -139,10 +204,22 @@ export const categories = [
   "Other",
 ];
 
-export function getProductById(id: number) {
-  return products.find((product) => product.id === id);
+export function getProductById(
+  id:
+    number
+) {
+  return products.find(
+    (
+      product
+    ) =>
+      product.id ===
+      id
+  );
 }
 
-export function formatNaira(value: number) {
+export function formatNaira(
+  value:
+    number
+) {
   return `₦${value.toLocaleString()}`;
 }

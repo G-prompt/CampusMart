@@ -17,6 +17,7 @@ import {
 
 import {
   parseUniversityRosterCsv,
+  studentNamesMatch,
 } from "../lib/universityRoster";
 
 import {
@@ -411,9 +412,37 @@ export const previewUniversityRoster =
       }
 
       const result =
-        parseUniversityRosterCsv(
-          uploadedCsv.csvText
-        );
+        parseUniversityRosterCsv(uploadedCsv.csvText, {
+          flexibleHeaders: true,
+          currentStudentsOnly: req.body?.currentStudentsOnly === "true",
+        });
+
+      // Count overlaps with other active rosters, without exposing raw student
+      // records through the preview endpoint. Rows stay independently sourced.
+      const uniqueMatric = [...new Set(result.records.map(row => row.normalizedMatricNumber))];
+      let overlapping = 0;
+      let conflicting = 0;
+      const existingByMatric = new Map<string, {fullName: string; isActiveStudent: boolean}[]>();
+      for (let offset = 0; offset < uniqueMatric.length; offset += 500) {
+        const matches = await prisma.universityRosterRecord.findMany({
+          where: {
+            normalizedMatricNumber: {in: uniqueMatric.slice(offset, offset + 500)},
+            rosterImport: {is: {universityId, status: UniversityRosterImportStatus.active}},
+          },
+          select: {normalizedMatricNumber:true,fullName:true,isActiveStudent:true},
+        });
+        for (const match of matches) {
+          const matchesForMatric = existingByMatric.get(match.normalizedMatricNumber) ?? [];
+          matchesForMatric.push(match);
+          existingByMatric.set(match.normalizedMatricNumber, matchesForMatric);
+        }
+      }
+      for (const row of result.records) {
+        const matches = existingByMatric.get(row.normalizedMatricNumber) ?? [];
+        if (matches.length) overlapping++;
+        if (matches.some(other => other.isActiveStudent !== row.isActiveStudent ||
+          !studentNamesMatch(other.fullName, row.fullName) || !studentNamesMatch(row.fullName, other.fullName))) conflicting++;
+      }
 
       return res
         .status(200)
@@ -445,6 +474,11 @@ export const previewUniversityRoster =
           },
 
           preview: {
+            overlap: {
+              newMatricNumbers: uniqueMatric.length - overlapping,
+              alreadyInOtherSources: overlapping,
+              conflicts: conflicting,
+            },
             valid:
               result.valid,
 
@@ -664,8 +698,8 @@ export const importUniversityRoster =
           importedByAdminId:
             req.admin.id,
 
-          csvText:
-            uploadedCsv.csvText,
+          csvText: uploadedCsv.csvText,
+          currentStudentsOnly: req.body?.currentStudentsOnly === "true",
 
           originalFileName:
             uploadedCsv.originalFileName,
@@ -688,7 +722,7 @@ export const importUniversityRoster =
             true,
 
           message:
-            "University roster imported and activated successfully.",
+            "Roster imported successfully. Other active sources were preserved.",
 
           rosterImport,
         });
@@ -816,6 +850,9 @@ export const getUniversityRosterImports =
 
             academicSession:
               true,
+            rosterScope: true,
+            sourceUnit: true,
+            trustedForAutomatedVerification: true,
 
             sourceIssuer:
               true,
@@ -1000,8 +1037,8 @@ export const getActiveUniversityRoster =
           });
       }
 
-      const rosterImport =
-        await prisma.universityRosterImport.findFirst({
+      const activeRosters =
+        await prisma.universityRosterImport.findMany({
           where: {
             universityId,
 
@@ -1023,6 +1060,8 @@ export const getActiveUniversityRoster =
 
             academicSession:
               true,
+            rosterScope: true,
+            trustedForAutomatedVerification: true,
 
             sourceIssuer:
               true,
@@ -1069,6 +1108,7 @@ export const getActiveUniversityRoster =
           },
         });
 
+      const rosterImport = activeRosters[0] ?? null;
       return res
         .status(200)
         .json({
@@ -1077,9 +1117,8 @@ export const getActiveUniversityRoster =
 
           university,
 
-          rosterImport:
-            rosterImport ??
-            null,
+          rosterImport,
+          activeRosters,
         });
     } catch (
       error

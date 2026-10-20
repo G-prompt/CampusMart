@@ -13,6 +13,12 @@ import {
 } from "../controllers/product.controller";
 
 import {
+  createProductReview,
+  getProductReviewEligibility,
+  getProductReviews,
+} from "../controllers/productReview.controller";
+
+import {
   requireAuth,
   requireSellerEligibility,
   requireVendorAccount,
@@ -25,29 +31,10 @@ import {
 const router =
   Router();
 
-/*
- * =======================================================
- * PUBLIC MARKETPLACE
- * =======================================================
- *
- * Archived listings are filtered out by the controller.
- */
-
 router.get(
   "/",
   getProducts
 );
-
-/*
- * =======================================================
- * SELLER'S OWN LISTINGS
- * =======================================================
- *
- * Sellers can view both published and archived listings.
- *
- * Active selling eligibility is NOT required simply to
- * access listing history.
- */
 
 router.get(
   "/mine",
@@ -56,29 +43,27 @@ router.get(
   getVendorProducts
 );
 
-/*
- * =======================================================
- * PUBLIC PRODUCT DETAIL
- * =======================================================
- *
- * Archived listings return 404 from the controller.
- */
+router.get(
+  "/:id/reviews",
+  getProductReviews
+);
+
+router.get(
+  "/:id/reviews/eligibility",
+  requireAuth,
+  getProductReviewEligibility
+);
+
+router.post(
+  "/:id/reviews",
+  requireAuth,
+  createProductReview
+);
 
 router.get(
   "/:id",
   getProductById
 );
-
-/*
- * =======================================================
- * CREATE LISTING
- * =======================================================
- *
- * Creating new marketplace activity requires full current
- * seller eligibility.
- *
- * Eligibility runs before image upload.
- */
 
 router.post(
   "/",
@@ -86,19 +71,10 @@ router.post(
   requireSellerEligibility,
   productImageUpload.array(
     "images",
-    5
+    6
   ),
   createProduct
 );
-
-/*
- * =======================================================
- * EDIT LISTING
- * =======================================================
- *
- * Editing an existing listing is also a seller operation,
- * so full current seller eligibility is required.
- */
 
 router.patch(
   "/:id",
@@ -106,21 +82,10 @@ router.patch(
   requireSellerEligibility,
   productImageUpload.array(
     "images",
-    5
+    6
   ),
   updateProduct
 );
-
-/*
- * =======================================================
- * RESTORE ARCHIVED LISTING
- * =======================================================
- *
- * Restoring puts a product back into public sale.
- *
- * Therefore the seller must currently satisfy the full
- * seller eligibility policy.
- */
 
 router.patch(
   "/:id/restore",
@@ -128,24 +93,6 @@ router.patch(
   requireSellerEligibility,
   restoreProduct
 );
-
-/*
- * =======================================================
- * ARCHIVE LISTING
- * =======================================================
- *
- * DELETE remains the route for compatibility with the
- * current frontend, but this no longer hard-deletes the
- * database record.
- *
- * A vendor account may archive its own listing even if
- * current seller eligibility has been lost.
- *
- * Taking something OFF sale is risk-reducing and should
- * not require permission to start new selling activity.
- *
- * Ownership is still checked inside deleteProduct.
- */
 
 router.delete(
   "/:id",

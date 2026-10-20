@@ -1,4 +1,6 @@
 "use client";
+import { useCampusMartConfirm } from "@/components/common/CampusMartConfirm";
+
 
 import {
   useCallback,
@@ -19,6 +21,8 @@ import {
 import AdminShell from "@/components/admin/AdminShell";
 
 import UniversityRosterPanel from "@/components/admin/UniversityRosterPanel";
+import MatricPatternEditor from "@/components/admin/MatricPatternEditor";
+import { NIGERIA_LOCATIONS, NIGERIAN_STATES } from "@/lib/nigeriaLocations";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -93,6 +97,10 @@ type AdminUniversity = {
     | null;
 
   userCount: number;
+  sellerAccounts?: number;
+  activeListings?: number;
+  buyerOrders?: number;
+  completedHandoffs?: number;
 
   createdAt: string;
 
@@ -186,9 +194,7 @@ const SOURCE_OPTIONS: {
       "Verification against a managed university roster.",
 
     /*
-     * We now have roster import infrastructure,
-     * but the actual automated student matcher has not
-     * been activated yet.
+     * Enabled only when server confirms at least one certified source.
      */
     available:
       false,
@@ -407,6 +413,8 @@ function Toggle({
 }
 
 export default function AdminUniversityPage() {
+  const campusMartConfirm = useCampusMartConfirm();
+
   const params =
     useParams<{
       universityId:
@@ -479,6 +487,37 @@ export default function AdminUniversityPage() {
     useState(
       ""
     );
+
+  // Manage one university function at a time, without losing unsaved form state.
+  const [activeTab, setActiveTab] =
+    useState<"overview" | "details" | "verification" | "roster" | "matric">("overview");
+
+  // An active, certified source may have institution, faculty, or department scope.
+  // All scopes are subject to server-side matric/name/status checks.
+  const [rosterCertified, setRosterCertified] = useState(false);
+
+  const refreshRosterCertification = useCallback(async () => {
+    if (!universityId) return;
+    try {
+      const token = sessionStorage.getItem(ADMIN_TOKEN_KEY);
+      if (!token) { setRosterCertified(false); return; }
+      const response = await fetch(
+        `${API_URL}/api/admin/universities/${universityId}/rosters/active`,
+        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
+      );
+      if (!response.ok) { setRosterCertified(false); return; }
+      const data = await response.json();
+      setRosterCertified(Boolean(
+        data?.success &&
+        Array.isArray(data?.activeRosters) &&
+        data.activeRosters.some((source: {status:string;trustedForAutomatedVerification:boolean}) =>
+          source.status === "active" && source.trustedForAutomatedVerification === true)
+      ));
+    } catch {
+      // Fail closed if we cannot confirm trust on the server.
+      setRosterCertified(false);
+    }
+  }, [universityId]);
 
   const loadUniversity =
     useCallback(
@@ -617,9 +656,8 @@ export default function AdminUniversityPage() {
 
   useEffect(() => {
     void loadUniversity();
-  }, [
-    loadUniversity,
-  ]);
+    void refreshRosterCertification();
+  }, [loadUniversity, refreshRosterCertification]);
 
   const hasChanges =
     useMemo(
@@ -789,26 +827,21 @@ export default function AdminUniversityPage() {
         return;
       }
 
-      /*
-       * The database architecture can represent automated
-       * sources, but none should be enabled until its
-       * verification provider is operational.
-       *
-       * For roster_import specifically:
-       *
-       * - roster upload exists
-       * - roster storage exists
-       * - roster activation exists
-       * - automated matching is NOT live yet
-       */
+      // University API and database integrations remain unavailable.
+      // Roster verification needs at least one certified, active source.
+      // Per-record matching and conflicting-source decisions stay backend-authoritative.
       if (
         form.studentVerificationEnabled &&
-        automatedSourceSelected
+        automatedSourceSelected &&
+        !(
+          rosterCertified &&
+          [form.primaryVerificationSource, form.fallbackVerificationSource]
+            .every(source => source === "none" || source === "roster_import")
+        )
       ) {
         setError(
-          "Automated university verification cannot be enabled yet. Roster import infrastructure now exists, but the automated roster matcher has not been activated. University API and database integrations are also not connected. Use Manual review for now."
+          "Automatic verification requires an approved source. To use CSV/Roster, first certify an authorised current-student register in the Roster tab. University API and database sources are not connected."
         );
-
         return;
       }
 
@@ -861,11 +894,9 @@ export default function AdminUniversityPage() {
         0
       ) {
         const confirmed =
-          window.confirm(
-            `${confirmations.join(
+          await campusMartConfirm({ title: "Confirm action", description: `${confirmations.join(
               "\n\n"
-            )}\n\nSave these changes?`
-          );
+            )}\n\nSave these changes?`, danger: false });
 
         if (
           !confirmed
@@ -923,9 +954,7 @@ export default function AdminUniversityPage() {
                     logoUrl ||
                     null,
 
-                  active:
-                    form.active,
-
+                  // Availability changes require a reason and a Super Admin.
                   studentVerificationEnabled:
                     form.studentVerificationEnabled,
 
@@ -1111,18 +1140,18 @@ export default function AdminUniversityPage() {
         university &&
         form ? (
           <>
-            <div className="mb-6 flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-4">
+            <div className="mb-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
                 {form.logoUrl ? (
                   <img
                     src={
                       form.logoUrl
                     }
                     alt=""
-                    className="h-16 w-16 shrink-0 rounded-2xl border border-slate-200 bg-white object-contain p-2"
+                    className="h-11 w-11 shrink-0 rounded-xl border border-slate-200 bg-white object-contain p-1"
                   />
                 ) : (
-                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-lg font-black text-white">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-sm font-black text-white">
                     {form.shortName.slice(
                       0,
                       3
@@ -1136,7 +1165,7 @@ export default function AdminUniversityPage() {
                     Managed university
                   </p>
 
-                  <h1 className="mt-1 truncate text-2xl font-black text-slate-950 sm:text-3xl">
+                  <h1 className="mt-1 text-lg font-black text-slate-950 sm:text-xl">
                     {
                       university.name
                     }
@@ -1197,6 +1226,35 @@ export default function AdminUniversityPage() {
               </div>
             </div>
 
+            <nav
+              aria-label="University management sections"
+              className="sticky top-0 z-20 mb-4 flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm"
+            >
+              {(
+                [
+                  ["overview", "Overview"],
+                  ["details", "Details"],
+                  ["verification", "Verification"],
+                  ["roster", "Roster"],
+                  ["matric", "Matric rules"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-current={activeTab === value ? "page" : undefined}
+                  onClick={() => setActiveTab(value)}
+                  className={`shrink-0 rounded-lg px-3 py-2 text-xs font-bold transition-colors sm:text-sm ${
+                    activeTab === value
+                      ? "bg-slate-950 text-white"
+                      : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+
             {error ? (
               <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-700">
                 {error}
@@ -1216,9 +1274,38 @@ export default function AdminUniversityPage() {
                 saveUniversity
               }
             >
-              <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-                <div className="space-y-6">
-                  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="space-y-4">
+                  {activeTab === "overview" && (
+                    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-400">At a glance</p>
+                      <h2 className="mt-1 text-lg font-black">{university.name}</h2>
+                      <p className="mt-1 text-sm text-slate-500">Choose a tab to update university details, verification, rosters, or matric rules.</p>
+                      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Orders placed</p><p className="mt-1 text-sm font-bold">{university.buyerOrders ?? 0}</p></div>
+                        <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Active listings</p><p className="mt-1 text-sm font-bold">{university.activeListings ?? 0}</p></div>
+                        <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Verified handoffs</p><p className="mt-1 text-sm font-bold">{university.completedHandoffs ?? 0}</p></div>
+                        <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Seller accounts</p><p className="mt-1 text-sm font-bold">{university.sellerAccounts ?? 0}</p></div>
+                        <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Registration</p><p className="mt-1 text-sm font-bold">{form.active ? "Active" : "Inactive"}</p></div>
+                        <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Verification</p><p className="mt-1 text-sm font-bold">{form.studentVerificationEnabled ? "Enabled" : "Disabled"}</p></div>
+                        <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Linked users</p><p className="mt-1 text-sm font-bold">{university.userCount}</p></div>
+                      </div>
+                      <div className="mt-4 flex flex-wrap items-center gap-4 rounded-lg border border-slate-100 p-3">
+                        <svg viewBox="0 0 100 100" className="size-24 shrink-0" role="img" aria-label={`${university.sellerAccounts || 0} sellers and ${Math.max(0,university.userCount-(university.sellerAccounts||0))} buyers registered`}>
+                          <circle cx="50" cy="50" r="35" fill="none" stroke="#e2e8f0" strokeWidth="14" />
+                          <circle cx="50" cy="50" r="35" fill="none" stroke="#f59e0b" strokeWidth="14" strokeDasharray={`${university.userCount ? 220 * ((university.sellerAccounts || 0)/university.userCount) : 0} 220`} transform="rotate(-90 50 50)" />
+                          <text x="50" y="53" textAnchor="middle" fontSize="15" fontWeight="bold">{university.userCount}</text>
+                        </svg>
+                        <div className="text-xs text-slate-600"><p className="font-bold text-slate-950">Account mix</p>
+                          <p className="mt-2">● Sellers: {university.sellerAccounts || 0}</p>
+                          <p>○ Buyer-role accounts: {Math.max(0,university.userCount-(university.sellerAccounts||0))}</p>
+                          <p className="mt-1 text-[11px]">Registered accounts, not daily active users.</p>
+                        </div>
+                      </div>
+                    </section>
+                  )}
+                  {activeTab === "details" && (
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
@@ -1256,29 +1343,9 @@ export default function AdminUniversityPage() {
                           </p>
                         </div>
 
-                        <Toggle
-                          checked={
-                            form.active
-                          }
-                          onChange={(
-                            checked
-                          ) =>
-                            setForm(
-                              (
-                                current
-                              ) =>
-                                current
-                                  ? {
-                                      ...current,
-
-                                      active:
-                                        checked,
-                                    }
-                                  : current
-                            )
-                          }
-                          label="University active state"
-                        />
+                        <span className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-700">
+                          {form.active ? "Active" : "Inactive"}
+                        </span>
                       </div>
                     </div>
 
@@ -1375,64 +1442,17 @@ export default function AdminUniversityPage() {
                         />
                       </label>
 
-                      <label className="block text-sm font-semibold text-slate-700">
-                        State
-
-                        <input
-                          value={
-                            form.state
-                          }
-                          onChange={(
-                            event
-                          ) =>
-                            setForm(
-                              (
-                                current
-                              ) =>
-                                current
-                                  ? {
-                                      ...current,
-
-                                      state:
-                                        event
-                                          .target
-                                          .value,
-                                    }
-                                  : current
-                            )
-                          }
-                          className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-slate-950"
-                        />
+                      <label className="block text-sm font-semibold text-slate-700">State / FCT
+                        {form.country.trim().toLowerCase() === "nigeria" ?
+                          <select value={form.state} onChange={event=>setForm(current=>current?{...current,state:event.target.value,city:""}:current)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
+                            <option value="">Select state / FCT</option>
+                            {NIGERIAN_STATES.map(state=><option key={state} value={state}>{state}</option>)}
+                          </select>
+                          : <input value={form.state} onChange={event=>setForm(current=>current?{...current,state:event.target.value}:current)} className="mt-2 w-full rounded-xl border px-4 py-3 text-sm" />}
                       </label>
-
-                      <label className="block text-sm font-semibold text-slate-700">
-                        City / area
-
-                        <input
-                          value={
-                            form.city
-                          }
-                          onChange={(
-                            event
-                          ) =>
-                            setForm(
-                              (
-                                current
-                              ) =>
-                                current
-                                  ? {
-                                      ...current,
-
-                                      city:
-                                        event
-                                          .target
-                                          .value,
-                                    }
-                                  : current
-                            )
-                          }
-                          className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-slate-950"
-                        />
+                      <label className="block text-sm font-semibold text-slate-700">City / area
+                        <input list="university-city-list" value={form.city} onChange={event=>setForm(current=>current?{...current,city:event.target.value}:current)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="Choose or enter city" />
+                        <datalist id="university-city-list">{(NIGERIA_LOCATIONS[form.state]||[]).map(city=><option key={city} value={city}/>)}</datalist>
                       </label>
 
                       <label className="block text-sm font-semibold text-slate-700 md:col-span-2">
@@ -1467,8 +1487,10 @@ export default function AdminUniversityPage() {
                       </label>
                     </div>
                   </section>
+                  )}
 
-                  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                  {activeTab === "verification" && (
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
@@ -1616,6 +1638,7 @@ export default function AdminUniversityPage() {
                                     }
                                     disabled={
                                       !option.available &&
+                                      !(option.value === "roster_import" && rosterCertified) &&
                                       form.primaryVerificationSource !==
                                         option.value
                                     }
@@ -1625,9 +1648,8 @@ export default function AdminUniversityPage() {
                                     }
 
                                     {!option.available
-                                      ? option.value ===
-                                        "roster_import"
-                                        ? " — matcher not active"
+                                      ? option.value === "roster_import"
+                                        ? rosterCertified ? " — certified" : " — certification required"
                                         : " — not connected"
                                       : ""}
                                   </option>
@@ -1694,6 +1716,7 @@ export default function AdminUniversityPage() {
                                     disabled={
                                       (
                                         !option.available &&
+                                        !(option.value === "roster_import" && rosterCertified) &&
                                         form.fallbackVerificationSource !==
                                           option.value
                                       ) ||
@@ -1710,9 +1733,8 @@ export default function AdminUniversityPage() {
                                     }
 
                                     {!option.available
-                                      ? option.value ===
-                                        "roster_import"
-                                        ? " — matcher not active"
+                                      ? option.value === "roster_import"
+                                        ? rosterCertified ? " — certified" : " — certification required"
                                         : " — not connected"
                                       : ""}
                                   </option>
@@ -1797,21 +1819,17 @@ export default function AdminUniversityPage() {
                             Roster upload,
                             validation,
                             private storage,
-                            activation and
-                            history are now
-                            implemented.
-                            The automated
-                            student matcher
-                            is the next
-                            verification
-                            layer. Until
-                            that matcher is
-                            tested,
-                            CampusMart will
-                            not treat a
-                            roster as a live
-                            automatic
-                            verifier.
+                            and history are
+                            implemented. A
+                            Super Admin can
+                            approve a trusted
+                            institution-wide
+                            active roster in
+                            the Roster tab.
+                            Uncertified or
+                            departmental lists
+                            cannot verify
+                            students automatically.
                           </p>
 
                           <p className="mt-2 text-xs font-semibold leading-5 text-violet-700">
@@ -1842,6 +1860,7 @@ export default function AdminUniversityPage() {
                       </div>
                     )}
                   </section>
+                  )}
 
                   {/*
                    * ===================================================
@@ -1853,13 +1872,18 @@ export default function AdminUniversityPage() {
                    * already-large university settings component harder
                    * to maintain.
                    */}
+                  {activeTab === "roster" && (
                   <UniversityRosterPanel
-                    universityId={
-                      university.id
-                    }
+                    universityId={university.id}
+                    onCertificationChanged={() => {
+                      void refreshRosterCertification();
+                      void loadUniversity();
+                    }}
                   />
+                  )}
 
-                  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                  {activeTab === "matric" && (
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
@@ -1910,49 +1934,7 @@ export default function AdminUniversityPage() {
 
                     {form.matricValidationEnabled ? (
                       <div className="mt-6 grid gap-5">
-                        <label className="block text-sm font-semibold text-slate-700">
-                          Private matric
-                          regex
-
-                          <input
-                            value={
-                              form.matricPattern
-                            }
-                            onChange={(
-                              event
-                            ) =>
-                              setForm(
-                                (
-                                  current
-                                ) =>
-                                  current
-                                    ? {
-                                        ...current,
-
-                                        matricPattern:
-                                          event
-                                            .target
-                                            .value,
-                                      }
-                                    : current
-                              )
-                            }
-                            placeholder="Example only — use a confirmed university rule"
-                            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 font-mono text-sm text-slate-950 outline-none transition focus:border-slate-950"
-                          />
-
-                          <span className="mt-2 block text-xs leading-5 text-red-600">
-                            Private
-                            Admin/backend
-                            configuration.
-                            Never expose
-                            this expression
-                            through the
-                            public
-                            university
-                            API.
-                          </span>
-                        </label>
+                        <MatricPatternEditor value={form.matricPattern} onChange={value=>setForm(current=>current?{...current,matricPattern:value}:current)} />
 
                         <label className="block text-sm font-semibold text-slate-700">
                           Public format
@@ -2005,10 +1987,18 @@ export default function AdminUniversityPage() {
                       </div>
                     )}
                   </section>
+                  )}
                 </div>
 
-                <div className="space-y-6">
-                  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="space-y-4">
+                  {activeTab === "roster" && (
+                    <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
+                      <p className="font-bold">Roster imports save separately</p>
+                      <p className="mt-1 text-xs leading-5">Upload and review roster data here. Importing a roster does not activate automatic identity verification.</p>
+                    </div>
+                  )}
+                  {activeTab === "overview" && (
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
                       Current state
                     </p>
@@ -2107,7 +2097,12 @@ export default function AdminUniversityPage() {
                       </div>
                     </div>
                   </section>
+                  )}
 
+                  {activeTab === "overview" && (
+                    <details className="rounded-xl border border-slate-200 bg-white p-4">
+                      <summary className="cursor-pointer text-sm font-bold text-slate-800">Verification policy notes (3)</summary>
+                      <div className="mt-3 space-y-3">
                   <section className="rounded-2xl border border-cyan-200 bg-cyan-50 p-6">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-700">
                       Roster status
@@ -2192,13 +2187,17 @@ export default function AdminUniversityPage() {
                       review.
                     </p>
                   </section>
+                      </div>
+                    </details>
+                  )}
 
-                  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                  {activeTab === "overview" && (
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
                       Record
                     </p>
 
-                    <div className="mt-4 space-y-4">
+                    <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
                           University ID
@@ -2248,6 +2247,7 @@ export default function AdminUniversityPage() {
                       </div>
                     </div>
                   </section>
+                  )}
 
                   {/*
                    * Not sticky anymore.
@@ -2257,6 +2257,7 @@ export default function AdminUniversityPage() {
                    * contains the roster importer, keeping this
                    * normal-flow is cleaner and safer.
                    */}
+                  {activeTab !== "roster" && (activeTab !== "overview" || hasChanges) && (
                   <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-lg">
                     <div>
                       <p className="font-bold text-slate-950">
@@ -2279,7 +2280,7 @@ export default function AdminUniversityPage() {
                       </p>
                     </div>
 
-                    <div className="mt-4 flex flex-col gap-3">
+                    <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
                       <button
                         type="button"
                         disabled={
@@ -2310,17 +2311,13 @@ export default function AdminUniversityPage() {
 
                     {automatedSourceSelected ? (
                       <p className="mt-3 text-xs font-semibold leading-5 text-violet-700">
-                        Automated
-                        verification
-                        cannot be
-                        activated until
-                        the relevant
-                        provider layer
-                        is complete and
-                        tested.
+                        Only certified institution-wide roster sources can
+                        be used for automatic matching. University API and
+                        database integrations are not connected.
                       </p>
                     ) : null}
                   </section>
+                  )}
                 </div>
               </div>
             </form>

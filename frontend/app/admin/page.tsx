@@ -1,347 +1,128 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-} from "react";
-
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import AdminShell, {
   type AdminProfile,
   adminRoleLabel,
 } from "@/components/admin/AdminShell";
+import { AnalyticsPreview } from "@/components/admin/AdminAnalytics";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const TOKEN = "campusmart-admin-token";
 
-const ADMIN_TOKEN_KEY =
-  "campusmart-admin-token";
+type DashboardStats = {
+  queue?: number;
+  universities?: number;
+  activeUniversities?: number;
+  recent?: { id: string; action: string; createdAt: string; actor: { name: string } }[];
+};
+
+const quickLink = "flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-bold transition hover:bg-slate-50";
 
 export default function AdminDashboardPage() {
-  const [
-    admin,
-    setAdmin,
-  ] =
-    useState<
-      AdminProfile | null
-    >(null);
+  const [admin, setAdmin] = useState<AdminProfile | null>(null);
+  const [stats, setStats] = useState<DashboardStats>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    let cancelled =
-      false;
-
-    const loadAdmin =
-      async () => {
-        const token =
-          sessionStorage.getItem(
-            ADMIN_TOKEN_KEY
-          );
-
-        if (!token) {
-          return;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const token = sessionStorage.getItem(TOKEN);
+        if (!token) return;
+        const headers = { Authorization: `Bearer ${token}` };
+        const response = await fetch(`${API}/api/admin/auth/me`, {
+          headers, cache: "no-store", signal: controller.signal,
+        });
+        const body = await response.json();
+        if (!response.ok || !body.success || !body.admin) {
+          throw new Error("Unable to load Admin profile.");
         }
-
-        try {
-          const response =
-            await fetch(
-              `${API_URL}/api/admin/auth/me`,
-              {
-                headers: {
-                  Authorization:
-                    `Bearer ${token}`,
-                },
-
-                cache:
-                  "no-store",
-              }
-            );
-
-          const data =
-            await response.json();
-
-          if (
-            response.ok &&
-            data.success &&
-            data.admin &&
-            !cancelled
-          ) {
-            setAdmin(
-              data.admin
-            );
-          }
-        } catch (
-          error
-        ) {
-          console.error(
-            "Dashboard Admin profile load failed:",
-            error
-          );
+        if (controller.signal.aborted) return;
+        const current: AdminProfile = body.admin;
+        setAdmin(current);
+        const next: DashboardStats = {};
+        await Promise.all([
+          (["super_admin", "verification_officer"].includes(current.role)
+            ? fetch(`${API}/api/admin/verification/appeals`, { headers, signal: controller.signal })
+                .then(r => r.ok ? r.json() : null)
+                .then(data => { if (Array.isArray(data?.appeals)) next.queue = data.appeals.length; })
+            : Promise.resolve()),
+          (["super_admin", "university_manager"].includes(current.role)
+            ? fetch(`${API}/api/admin/universities`, { headers, signal: controller.signal })
+                .then(r => r.ok ? r.json() : null)
+                .then(data => {
+                  if (Array.isArray(data?.universities)) {
+                    next.universities = data.universities.length;
+                    next.activeUniversities = data.universities.filter((u: { active: boolean }) => u.active).length;
+                  }
+                })
+            : Promise.resolve()),
+          (current.role === "super_admin"
+            ? fetch(`${API}/api/admin/audit?limit=5`, { headers, signal: controller.signal })
+                .then(r => r.ok ? r.json() : null)
+                .then(data => { if (Array.isArray(data?.events)) next.recent = data.events; })
+            : Promise.resolve()),
+        ]);
+        if (!controller.signal.aborted) setStats(next);
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : "Unable to load dashboard.");
         }
-      };
-
-    void loadAdmin();
-
-    return () => {
-      cancelled =
-        true;
-    };
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    })();
+    return () => controller.abort();
   }, []);
 
-  return (
-    <AdminShell title="Dashboard">
-      <div className="mx-auto max-w-[1500px] p-5 sm:p-8">
-        <section className="overflow-hidden rounded-2xl bg-slate-950 p-6 text-white shadow-sm sm:p-8">
-          <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-400">
-                CampusMart
-                Operations
-              </p>
+  const verificationAccess = admin && ["super_admin", "verification_officer"].includes(admin.role);
+  const universityAccess = admin && ["super_admin", "university_manager"].includes(admin.role);
+  const superAdmin = admin?.role === "super_admin";
 
-              <h2 className="mt-4 max-w-2xl text-3xl font-semibold tracking-tight sm:text-4xl">
-                Welcome back
-                {admin?.name
-                  ? `, ${
-                      admin.name.split(
-                        " "
-                      )[0]
-                    }`
-                  : ""}
-                .
-              </h2>
+  return <AdminShell title="Dashboard">
+    <div className="mx-auto max-w-7xl space-y-4 p-4 sm:p-6">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700">Operations overview</p>
+          <h2 className="mt-1 text-xl font-black sm:text-2xl">Welcome back{admin ? `, ${admin.name.split(" ")[0]}` : ""}.</h2>
+          <p className="mt-1 text-xs text-slate-500">See what needs attention and act quickly.</p>
+        </div>
+        {admin && <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold">{adminRoleLabel(admin.role)}</span>}
+      </header>
+      {error && <p role="alert" className="rounded-lg border border-red-200 bg-white p-3 text-xs text-red-700">{error}</p>}
 
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-400">
-                Manage trust,
-                verification,
-                universities,
-                marketplace
-                operations,
-                disputes and
-                platform controls
-                from one secure
-                workspace.
-              </p>
-            </div>
+      {superAdmin ? <AnalyticsPreview /> :
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+          {verificationAccess && <Link href="/admin/verification" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs text-slate-500">Open verification cases</p><p className="mt-1 text-2xl font-black">{loading ? "…" : stats.queue ?? "—"}</p></Link>}
+          {universityAccess && <Link href="/admin/universities" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs text-slate-500">Universities</p><p className="mt-1 text-2xl font-black">{loading ? "…" : stats.universities ?? "—"}</p></Link>}
+          {universityAccess && <Link href="/admin/universities" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs text-slate-500">Active campuses</p><p className="mt-1 text-2xl font-black">{loading ? "…" : stats.activeUniversities ?? "—"}</p></Link>}
+        </div>
+      }
 
-            {admin ? (
-              <div className="rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">
-                  Signed in as
-                </p>
-
-                <p className="mt-1 text-sm font-bold">
-                  {adminRoleLabel(
-                    admin.role
-                  )}
-                </p>
-              </div>
-            ) : null}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+          <h3 className="text-sm font-black">Quick actions</h3>
+          <p className="mt-1 text-xs text-slate-500">Go straight to the work you need.</p>
+          <div className="mt-3 grid gap-2">
+            {verificationAccess && <Link className={quickLink} href="/admin/verification">Review student cases <span aria-hidden="true">→</span></Link>}
+            {universityAccess && <Link className={quickLink} href="/admin/universities">Manage universities <span aria-hidden="true">→</span></Link>}
+            {superAdmin && <Link className={quickLink} href="/admin/analytics">Analytics & Reports <span aria-hidden="true">→</span></Link>}
+            {superAdmin && <Link className={quickLink} href="/admin/audit">Audit & Records <span aria-hidden="true">→</span></Link>}
+            {!verificationAccess && !universityAccess && !superAdmin && <p className="text-xs text-slate-500">Your available tools will appear here when enabled by the platform.</p>}
           </div>
         </section>
-
-        <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            {
-              label:
-                "Verification queue",
-              value: "—",
-              note:
-                "Awaiting connection",
-            },
-            {
-              label:
-                "Active universities",
-              value: "—",
-              note:
-                "Awaiting connection",
-            },
-            {
-              label:
-                "Marketplace reports",
-              value: "—",
-              note:
-                "Coming later",
-            },
-            {
-              label:
-                "Open disputes",
-              value: "—",
-              note:
-                "Coming later",
-            },
-          ].map(
-            (item) => (
-              <div
-                key={
-                  item.label
-                }
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-              >
-                <p className="text-sm font-semibold text-slate-500">
-                  {
-                    item.label
-                  }
-                </p>
-
-                <p className="mt-3 text-3xl font-bold tracking-tight">
-                  {
-                    item.value
-                  }
-                </p>
-
-                <p className="mt-2 text-xs font-medium text-slate-400">
-                  {
-                    item.note
-                  }
-                </p>
-              </div>
-            )
-          )}
-        </section>
-
-        <section className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                  Priority
-                </p>
-
-                <h3 className="mt-2 text-xl font-bold">
-                  Verification
-                  operations
-                </h3>
-
-                <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
-                  Student
-                  verification is
-                  currently the
-                  first complete
-                  Admin backend
-                  workflow.
-                </p>
-              </div>
-
-              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-                Backend ready
-              </span>
-            </div>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              {[
-                "View verification queue",
-                "Open student case",
-                "Review private evidence",
-                "Approve identity",
-                "Request more information",
-                "Reject verification",
-              ].map(
-                (
-                  item,
-                  index
-                ) => (
-                  <div
-                    key={
-                      item
-                    }
-                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4"
-                  >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-xs font-bold text-amber-400">
-                      {String(
-                        index +
-                          1
-                      ).padStart(
-                        2,
-                        "0"
-                      )}
-                    </div>
-
-                    <p className="text-sm font-semibold text-slate-700">
-                      {item}
-                    </p>
-                  </div>
-                )
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-              Admin account
-            </p>
-
-            {admin ? (
-              <>
-                <div className="mt-5">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-xl font-bold text-amber-400">
-                    {admin.name
-                      .slice(
-                        0,
-                        1
-                      )
-                      .toUpperCase()}
-                  </div>
-
-                  <h3 className="mt-4 text-lg font-bold">
-                    {admin.name}
-                  </h3>
-
-                  <p className="mt-1 break-all text-sm text-slate-500">
-                    {admin.email}
-                  </p>
-                </div>
-
-                <div className="mt-6 space-y-3 text-sm">
-                  <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                    <span className="text-slate-500">
-                      Role
-                    </span>
-
-                    <span className="text-right font-bold">
-                      {adminRoleLabel(
-                        admin.role
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500">
-                      Status
-                    </span>
-
-                    <span className="font-bold text-emerald-700">
-                      Active
-                    </span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <p className="mt-5 text-sm text-slate-500">
-                Loading Admin
-                profile...
-              </p>
-            )}
-          </div>
-        </section>
-
-        <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
-          <p className="text-sm font-bold text-amber-950">
-            Admin foundation
-            in progress
-          </p>
-
-          <p className="mt-1 text-sm leading-6 text-amber-800">
-            Verification is
-            the first module
-            being connected.
-            Other operational
-            areas will become
-            available as their
-            workflows are
-            completed.
-          </p>
+        <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+          <div className="flex justify-between gap-2"><h3 className="text-sm font-black">Recent Admin activity</h3>{superAdmin && <Link href="/admin/audit" className="text-xs font-bold text-amber-800 hover:underline">All records →</Link>}</div>
+          {!superAdmin
+            ? <p className="mt-3 text-xs text-slate-500">Case history is available within authorised workflows.</p>
+            : stats.recent?.length
+              ? <div className="mt-2 divide-y divide-slate-100">{stats.recent.map(event => <div key={event.id} className="py-2.5"><p className="text-xs font-semibold">{event.action.replace(/\./g, " ")}</p><p className="mt-1 text-[11px] text-slate-500">{event.actor.name} · {new Date(event.createdAt).toLocaleString()}</p></div>)}</div>
+              : <p className="mt-3 text-xs text-slate-500">{loading ? "Loading activity..." : "No recent Admin events."}</p>}
         </section>
       </div>
-    </AdminShell>
-  );
+    </div>
+  </AdminShell>;
 }

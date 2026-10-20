@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 
-import { useCart } from "@/components/common/CartContext";
-import { formatNaira } from "@/lib/products";
+import {
+  useCart,
+} from "@/components/common/CartContext";
+
+import {
+  formatNaira,
+} from "@/lib/products";
 
 export default function Page() {
   const {
@@ -14,33 +19,35 @@ export default function Page() {
     updateQuantity,
     removeFromCart,
     clearCart,
-  } = useCart();
+  } =
+    useCart();
 
   const fee =
-    subtotal >= 50000
+    subtotal >=
+    50000
       ? 100
-      : subtotal >= 10000
+      : subtotal >=
+          10000
         ? 50
-        : subtotal > 0
+        : subtotal >
+            0
           ? 20
           : 0;
 
   const total =
-    subtotal + fee;
+    subtotal +
+    fee;
 
   return (
-    <main className="main-container py-10 sm:py-12 lg:py-14">
+    <main className="main-container py-7 sm:py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-black">
+          <h1 className="text-3xl font-black tracking-tight text-black">
             Your cart
           </h1>
 
-          <p className="mt-2 text-sm leading-7 text-slate-600">
-            Review your selected
-            items before
-            continuing to
-            checkout.
+          <p className="mt-1 text-sm text-slate-600">
+            Check your items and options before checkout.
           </p>
         </div>
 
@@ -51,86 +58,131 @@ export default function Page() {
             onClick={
               clearCart
             }
-            className="text-sm font-bold text-slate-500 transition hover:text-red-600"
+            className="text-sm font-bold text-slate-500 hover:text-red-600"
           >
             Clear cart
           </button>
         ) : null}
       </div>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Items
-            </p>
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+                Items
+              </p>
 
-            <span className="rounded-[10px] bg-slate-100 px-3 py-1 text-sm font-semibold text-black">
+              {productCount >
+              0 ? (
+                <p className="mt-1 text-xs text-slate-400">
+                  {productCount} different{" "}
+                  {productCount ===
+                  1
+                    ? "product"
+                    : "products"}
+                </p>
+              ) : null}
+            </div>
+
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black">
               {itemCount}{" "}
-              {itemCount === 1
+              {itemCount ===
+              1
                 ? "item"
                 : "items"}
             </span>
           </div>
 
-          {productCount >
-          0 ? (
-            <p className="mt-2 text-xs text-slate-500">
-              {
-                productCount
-              }{" "}
-              different{" "}
-              {productCount ===
-              1
-                ? "product"
-                : "products"}
-            </p>
-          ) : null}
-
-          <div className="mt-6 space-y-3">
+          <div className="mt-4 space-y-3">
             {items.length ? (
               items.map(
-                (item) => (
+                (
+                  item
+                ) => (
                   <article
                     key={
-                      item.id
+                      item.cartKey
                     }
-                    className="rounded-[10px] border border-slate-200 bg-slate-50 p-4"
+                    className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:gap-4"
                   >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-black">
-                          {
+                    <Link
+                      href={`/marketplace/products/${item.id}`}
+                      className="h-24 w-20 shrink-0 overflow-hidden rounded-lg bg-slate-200 sm:h-28 sm:w-24"
+                    >
+                      {item.image ? (
+                        <img
+                          src={
+                            item.image
+                          }
+                          alt={
                             item.title
                           }
-                        </p>
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center bg-slate-900 px-2 text-center text-[9px] font-bold text-white">
+                          CampusMart
+                        </div>
+                      )}
+                    </Link>
 
-                        <p className="mt-1 text-sm text-slate-600">
-                          {formatNaira(
-                            item.price
-                          )}{" "}
-                          each
-                        </p>
-                      </div>
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/marketplace/products/${item.id}`}
+                        className="line-clamp-2 text-sm font-black text-slate-950 hover:underline"
+                      >
+                        {
+                          item.title
+                        }
+                      </Link>
 
-                      <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-                        <div className="flex items-center rounded-[10px] border border-slate-200 bg-white">
+                      <p className="mt-1 text-xs text-slate-500">
+                        {formatNaira(
+                          item.price
+                        )}{" "}
+                        each
+                      </p>
+
+                      {item.selectedSize ||
+                      item.selectedColor ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {item.selectedSize ? (
+                            <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-slate-700 ring-1 ring-slate-200">
+                              Size{" "}
+                              {
+                                item.selectedSize
+                              }
+                            </span>
+                          ) : null}
+
+                          {item.selectedColor ? (
+                            <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-slate-700 ring-1 ring-slate-200">
+                              {
+                                item.selectedColor
+                              }
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <div className="flex items-center rounded-lg border border-slate-200 bg-white">
                           <button
                             type="button"
                             onClick={() =>
                               updateQuantity(
-                                item.id,
+                                item.cartKey,
                                 item.quantity -
                                   1
                               )
                             }
-                            className="h-9 w-9 text-lg font-bold text-black transition hover:bg-slate-100"
-                            aria-label={`Decrease quantity of ${item.title}`}
+                            className="h-8 w-8 text-base font-bold"
                           >
                             −
                           </button>
 
-                          <span className="min-w-8 text-center text-sm font-bold text-black">
+                          <span className="min-w-7 text-center text-xs font-black">
                             {
                               item.quantity
                             }
@@ -140,33 +192,32 @@ export default function Page() {
                             type="button"
                             onClick={() =>
                               updateQuantity(
-                                item.id,
+                                item.cartKey,
                                 item.quantity +
                                   1
                               )
                             }
-                            className="h-9 w-9 text-lg font-bold text-black transition hover:bg-slate-100"
-                            aria-label={`Increase quantity of ${item.title}`}
+                            className="h-8 w-8 text-base font-bold"
                           >
                             +
                           </button>
                         </div>
 
-                        <p className="min-w-24 text-right text-sm font-bold text-black">
+                        <span className="text-sm font-black">
                           {formatNaira(
                             item.price *
                               item.quantity
                           )}
-                        </p>
+                        </span>
 
                         <button
                           type="button"
                           onClick={() =>
                             removeFromCart(
-                              item.id
+                              item.cartKey
                             )
                           }
-                          className="text-sm font-semibold text-red-600 transition hover:text-red-700"
+                          className="text-xs font-bold text-red-600"
                         >
                           Remove
                         </button>
@@ -176,79 +227,58 @@ export default function Page() {
                 )
               )
             ) : (
-              <div className="rounded-[10px] border border-dashed border-slate-300 bg-white p-8 text-center">
-                <p className="font-semibold text-black">
-                  Your cart is
-                  empty.
-                </p>
-
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Browse CampusMart
-                  and add something
-                  you like.
+              <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center">
+                <p className="font-black">
+                  Your cart is empty.
                 </p>
 
                 <Link
                   href="/marketplace"
-                  className="mt-5 inline-flex rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-accent-500"
+                  className="mt-5 inline-flex rounded-lg bg-accent-400 px-5 py-3 text-sm font-black"
                 >
-                  Browse
-                  marketplace
+                  Browse marketplace
                 </Link>
               </div>
             )}
           </div>
         </section>
 
-        <aside className="h-fit rounded-xl border border-slate-200 bg-white p-6">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+        <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 lg:sticky lg:top-28">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
             Order summary
           </p>
 
-          <div className="mt-5 rounded-[10px] bg-slate-50 p-5 text-sm text-slate-600">
-            <div className="flex items-center justify-between">
-              <span>
-                Items
-              </span>
-
-              <span className="font-semibold text-black">
-                {
-                  itemCount
-                }
-              </span>
-            </div>
-
-            <div className="mt-3 flex items-center justify-between">
-              <span>
+          <div className="mt-4 space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-slate-500">
                 Subtotal
               </span>
 
-              <span className="font-semibold text-black">
+              <span className="font-bold">
                 {formatNaira(
                   subtotal
                 )}
               </span>
             </div>
 
-            <div className="mt-3 flex items-center justify-between">
-              <span>
-                Secure
-                transfer fee
+            <div className="flex justify-between">
+              <span className="text-slate-500">
+                CampusMart fee
               </span>
 
-              <span className="font-semibold text-black">
+              <span className="font-bold">
                 {formatNaira(
                   fee
                 )}
               </span>
             </div>
 
-            <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4">
-              <span className="font-bold text-black">
+            <div className="flex justify-between border-t border-slate-200 pt-3 text-base">
+              <span className="font-black">
                 Total
               </span>
 
-              <span className="text-lg font-bold text-black">
+              <span className="font-black">
                 {formatNaira(
                   total
                 )}
@@ -259,25 +289,22 @@ export default function Page() {
           {items.length ? (
             <Link
               href="/checkout"
-              className="mt-6 inline-flex w-full items-center justify-center rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-accent-500"
+              className="mt-5 inline-flex w-full items-center justify-center rounded-lg bg-accent-400 px-4 py-3 text-sm font-black"
             >
-              Proceed to
-              checkout
+              Proceed to checkout
             </Link>
           ) : (
             <button
-              type="button"
               disabled
-              className="mt-6 inline-flex w-full cursor-not-allowed items-center justify-center rounded-[10px] bg-slate-200 px-5 py-3 text-sm font-bold text-slate-500"
+              className="mt-5 w-full rounded-lg bg-slate-200 px-4 py-3 text-sm font-black text-slate-500"
             >
-              Proceed to
-              checkout
+              Proceed to checkout
             </button>
           )}
 
           <Link
             href="/marketplace"
-            className="mt-3 inline-flex w-full items-center justify-center rounded-[10px] border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-black transition hover:bg-slate-50"
+            className="mt-3 inline-flex w-full justify-center py-2 text-sm font-bold text-slate-500 hover:text-black"
           >
             Continue shopping
           </Link>

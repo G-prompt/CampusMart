@@ -1,4 +1,6 @@
 "use client";
+import { useCampusMartConfirm } from "@/components/common/CampusMartConfirm";
+
 
 import {
   useCallback,
@@ -59,6 +61,11 @@ type RosterPreview = {
   }[];
 
   rejectedRowsTruncated: boolean;
+  overlap?: {
+    newMatricNumbers: number;
+    alreadyInOtherSources: number;
+    conflicts: number;
+  };
 };
 
 type ActiveRoster = {
@@ -95,6 +102,8 @@ type ActiveRoster = {
   activatedAt?:
     | string
     | null;
+  rosterScope?: string;
+  trustedForAutomatedVerification?: boolean;
 
   importedByAdmin?:
     | {
@@ -111,6 +120,9 @@ type RosterHistoryItem = {
   id: string;
 
   status: RosterStatus;
+  rosterScope?: string;
+  sourceUnit?: string | null;
+  trustedForAutomatedVerification?: boolean;
 
   academicSession: string;
 
@@ -348,10 +360,13 @@ function statusLabel(
 
 export default function UniversityRosterPanel({
   universityId,
+  onCertificationChanged,
 }: {
-  universityId:
-    string;
+  universityId: string;
+  onCertificationChanged?: () => void;
 }) {
+  const campusMartConfirm = useCampusMartConfirm();
+
   const router =
     useRouter();
 
@@ -391,6 +406,13 @@ export default function UniversityRosterPanel({
     useState<ActiveRoster | null>(
       null
     );
+  const [sourceAction, setSourceAction] = useState<{id:string; action:"certify"|"archive"}|null>(null);
+  const [sourceReason, setSourceReason] = useState("");
+  const [sourceScope, setSourceScope] = useState<"institution"|"faculty"|"department">("department");
+  const [sourceUnit, setSourceUnit] = useState("");
+  const [sourceConfirmed, setSourceConfirmed] = useState(false);
+  const [sourceBusy, setSourceBusy] = useState(false);
+
 
   const [
     history,
@@ -767,6 +789,8 @@ export default function UniversityRosterPanel({
       );
     };
 
+  const [currentStudentsOnly, setCurrentStudentsOnly] = useState(false);
+
   const previewRoster =
     async () => {
       if (
@@ -806,6 +830,7 @@ export default function UniversityRosterPanel({
           "file",
           selectedFile
         );
+        formData.append("currentStudentsOnly", currentStudentsOnly ? "true" : "false");
 
         const response =
           await fetch(
@@ -972,15 +997,10 @@ export default function UniversityRosterPanel({
         }
       }
 
-      const confirmation =
-        activeRoster
-          ? `Import this roster and make it the active roster?\n\nThe current active roster (${activeRoster.academicSession}) will be archived.`
-          : "Import this roster and make it the active roster?";
+      const confirmation = "Import and activate this independent roster source? Existing active CSVs will be preserved. This upload alone does not authorise automatic student verification.";
 
       if (
-        !window.confirm(
-          confirmation
-        )
+        !await campusMartConfirm({ title: "Confirm action", description: confirmation, danger: false })
       ) {
         return;
       }
@@ -1012,6 +1032,7 @@ export default function UniversityRosterPanel({
           "file",
           selectedFile
         );
+        formData.append("currentStudentsOnly", currentStudentsOnly ? "true" : "false");
 
         formData.append(
           "academicSession",
@@ -1142,6 +1163,41 @@ export default function UniversityRosterPanel({
       }
     };
 
+  const applySourceAction = async () => {
+    if (!sourceAction || sourceBusy || sourceReason.trim().length < 20 || !sourceConfirmed) return;
+    if (sourceAction.action === "certify" && sourceScope !== "institution" && sourceUnit.trim().length < 3) return;
+    const selected = history.find((item) => item.id === sourceAction.id);
+    if (!selected || selected.status !== "active") return;
+    const approved = await campusMartConfirm({
+      title: sourceAction.action === "archive" ? "Archive roster source" : "Certify student roster source",
+      description: sourceAction.action === "archive"
+        ? `Archive ${selected.originalFileName}? This removes its contribution to automatic verification, while preserving audit history and all other active rosters.\n\nReason: ${sourceReason}`
+        : `Certify ${selected.originalFileName} for ${sourceScope} matching?\nScope: ${sourceUnit || "Whole institution"}\n\nOnly certify a genuinely authorised student register, not an attendance sheet.\n\nReason: ${sourceReason}`,
+      confirmLabel: sourceAction.action === "archive" ? "Archive source" : "Certify source",
+      danger: sourceAction.action === "archive",
+    });
+    if (!approved) return;
+    setSourceBusy(true); setError(""); setNotice("");
+    try {
+      const url = `${API_URL}/api/admin/universities/${universityId}/rosters/${sourceAction.id}/${sourceAction.action === "archive" ? "archive" : "enable-verification"}`;
+      const response = await fetch(url, {
+        method:"POST",
+        headers:{Authorization:`Bearer ${getAdminToken() || ""}`,"Content-Type":"application/json"},
+        body:JSON.stringify(sourceAction.action === "archive"
+          ? {reason:sourceReason.trim(),confirmed:true}
+          : {reason:sourceReason.trim(),officialSourceConfirmed:true,scope:sourceScope,sourceUnit:sourceUnit.trim()}),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.success) throw new Error(body?.message || "Source operation failed.");
+      setNotice(sourceAction.action === "archive" ? "Source archived. Other active rosters are unchanged." : "Source certified. Matching uses all eligible, valid sources and blocks conflicts.");
+      setSourceAction(null); setSourceReason(""); setSourceConfirmed(false); setSourceUnit("");
+      await loadRosterData(false);
+      onCertificationChanged?.();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to update source.");
+    } finally { setSourceBusy(false); }
+  };
+
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div>
@@ -1152,6 +1208,12 @@ export default function UniversityRosterPanel({
         <h2 className="mt-2 text-xl font-bold text-slate-950">
           Student roster import
         </h2>
+        <div className="my-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+          <strong>Multiple roster sources.</strong> Each CSV stays active independently until archived.
+          Use the source list below to certify a genuine institution, faculty or departmental register.
+          A certified departmental source only confirms identities actually present in that source.
+          Disagreements between trusted sources require manual investigation.
+        </div>
 
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
           Import a private university-supplied CSV for
@@ -1164,15 +1226,11 @@ export default function UniversityRosterPanel({
 
       <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
         <p className="text-sm font-bold text-amber-950">
-          Importing a roster does not enable automatic
-          student verification yet
+          Imported CSVs require separate source certification
         </p>
 
         <p className="mt-1 text-sm leading-6 text-amber-800">
-          The roster becomes available as a managed data
-          source, but CampusMart will not use it to verify
-          students until the roster matcher and source
-          precedence rules are implemented and tested.
+          Uploading a CSV preserves existing sources. Only specifically approved, current rosters are used automatically. Any conflicting student details stop automatic approval.
         </p>
       </div>
 
@@ -1206,7 +1264,7 @@ export default function UniversityRosterPanel({
                 </p>
 
                 <h3 className="mt-2 text-lg font-bold text-slate-950">
-                  Active roster
+                  Most recent active source ({history.filter(item => item.status === "active").length} active)
                 </h3>
               </div>
 
@@ -1327,8 +1385,7 @@ export default function UniversityRosterPanel({
               </div>
             ) : (
               <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                No roster has been imported for this
-                university yet.
+                No active roster sources are currently available.
               </div>
             )}
           </div>
@@ -1344,7 +1401,7 @@ export default function UniversityRosterPanel({
               </h3>
 
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Required columns:
+                Required: matric number and either a full name or separate first/last names. Student status is recommended but can be covered by an attested current-student roster.
                 {" "}
                 <span className="font-mono font-semibold">
                   matric_number
@@ -1435,6 +1492,14 @@ export default function UniversityRosterPanel({
               </div>
             ) : null}
 
+            <label className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+              <input type="checkbox" checked={currentStudentsOnly} onChange={event => {
+                setCurrentStudentsOnly(event.target.checked);
+                setPreview(null);
+              }} className="mt-0.5" />
+              <span><strong>Official current students only.</strong> Tick only if the university has confirmed this roster contains current students. Required when no status column exists. Inactive/withdrawn status values are never overridden. This declaration is saved with the import.</span>
+            </label>
+
             {preview ? (
               <div className="mt-5">
                 <div
@@ -1469,6 +1534,12 @@ export default function UniversityRosterPanel({
                   </p>
                 </div>
 
+                {preview.overlap && <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-lg bg-emerald-50 p-3 text-xs"><strong className="block text-lg text-emerald-900">{preview.overlap.newMatricNumbers}</strong> New matric numbers</div>
+                  <div className="rounded-lg bg-slate-100 p-3 text-xs"><strong className="block text-lg">{preview.overlap.alreadyInOtherSources}</strong> Already in active sources</div>
+                  <div className="rounded-lg bg-amber-50 p-3 text-xs"><strong className="block text-lg text-amber-900">{preview.overlap.conflicts}</strong> Conflicting records</div>
+                </div>}
+                <p className="mt-2 text-xs text-slate-500">Overlapping student records remain linked to both sources. Conflicts block automatic approval until investigated.</p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                   <div className="rounded-xl border border-slate-200 p-4">
                     <p className="text-xs text-slate-500">
@@ -1782,9 +1853,7 @@ export default function UniversityRosterPanel({
                 >
                   {importing
                     ? "Importing roster..."
-                    : activeRoster
-                      ? "Import and replace active roster"
-                      : "Import and activate roster"}
+                    : "Import and add roster source"}
                 </button>
               </div>
             ) : null}
@@ -1798,7 +1867,7 @@ export default function UniversityRosterPanel({
                 </p>
 
                 <h3 className="mt-2 text-lg font-bold text-slate-950">
-                  Previous roster imports
+                  Roster sources and history
                 </h3>
               </div>
 
@@ -1907,6 +1976,39 @@ export default function UniversityRosterPanel({
                           </span>
                         </div>
                       </div>
+
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {item.trustedForAutomatedVerification ? (
+                            <span className="rounded-full bg-emerald-100 px-3 py-1 font-bold text-emerald-800">Certified · {item.rosterScope || "institution"}{item.sourceUnit ? ` · ${item.sourceUnit}` : ""}</span>
+                          ) : <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">Not certified</span>}
+                        </div>
+                        {item.status === "active" && <div className="flex gap-2">
+                          {!item.trustedForAutomatedVerification && <button type="button" onClick={() => {setSourceAction({id:item.id,action:"certify"});setSourceReason("");setSourceConfirmed(false);}}
+                            className="rounded-lg border border-slate-300 px-3 py-2 font-semibold">Certify source</button>}
+                          <button type="button" onClick={() => {setSourceAction({id:item.id,action:"archive"});setSourceReason("");setSourceConfirmed(false);}}
+                            className="rounded-lg border border-red-200 px-3 py-2 font-semibold text-red-800">Archive</button>
+                        </div>}
+                      </div>
+                      {sourceAction?.id === item.id && <div className="mt-3 space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
+                        <div className="font-bold">{sourceAction.action === "archive" ? "Archive this source" : "Approve trusted student register"}</div>
+                        {sourceAction.action === "certify" && <>
+                          <label className="block text-xs font-semibold">Authorised coverage</label>
+                          <select value={sourceScope} onChange={e => setSourceScope(e.target.value as typeof sourceScope)} className="w-full rounded-lg border border-slate-300 bg-white p-2">
+                            <option value="department">Department</option><option value="faculty">Faculty</option><option value="institution">Whole institution</option>
+                          </select>
+                          {sourceScope !== "institution" && <input value={sourceUnit} onChange={e => setSourceUnit(e.target.value)} placeholder="Official department or faculty name" className="w-full rounded-lg border border-slate-300 bg-white p-2"/>}
+                          <p className="text-xs text-amber-900">Certification requires evidence of an official current-student source. Class attendance alone is not enough.</p>
+                        </>}
+                        <textarea value={sourceReason} onChange={e => setSourceReason(e.target.value)} rows={2} placeholder="Source authority, evidence, reason (minimum 20 characters)" className="w-full rounded-lg border border-slate-300 bg-white p-2"/>
+                        <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={sourceConfirmed} onChange={e => setSourceConfirmed(e.target.checked)}/>
+                          <span>{sourceAction.action === "archive" ? "I confirm this source should stop contributing to automatic matching." : "I confirm this source is an authorised current student register for the scope selected."}</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => setSourceAction(null)} className="rounded-lg border border-slate-300 bg-white px-3 py-2">Cancel</button>
+                          <button type="button" disabled={sourceBusy || !sourceConfirmed || sourceReason.trim().length < 20 || (sourceAction.action === "certify" && sourceScope !== "institution" && sourceUnit.trim().length < 3)} onClick={() => void applySourceAction()} className="rounded-lg bg-slate-950 px-4 py-2 font-bold text-white disabled:opacity-40">{sourceBusy ? "Saving..." : "Review and confirm"}</button>
+                        </div>
+                      </div>}
 
                       {item.failureReason ? (
                         <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-700">

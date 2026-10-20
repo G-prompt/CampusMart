@@ -9,13 +9,8 @@ import {
   useState,
 } from "react";
 
-export type Role =
-  | "vendor"
-  | "client";
-
-export type AuthMode =
-  | "login"
-  | "register";
+export type Role = "vendor" | "client";
+export type AuthMode = "login" | "register";
 
 export type StudentVerificationStatus =
   | "not_started"
@@ -46,21 +41,13 @@ export type UniversitySummary = {
   name: string;
   shortName: string;
   slug: string;
-
   country: string;
   state: string;
   city: string;
-
   studentVerificationEnabled: boolean;
-
-  verificationMethod:
-    UniversityVerificationMethod;
-
+  verificationMethod: UniversityVerificationMethod;
   matricValidationEnabled: boolean;
-
-  matricFormatHint:
-    | string
-    | null;
+  matricFormatHint: string | null;
 };
 
 export type UserProfile = {
@@ -70,25 +57,16 @@ export type UserProfile = {
   email: string;
 
   campus?: string;
-
   phone?: string;
   bio?: string;
-
   avatarUrl?: string;
 
   universityId?: string;
-
-  university?:
-    | UniversitySummary
-    | null;
-
+  university?: UniversitySummary | null;
   matricNumber?: string;
 
-  studentVerificationStatus?:
-    StudentVerificationStatus;
-
+  studentVerificationStatus?: StudentVerificationStatus;
   studentVerificationSource?: string;
-
   studentVerifiedAt?: string;
 
   fallbackUniversityName?: string;
@@ -96,24 +74,14 @@ export type UserProfile = {
   fallbackCity?: string;
 
   businessName?: string;
-
   businessDescription?: string;
-
   pickupLocation?: string;
 
   vendorVerified?: boolean;
-
-  vendorAccessStatus?:
-    VendorAccessStatus;
-
-  vendorVerificationStatus?:
-    VendorVerificationStatus;
-
-  verificationSubmittedAt?:
-    string;
-
-  vendorVerifiedAt?:
-    string;
+  vendorAccessStatus?: VendorAccessStatus;
+  vendorVerificationStatus?: VendorVerificationStatus;
+  verificationSubmittedAt?: string;
+  vendorVerifiedAt?: string;
 };
 
 export type RegistrationData = {
@@ -121,14 +89,10 @@ export type RegistrationData = {
   email: string;
   password: string;
   role: Role;
-
   phone?: string;
   bio?: string;
 
-  universityId:
-    | string
-    | null;
-
+  universityId: string | null;
   matricNumber?: string;
 
   fallbackUniversityName?: string;
@@ -136,56 +100,29 @@ export type RegistrationData = {
   fallbackCity?: string;
 
   businessName?: string;
-
   businessDescription?: string;
-
   pickupLocation?: string;
 };
 
 export type AuthResult = {
   success: boolean;
-
   message?: string;
-
   code?: string;
-
-  matricFormatHint?:
-    | string
-    | null;
+  matricFormatHint?: string | null;
 };
 
 type ApiVendorProfile = {
   id?: string;
-
-  businessName?:
-    | string
-    | null;
-
-  businessDescription?:
-    | string
-    | null;
-
-  pickupLocation?:
-    | string
-    | null;
-
+  businessName?: string | null;
+  businessDescription?: string | null;
+  pickupLocation?: string | null;
   verified?: boolean;
-
-  accessStatus?:
-    | VendorAccessStatus
-    | null;
-
+  accessStatus?: VendorAccessStatus | null;
   vendorVerificationStatus?:
     | VendorVerificationStatus
     | null;
-
-  verificationSubmittedAt?:
-    | string
-    | null;
-
-  vendorVerifiedAt?:
-    | string
-    | null;
+  verificationSubmittedAt?: string | null;
+  vendorVerifiedAt?: string | null;
 };
 
 type ApiUser = {
@@ -193,84 +130,38 @@ type ApiUser = {
   name: string;
   email: string;
   role: Role;
+  campus?: string | null;
+  phone?: string | null;
+  bio?: string | null;
+  avatarUrl?: string | null;
 
-  campus?:
-    | string
-    | null;
-
-  phone?:
-    | string
-    | null;
-
-  bio?:
-    | string
-    | null;
-
-  avatarUrl?:
-    | string
-    | null;
-
-  universityId?:
-    | string
-    | null;
-
-  university?:
-    | UniversitySummary
-    | null;
-
-  matricNumber?:
-    | string
-    | null;
+  universityId?: string | null;
+  university?: UniversitySummary | null;
+  matricNumber?: string | null;
 
   studentVerificationStatus?:
     | StudentVerificationStatus
     | null;
+  studentVerificationSource?: string | null;
+  studentVerifiedAt?: string | null;
 
-  studentVerificationSource?:
-    | string
-    | null;
+  fallbackUniversityName?: string | null;
+  fallbackState?: string | null;
+  fallbackCity?: string | null;
 
-  studentVerifiedAt?:
-    | string
-    | null;
-
-  fallbackUniversityName?:
-    | string
-    | null;
-
-  fallbackState?:
-    | string
-    | null;
-
-  fallbackCity?:
-    | string
-    | null;
-
-  vendorProfile?:
-    | ApiVendorProfile
-    | null;
-
+  vendorProfile?: ApiVendorProfile | null;
   createdAt?: string;
 };
 
 type AuthContextValue = {
-  user:
-    | UserProfile
-    | null;
-
+  user: UserProfile | null;
   isAuthenticated: boolean;
 
   authOpen: boolean;
-
   authMode: AuthMode;
-
   roleHint: Role;
 
-  openAuth: (
-    mode?: AuthMode,
-    roleHint?: Role
-  ) => void;
-
+  openAuth: (mode?: AuthMode, roleHint?: Role) => void;
   closeAuth: () => void;
 
   login: (
@@ -282,188 +173,100 @@ type AuthContextValue = {
     data: RegistrationData
   ) => Promise<AuthResult>;
 
+  refreshSession: () => Promise<AuthResult>;
   logout: () => void;
 
   updateProfile: (
-    updates: Partial<
-      Omit<
-        UserProfile,
-        "email" | "role"
-      >
-    >
+    updates: Partial<Omit<UserProfile, "email" | "role">>
   ) => void;
 
   changePassword: (
     currentPassword: string,
     newPassword: string
-  ) => boolean;
+  ) => Promise<AuthResult>;
 };
 
-const AuthContext =
-  createContext<
-    AuthContextValue | null
-  >(null);
+const AuthContext = createContext<AuthContextValue | null>(
+  null
+);
 
 const API_URL =
-  process.env
-    .NEXT_PUBLIC_API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:5000";
 
-const USER_STORAGE_KEY =
-  "campusmart-user";
+const USER_STORAGE_KEY = "campusmart-user";
+const TOKEN_STORAGE_KEY = "campusmart-token";
+const AUTH_STORAGE_KEY = "campusmart-auth";
 
-const TOKEN_STORAGE_KEY =
-  "campusmart-token";
-
-const AUTH_STORAGE_KEY =
-  "campusmart-auth";
-
-function normalizeUser(
-  user: ApiUser
-): UserProfile {
+function normalizeUser(user: ApiUser): UserProfile {
   return {
-    id:
-      user.id,
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
 
-    name:
-      user.name,
+    campus: user.campus || undefined,
+    phone: user.phone || undefined,
+    bio: user.bio || undefined,
+    avatarUrl: user.avatarUrl || undefined,
 
-    email:
-      user.email,
-
-    role:
-      user.role,
-
-    campus:
-      user.campus ||
-      undefined,
-
-    phone:
-      user.phone ||
-      undefined,
-
-    bio:
-      user.bio ||
-      undefined,
-
-    avatarUrl:
-      user.avatarUrl ||
-      undefined,
-
-    universityId:
-      user.universityId ||
-      undefined,
-
-    university:
-      user.university ??
-      null,
-
-    matricNumber:
-      user.matricNumber ||
-      undefined,
+    universityId: user.universityId || undefined,
+    university: user.university ?? null,
+    matricNumber: user.matricNumber || undefined,
 
     studentVerificationStatus:
-      user.studentVerificationStatus ||
-      undefined,
-
+      user.studentVerificationStatus || undefined,
     studentVerificationSource:
-      user.studentVerificationSource ||
-      undefined,
-
+      user.studentVerificationSource || undefined,
     studentVerifiedAt:
-      user.studentVerifiedAt ||
-      undefined,
+      user.studentVerifiedAt || undefined,
 
     fallbackUniversityName:
-      user.fallbackUniversityName ||
-      undefined,
-
-    fallbackState:
-      user.fallbackState ||
-      undefined,
-
-    fallbackCity:
-      user.fallbackCity ||
-      undefined,
+      user.fallbackUniversityName || undefined,
+    fallbackState: user.fallbackState || undefined,
+    fallbackCity: user.fallbackCity || undefined,
 
     businessName:
-      user.vendorProfile
-        ?.businessName ||
-      undefined,
-
+      user.vendorProfile?.businessName || undefined,
     businessDescription:
-      user.vendorProfile
-        ?.businessDescription ||
-      undefined,
-
+      user.vendorProfile?.businessDescription || undefined,
     pickupLocation:
-      user.vendorProfile
-        ?.pickupLocation ||
-      undefined,
+      user.vendorProfile?.pickupLocation || undefined,
 
     vendorVerified:
-      user.vendorProfile
-        ?.verified ??
-      false,
-
+      user.vendorProfile?.verified ?? false,
     vendorAccessStatus:
-      user.vendorProfile
-        ?.accessStatus ||
-      undefined,
-
+      user.vendorProfile?.accessStatus || undefined,
     vendorVerificationStatus:
-      user.vendorProfile
-        ?.vendorVerificationStatus ||
+      user.vendorProfile?.vendorVerificationStatus ||
       undefined,
 
     verificationSubmittedAt:
-      user.vendorProfile
-        ?.verificationSubmittedAt ||
+      user.vendorProfile?.verificationSubmittedAt ||
       undefined,
 
     vendorVerifiedAt:
-      user.vendorProfile
-        ?.vendorVerifiedAt ||
-      undefined,
+      user.vendorProfile?.vendorVerifiedAt || undefined,
   };
 }
 
-function readStoredUser():
-  | UserProfile
-  | null {
-  if (
-    typeof window ===
-    "undefined"
-  ) {
+function readStoredUser(): UserProfile | null {
+  if (typeof window === "undefined") {
     return null;
   }
 
-  const stored =
-    localStorage.getItem(
-      USER_STORAGE_KEY
-    );
+  const stored = localStorage.getItem(USER_STORAGE_KEY);
 
   if (!stored) {
     return null;
   }
 
   try {
-    return JSON.parse(
-      stored
-    ) as UserProfile;
+    return JSON.parse(stored) as UserProfile;
   } catch {
-    localStorage.removeItem(
-      USER_STORAGE_KEY
-    );
-
-    localStorage.removeItem(
-      TOKEN_STORAGE_KEY
-    );
-
-    localStorage.removeItem(
-      AUTH_STORAGE_KEY
-    );
-
+    localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(AUTH_STORAGE_KEY);
     return null;
   }
 }
@@ -471,533 +274,533 @@ function readStoredUser():
 export function AuthProvider({
   children,
 }: {
-  children:
-    React.ReactNode;
+  children: React.ReactNode;
 }) {
-  const [
-    user,
-    setUser,
-  ] =
-    useState<
-      UserProfile | null
-    >(null);
+  const [user, setUser] = useState<UserProfile | null>(
+    null
+  );
 
-  const [
-    authOpen,
-    setAuthOpen,
-  ] =
-    useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] =
+    useState<AuthMode>("login");
+  const [roleHint, setRoleHint] =
+    useState<Role>("client");
 
-  const [
-    authMode,
-    setAuthMode,
-  ] =
-    useState<AuthMode>(
-      "login"
+  /*
+   * =====================================================
+   * SESSION HELPERS
+   * =====================================================
+   */
+
+  const clearSession = useCallback(() => {
+    localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    setUser(null);
+  }, []);
+
+  const persistUser = useCallback((apiUser: ApiUser) => {
+    const profile = normalizeUser(apiUser);
+
+    localStorage.setItem(
+      USER_STORAGE_KEY,
+      JSON.stringify(profile)
     );
 
-  const [
-    roleHint,
-    setRoleHint,
-  ] =
-    useState<Role>(
-      "client"
-    );
+    localStorage.setItem(AUTH_STORAGE_KEY, "true");
+    setUser(profile);
+
+    return profile;
+  }, []);
+
+  const persistSession = useCallback(
+    (apiUser: ApiUser, token: string) => {
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
+      persistUser(apiUser);
+      setAuthOpen(false);
+    },
+    [persistUser]
+  );
+
+  /*
+   * =====================================================
+   * RESTORE CACHED SESSION
+   * =====================================================
+   */
 
   useEffect(() => {
-    setUser(
-      readStoredUser()
-    );
+    setUser(readStoredUser());
 
-    const onStorage =
-      () => {
-        setUser(
-          readStoredUser()
-        );
-      };
+    const onStorage = () => {
+      setUser(readStoredUser());
+    };
 
-    window.addEventListener(
-      "storage",
-      onStorage
-    );
+    window.addEventListener("storage", onStorage);
 
     return () => {
-      window.removeEventListener(
-        "storage",
-        onStorage
-      );
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 
-  const openAuth =
-    useCallback(
-      (
-        mode:
-          AuthMode =
-          "login",
+  /*
+   * =====================================================
+   * AUTH MODAL
+   * =====================================================
+   */
 
-        role?:
-          Role
-      ) => {
-        setAuthMode(
-          mode
+  const openAuth = useCallback(
+    (
+      mode: AuthMode = "login",
+      role?: Role
+    ) => {
+      setAuthMode(mode);
+
+      if (role) {
+        setRoleHint(role);
+      }
+
+      setAuthOpen(true);
+    },
+    []
+  );
+
+  const closeAuth = useCallback(() => {
+    setAuthOpen(false);
+  }, []);
+
+  /*
+   * =====================================================
+   * LOGIN
+   * =====================================================
+   */
+
+  const login = useCallback(
+    async (
+      email: string,
+      password: string
+    ): Promise<AuthResult> => {
+      try {
+        const response = await fetch(
+          `${API_URL}/api/auth/login`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email,
+              password,
+            }),
+          }
         );
 
-        if (role) {
-          setRoleHint(
-            role
-          );
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          return {
+            success: false,
+            message: data.message || "Login failed.",
+            code: data.code,
+          };
         }
 
-        setAuthOpen(
-          true
-        );
-      },
-      []
-    );
-
-  const closeAuth =
-    useCallback(() => {
-      setAuthOpen(
-        false
-      );
-    }, []);
-
-  const persistSession =
-    useCallback(
-      (
-        apiUser:
-          ApiUser,
-
-        token:
-          string
-      ) => {
-        const profile =
-          normalizeUser(
-            apiUser
-          );
-
-        localStorage.setItem(
-          USER_STORAGE_KEY,
-          JSON.stringify(
-            profile
-          )
-        );
-
-        localStorage.setItem(
-          TOKEN_STORAGE_KEY,
-          token
-        );
-
-        localStorage.setItem(
-          AUTH_STORAGE_KEY,
-          "true"
-        );
-
-        setUser(
-          profile
-        );
-
-        setAuthOpen(
-          false
-        );
-      },
-      []
-    );
-
-  const login =
-    useCallback(
-      async (
-        email:
-          string,
-
-        password:
-          string
-      ): Promise<AuthResult> => {
-        try {
-          const response =
-            await fetch(
-              `${API_URL}/api/auth/login`,
-              {
-                method:
-                  "POST",
-
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-
-                body:
-                  JSON.stringify(
-                    {
-                      email,
-                      password,
-                    }
-                  ),
-              }
-            );
-
-          const data =
-            await response.json();
-
-          if (
-            !response.ok ||
-            !data.success
-          ) {
-            return {
-              success:
-                false,
-
-              message:
-                data.message ||
-                "Login failed.",
-
-              code:
-                data.code,
-            };
-          }
-
-          if (
-            !data.user ||
-            !data.token
-          ) {
-            return {
-              success:
-                false,
-
-              message:
-                "The server returned an invalid login response.",
-            };
-          }
-
-          persistSession(
-            data.user,
-            data.token
-          );
-
+        if (!data.user || !data.token) {
           return {
-            success: true,
-
+            success: false,
             message:
-              data.message,
-          };
-        } catch (error) {
-          console.error(
-            "Login request failed:",
-            error
-          );
-
-          return {
-            success:
-              false,
-
-            message:
-              "Unable to connect to the server.",
+              "The server returned an invalid login response.",
           };
         }
-      },
-      [
-        persistSession,
-      ]
-    );
 
-  const register =
-    useCallback(
-      async (
-        data:
-          RegistrationData
-      ): Promise<AuthResult> => {
-        try {
-          const payload = {
-            name:
-              data.name.trim(),
+        persistSession(data.user, data.token);
 
-            email:
-              data.email
-                .trim()
-                .toLowerCase(),
+        return {
+          success: true,
+          message: data.message,
+        };
+      } catch (error) {
+        console.error("Login request failed:", error);
 
-            password:
-              data.password,
+        return {
+          success: false,
+          message: "Unable to connect to the server.",
+        };
+      }
+    },
+    [persistSession]
+  );
 
-            role:
-              data.role,
+  /*
+   * =====================================================
+   * REGISTER
+   * =====================================================
+   */
 
-            phone:
-              data.phone?.trim() ||
-              "",
+  const register = useCallback(
+    async (data: RegistrationData): Promise<AuthResult> => {
+      try {
+        const payload = {
+          name: data.name.trim(),
+          email: data.email.trim().toLowerCase(),
+          password: data.password,
+          role: data.role,
 
-            bio:
-              data.role ===
-              "client"
-                ? data.bio?.trim() ||
-                  ""
-                : "",
+          phone: data.phone?.trim() || "",
 
-            universityId:
-              data.universityId,
+          bio:
+            data.role === "client"
+              ? data.bio?.trim() || ""
+              : "",
 
-            matricNumber:
-              data.matricNumber
-                ?.trim() ||
-              "",
+          universityId: data.universityId,
+          matricNumber: data.matricNumber?.trim() || "",
 
-            fallbackUniversityName:
-              data.universityId
-                ? ""
-                : data.fallbackUniversityName
-                    ?.trim() ||
-                  "",
+          fallbackUniversityName: data.universityId
+            ? ""
+            : data.fallbackUniversityName?.trim() || "",
 
-            fallbackState:
-              data.universityId
-                ? ""
-                : data.fallbackState
-                    ?.trim() ||
-                  "",
+          fallbackState: data.universityId
+            ? ""
+            : data.fallbackState?.trim() || "",
 
-            fallbackCity:
-              data.universityId
-                ? ""
-                : data.fallbackCity
-                    ?.trim() ||
-                  "",
+          fallbackCity: data.universityId
+            ? ""
+            : data.fallbackCity?.trim() || "",
 
-            businessName:
-              data.role ===
-              "vendor"
-                ? data.businessName
-                    ?.trim() ||
-                  ""
-                : "",
+          businessName:
+            data.role === "vendor"
+              ? data.businessName?.trim() || ""
+              : "",
 
-            businessDescription:
-              data.role ===
-              "vendor"
-                ? data.businessDescription
-                    ?.trim() ||
-                  ""
-                : "",
+          businessDescription:
+            data.role === "vendor"
+              ? data.businessDescription?.trim() || ""
+              : "",
 
-            pickupLocation:
-              data.role ===
-              "vendor"
-                ? data.pickupLocation
-                    ?.trim() ||
-                  ""
-                : "",
-          };
-
-          const response =
-            await fetch(
-              `${API_URL}/api/auth/register`,
-              {
-                method:
-                  "POST",
-
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-
-                body:
-                  JSON.stringify(
-                    payload
-                  ),
-              }
-            );
-
-          const result =
-            await response.json();
-
-          if (
-            !response.ok ||
-            !result.success
-          ) {
-            return {
-              success:
-                false,
-
-              message:
-                result.message ||
-                "Registration failed.",
-
-              code:
-                result.code,
-
-              matricFormatHint:
-                result.matricFormatHint ??
-                null,
-            };
-          }
-
-          const loginResult =
-            await login(
-              payload.email,
-              data.password
-            );
-
-          if (
-            !loginResult.success
-          ) {
-            return {
-              success:
-                false,
-
-              message:
-                "Your account was created, but automatic login failed. Please sign in.",
-            };
-          }
-
-          return {
-            success: true,
-
-            message:
-              result.message ||
-              "Account created successfully.",
-          };
-        } catch (error) {
-          console.error(
-            "Registration request failed:",
-            error
-          );
-
-          return {
-            success:
-              false,
-
-            message:
-              "Unable to connect to the server.",
-          };
-        }
-      },
-      [
-        login,
-      ]
-    );
-
-  const logout =
-    useCallback(() => {
-      localStorage.removeItem(
-        USER_STORAGE_KEY
-      );
-
-      localStorage.removeItem(
-        TOKEN_STORAGE_KEY
-      );
-
-      localStorage.removeItem(
-        AUTH_STORAGE_KEY
-      );
-
-      setUser(
-        null
-      );
-    }, []);
-
-  const updateProfile =
-    useCallback(
-      (
-        updates:
-          Partial<
-            Omit<
-              UserProfile,
-              "email" |
-                "role"
-            >
-          >
-      ) => {
-        if (!user) {
-          return;
-        }
-
-        const next = {
-          ...user,
-          ...updates,
+          pickupLocation:
+            data.role === "vendor"
+              ? data.pickupLocation?.trim() || ""
+              : "",
         };
 
-        localStorage.setItem(
-          USER_STORAGE_KEY,
-          JSON.stringify(
-            next
-          )
+        const response = await fetch(
+          `${API_URL}/api/auth/register`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          }
         );
 
-        setUser(
-          next
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          return {
+            success: false,
+            message:
+              result.message || "Registration failed.",
+            code: result.code,
+            matricFormatHint:
+              result.matricFormatHint ?? null,
+          };
+        }
+
+        const loginResult = await login(
+          payload.email,
+          data.password
         );
-      },
-      [
-        user,
-      ]
-    );
 
-  const changePassword =
-    useCallback(
-      (
-        _currentPassword:
-          string,
+        if (!loginResult.success) {
+          return {
+            success: false,
+            message:
+              "Your account was created, but automatic login failed. Please sign in.",
+          };
+        }
 
-        _newPassword:
-          string
-      ) => false,
-      []
-    );
+        return {
+          success: true,
+          message:
+            result.message || "Account created successfully.",
+        };
+      } catch (error) {
+        console.error("Registration request failed:", error);
 
-  const value =
-    useMemo(
-      () => ({
-        user,
+        return {
+          success: false,
+          message: "Unable to connect to the server.",
+        };
+      }
+    },
+    [login]
+  );
 
-        isAuthenticated:
-          Boolean(
-            user
-          ),
+  /*
+   * =====================================================
+   * REFRESH SESSION
+   * =====================================================
+   */
 
-        authOpen,
-        authMode,
-        roleHint,
+  const refreshSession = useCallback(
+    async (): Promise<AuthResult> => {
+      const token = localStorage.getItem(TOKEN_STORAGE_KEY);
 
-        openAuth,
-        closeAuth,
+      if (!token) {
+        clearSession();
 
-        login,
-        register,
-        logout,
+        return {
+          success: false,
+          message:
+            "Your session is unavailable. Please sign in again.",
+        };
+      }
 
-        updateProfile,
+      try {
+        const response = await fetch(
+          `${API_URL}/api/auth/me`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            cache: "no-store",
+          }
+        );
 
-        changePassword,
-      }),
-      [
-        user,
-        authOpen,
-        authMode,
-        roleHint,
-        openAuth,
-        closeAuth,
-        login,
-        register,
-        logout,
-        updateProfile,
-        changePassword,
-      ]
-    );
+        const data = await response.json();
+
+        if (response.status === 401) {
+          clearSession();
+
+          return {
+            success: false,
+            message:
+              data.message ||
+              "Your session has expired. Please sign in again.",
+            code: data.code,
+          };
+        }
+
+        if (!response.ok || !data.success) {
+          return {
+            success: false,
+            message:
+              data.message || "Unable to refresh your account.",
+            code: data.code,
+          };
+        }
+
+        if (!data.user) {
+          return {
+            success: false,
+            message:
+              "The server returned an invalid account response.",
+          };
+        }
+
+        persistUser(data.user);
+
+        return {
+          success: true,
+          message: "Account refreshed.",
+        };
+      } catch (error) {
+        console.error("Session refresh failed:", error);
+
+        return {
+          success: false,
+          message: "Unable to refresh your account.",
+        };
+      }
+    },
+    [clearSession, persistUser]
+  );
+
+  /*
+   * =====================================================
+   * LOGOUT
+   * =====================================================
+   */
+
+  const logout = useCallback(() => {
+    clearSession();
+  }, [clearSession]);
+
+  /*
+   * =====================================================
+   * LOCAL PROFILE CACHE
+   * =====================================================
+   *
+   * The AccountPanel saves name and phone through
+   * PATCH /api/auth/profile before updating this cache.
+   */
+
+  const updateProfile = useCallback(
+    (
+      updates: Partial<
+        Omit<UserProfile, "email" | "role">
+      >
+    ) => {
+      if (!user) return;
+
+      const next = {
+        ...user,
+        ...updates,
+      };
+
+      localStorage.setItem(
+        USER_STORAGE_KEY,
+        JSON.stringify(next)
+      );
+
+      setUser(next);
+    },
+    [user]
+  );
+
+  /*
+   * =====================================================
+   * CHANGE PASSWORD
+   * =====================================================
+   */
+
+  const changePassword = useCallback(
+    async (
+      currentPassword: string,
+      newPassword: string
+    ): Promise<AuthResult> => {
+      const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+
+      if (!token) {
+        clearSession();
+
+        return {
+          success: false,
+          message: "Please sign in again.",
+        };
+      }
+
+      try {
+        const response = await fetch(
+          `${API_URL}/api/auth/change-password`,
+          {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              currentPassword,
+              newPassword,
+            }),
+          }
+        );
+
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok || !data?.success) {
+          if (response.status === 401 &&
+              data?.code === "SESSION_EXPIRED") {
+            clearSession();
+          }
+
+          return {
+            success: false,
+            code: data?.code,
+            message:
+              data?.message || "Unable to change password.",
+          };
+        }
+
+        /*
+         * Backend password hash has changed.
+         * All old tokens, including this one, are invalid.
+         */
+        clearSession();
+
+        window.dispatchEvent(
+          new CustomEvent("campusmart-toast", {
+            detail: {
+              message:
+                "Password updated. Sign in with your new password.",
+            },
+          })
+        );
+
+        setAuthMode("login");
+        setAuthOpen(true);
+
+        return {
+          success: true,
+          code: "PASSWORD_CHANGED",
+          message:
+            "Password updated. Sign in with your new password.",
+        };
+      } catch (error) {
+        console.error("Change password request failed:", error);
+
+        return {
+          success: false,
+          message:
+            "Unable to connect to the server. Your password may not have changed.",
+        };
+      }
+    },
+    [clearSession]
+  );
+
+  /*
+   * =====================================================
+   * CONTEXT
+   * =====================================================
+   */
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      isAuthenticated: Boolean(user),
+
+      authOpen,
+      authMode,
+      roleHint,
+
+      openAuth,
+      closeAuth,
+
+      login,
+      register,
+      refreshSession,
+      logout,
+
+      updateProfile,
+      changePassword,
+    }),
+    [
+      user,
+      authOpen,
+      authMode,
+      roleHint,
+      openAuth,
+      closeAuth,
+      login,
+      register,
+      refreshSession,
+      logout,
+      updateProfile,
+      changePassword,
+    ]
+  );
 
   return (
-    <AuthContext.Provider
-      value={value}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  const context =
-    useContext(
-      AuthContext
-    );
+  const context = useContext(AuthContext);
 
   if (!context) {
     throw new Error(

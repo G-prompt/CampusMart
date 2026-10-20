@@ -26,19 +26,14 @@ export default function RouteShell({
       "/admin/"
     );
 
-  /*
-   * Admin is intentionally treated as
-   * a separate application experience.
-   *
-   * Do not render the normal buyer /
-   * seller Navbar, Footer, bottom nav,
-   * authentication modal or public-site
-   * spacing around Admin routes.
-   */
-  if (isAdminRoute) {
+  if (
+    isAdminRoute
+  ) {
     return (
       <div className="min-h-screen bg-slate-100 text-slate-950">
-        {children}
+        {
+          children
+        }
       </div>
     );
   }
@@ -50,11 +45,15 @@ export default function RouteShell({
 
         <Navbar />
 
-        <div className="flex-1 bg-white pb-20 md:pb-0">
-          {children}
+        <div className="flex-1 bg-white">
+          {
+            children
+          }
         </div>
 
-        <Footer />
+        <div className="pb-24">
+          <Footer />
+        </div>
       </div>
 
       <AuthModal />

@@ -5,9 +5,11 @@ import type { AuthenticatedAdminRequest } from "../middleware/adminAuth.middlewa
 import {
   UniversityVerificationMethod,
   UniversityVerificationSourceType,
+  NotificationType,
 } from "../generated/prisma/client";
 
 import { prisma } from "../lib/prisma";
+import { validAcceptedMatricFormats } from "../lib/studentVerification";
 
 function cleanRequiredText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -53,17 +55,7 @@ function isVerificationSource(
 }
 
 function validateMatricPattern(pattern: string): boolean {
-  try {
-    /*
-     * Match the same behaviour used by the
-     * student-side matric validation.
-     */
-    new RegExp(`^(?:${pattern})$`);
-
-    return true;
-  } catch {
-    return false;
-  }
+  return validAcceptedMatricFormats(pattern);
 }
 
 type VerificationConfiguration = {
@@ -191,7 +183,8 @@ function hasNewVerificationConfiguration(
  */
 function validateVerificationConfiguration(
   studentVerificationEnabled: boolean,
-  configuration: VerificationConfiguration
+  configuration: VerificationConfiguration,
+  rosterReady = false
 ): {
   code: string;
 
@@ -266,7 +259,12 @@ function validateVerificationConfiguration(
    * We will relax this rule source-by-source as each real
    * provider becomes operational.
    */
-  if (hasPrimary || hasFallback) {
+  const configured = [configuration.primaryVerificationSource, configuration.fallbackVerificationSource];
+  const onlyTrustedRoster = configured.every(source =>
+    source === UniversityVerificationSourceType.none ||
+    (source === UniversityVerificationSourceType.roster_import && rosterReady)
+  );
+  if ((hasPrimary || hasFallback) && !onlyTrustedRoster) {
     return {
       code: "AUTOMATED_VERIFICATION_SOURCE_NOT_READY",
 
@@ -377,6 +375,7 @@ export const getUniversities = async (req: Request, res: Response) => {
       },
 
       orderBy: [
+        { featuredInSignup: "desc" },
         {
           state: "asc",
         },
@@ -402,6 +401,9 @@ export const getUniversities = async (req: Request, res: Response) => {
         city: true,
 
         logoUrl: true,
+        institutionKind: true,
+        featuredInSignup: true,
+        sellerApplicationsOpen: true,
 
         studentVerificationEnabled: true,
 
@@ -491,6 +493,9 @@ export const getAdminUniversities = async (
         logoUrl: true,
 
         active: true,
+        institutionKind: true,
+        featuredInSignup: true,
+        sellerApplicationsOpen: true,
 
         studentVerificationEnabled: true,
 
@@ -549,6 +554,9 @@ export const getAdminUniversities = async (
         logoUrl: university.logoUrl,
 
         active: university.active,
+        institutionKind: university.institutionKind,
+        featuredInSignup: university.featuredInSignup,
+        sellerApplicationsOpen: university.sellerApplicationsOpen,
 
         studentVerificationEnabled: university.studentVerificationEnabled,
 
@@ -677,11 +685,19 @@ export const getAdminUniversityById = async (
       });
     }
 
+    const [sellerAccounts, activeListings, buyerOrders, completedHandoffs] = await Promise.all([
+      prisma.user.count({where:{universityId:university.id,role:"vendor"}}),
+      prisma.product.count({where:{vendor:{universityId:university.id},isArchived:false}}),
+      prisma.order.count({where:{buyer:{universityId:university.id}}}),
+      prisma.orderVendorFulfillment.count({where:{verifiedAt:{not:null},vendor:{universityId:university.id}}}),
+    ]);
+
     return res.status(200).json({
       success: true,
 
       university: {
         id: university.id,
+        sellerAccounts, activeListings, buyerOrders, completedHandoffs,
 
         name: university.name,
 
@@ -991,7 +1007,8 @@ export const createUniversity = async (
      * ---------------------------------------------------
      */
 
-    const university = await prisma.university.create({
+    const university = await prisma.$transaction(async (tx) => {
+    const created = await tx.university.create({
       data: {
         name,
 
@@ -1067,6 +1084,31 @@ export const createUniversity = async (
 
         updatedAt: true,
       },
+    });
+    await tx.adminAuditLog.create({ data: {
+      actorAdminId: req.admin!.id, action: "university.created", targetType: "university", targetId: created.id,
+      reason: null, beforeState: null,
+      afterState: JSON.stringify({ name: created.name, shortName: created.shortName, active: created.active, studentVerificationEnabled: created.studentVerificationEnabled }),
+    } });
+    // Suggest links only for clear exact name/short-name matches in the same state.
+    // No existing universityId or identity status is changed without user action.
+    if (created.active) {
+      const possibleAccounts = await tx.user.findMany({
+        where: {universityId:null, fallbackState:{equals:created.state,mode:"insensitive"},
+          OR:[{fallbackUniversityName:{equals:created.name,mode:"insensitive"}},
+              {fallbackUniversityName:{equals:created.shortName,mode:"insensitive"}}]},
+        select:{id:true},take:1000,
+      });
+      if (possibleAccounts.length) {
+        await tx.notification.createMany({data:possibleAccounts.map(user=>({
+          userId:user.id, type:NotificationType.university_available,
+          title:`${created.name} is now on CampusMart`,
+          message:"Visit your profile to confirm your university and complete student verification. Your account and history stay the same.",
+          href:"/profile",
+        }))});
+      }
+    }
+    return created;
     });
 
     return res.status(201).json({
@@ -1333,10 +1375,18 @@ export const updateUniversity = async (
       verificationConfiguration = disabledVerificationConfiguration();
     }
 
+    const trustedRosterReady = (await prisma.universityRosterImport.count({
+      where: {
+        universityId: existing.id,
+        status: "active",
+        rosterScope: "institution",
+        trustedForAutomatedVerification: true,
+      },
+    })) === 1;
     const verificationError = validateVerificationConfiguration(
       studentVerificationEnabled,
-
-      verificationConfiguration
+      verificationConfiguration,
+      trustedRosterReady
     );
 
     if (verificationError) {
@@ -1411,7 +1461,8 @@ export const updateUniversity = async (
      * ---------------------------------------------------
      */
 
-    const university = await prisma.university.update({
+    const university = await prisma.$transaction(async (tx) => {
+    const changed = await tx.university.update({
       where: {
         id: existing.id,
       },
@@ -1504,6 +1555,14 @@ export const updateUniversity = async (
         },
       },
     });
+    await tx.adminAuditLog.create({ data: {
+      actorAdminId: req.admin!.id, action: "university.updated", targetType: "university", targetId: changed.id,
+      reason: typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0,1000) || null : null,
+      beforeState: JSON.stringify({ name: existing.name, shortName: existing.shortName, active: existing.active, studentVerificationEnabled: existing.studentVerificationEnabled, primaryVerificationSource: existing.primaryVerificationSource, manualReviewEnabled: existing.manualReviewEnabled, matricValidationEnabled: existing.matricValidationEnabled }),
+      afterState: JSON.stringify({ name: changed.name, shortName: changed.shortName, active: changed.active, studentVerificationEnabled: changed.studentVerificationEnabled, primaryVerificationSource: changed.primaryVerificationSource, manualReviewEnabled: changed.manualReviewEnabled, matricValidationEnabled: changed.matricValidationEnabled }),
+    } });
+    return changed;
+    });
 
     return res.status(200).json({
       success: true,
@@ -1563,128 +1622,5 @@ export const updateUniversity = async (
   }
 };
 
-/*
- * -------------------------------------------------------
- * ACTIVATE / DEACTIVATE UNIVERSITY
- * -------------------------------------------------------
- *
- * Universities are deliberately not hard-deleted.
- */
-export const setUniversityActiveState = async (
-  req: AuthenticatedAdminRequest,
-
-  res: Response
-) => {
-  try {
-    if (!req.admin) {
-      return res.status(401).json({
-        success: false,
-
-        message: "Admin authentication required.",
-      });
-    }
-
-    const universityId = String(req.params.universityId || "").trim();
-
-    if (!universityId) {
-      return res.status(400).json({
-        success: false,
-
-        code: "UNIVERSITY_ID_REQUIRED",
-
-        message: "University ID is required.",
-      });
-    }
-
-    if (!isBoolean(req.body.active)) {
-      return res.status(400).json({
-        success: false,
-
-        code: "ACTIVE_STATE_REQUIRED",
-
-        message: "Provide the university active state as true or false.",
-      });
-    }
-
-    const existing = await prisma.university.findUnique({
-      where: {
-        id: universityId,
-      },
-
-      select: {
-        id: true,
-
-        name: true,
-
-        active: true,
-      },
-    });
-
-    if (!existing) {
-      return res.status(404).json({
-        success: false,
-
-        code: "UNIVERSITY_NOT_FOUND",
-
-        message: "University not found.",
-      });
-    }
-
-    /*
-     * Repeating the same state is harmless.
-     */
-    if (existing.active === req.body.active) {
-      return res.status(200).json({
-        success: true,
-
-        message: existing.active
-          ? "This university is already active."
-          : "This university is already inactive.",
-
-        university: existing,
-      });
-    }
-
-    const university = await prisma.university.update({
-      where: {
-        id: universityId,
-      },
-
-      data: {
-        active: req.body.active,
-      },
-
-      select: {
-        id: true,
-
-        name: true,
-
-        shortName: true,
-
-        slug: true,
-
-        active: true,
-
-        updatedAt: true,
-      },
-    });
-
-    return res.status(200).json({
-      success: true,
-
-      message: university.active
-        ? "University activated successfully."
-        : "University deactivated successfully.",
-
-      university,
-    });
-  } catch (error) {
-    console.error("Set university active state error:", error);
-
-    return res.status(500).json({
-      success: false,
-
-      message: "Unable to update the university status.",
-    });
-  }
-};
+// Critical university availability changes are handled in
+// adminUniversityActive.controller.ts with mandatory reasons and atomic audit.

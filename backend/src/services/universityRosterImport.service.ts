@@ -29,8 +29,8 @@ import {
  * 4. Detect duplicate source files.
  * 5. Create the import transactionally.
  * 6. Insert normalized student records.
- * 7. Archive any previous active roster.
- * 8. Activate the newly imported roster.
+ * 7. Keep prior active sources intact, including department rosters.
+ * 8. Activate the newly imported source independently.
  *
  * This service does NOT:
  *
@@ -68,6 +68,8 @@ export type CreateUniversityRosterImportInput = {
   importedByAdminId: string;
 
   csvText: string;
+
+  currentStudentsOnly?: boolean;
 
   originalFileName: string;
 
@@ -384,10 +386,10 @@ export async function createUniversityRosterImport(
    * -----------------------------------------------------
    */
 
-  const parseResult =
-    parseUniversityRosterCsv(
-      csvText
-    );
+  const parseResult = parseUniversityRosterCsv(csvText, {
+    flexibleHeaders: true,
+    currentStudentsOnly: input.currentStudentsOnly === true,
+  });
 
   validateParseResult(
     parseResult
@@ -516,7 +518,6 @@ export async function createUniversityRosterImport(
           in: [
             UniversityRosterImportStatus.processing,
             UniversityRosterImportStatus.active,
-            UniversityRosterImportStatus.archived,
           ],
         },
       },
@@ -565,8 +566,8 @@ export async function createUniversityRosterImport(
    *
    * 1. create new import as processing
    * 2. insert all validated records
-   * 3. archive old active roster(s)
-   * 4. activate the new roster
+   * 3. leave all other rosters unchanged
+   * 4. activate the new source and audit it
    *
    * If any step fails, Prisma rolls everything back.
    */
@@ -588,6 +589,7 @@ export async function createUniversityRosterImport(
               sourceIssuer,
 
               sourceReference,
+              currentStudentsOnlyDeclared: input.currentStudentsOnly === true,
 
               originalFileName,
 
@@ -628,35 +630,10 @@ export async function createUniversityRosterImport(
           parseResult.records
         );
 
-        /*
-         * A university should not have multiple active
-         * imported rosters competing at the same time.
-         *
-         * Historical imports remain in the database as
-         * archived records.
-         */
-        const archiveResult =
-          await tx.universityRosterImport.updateMany({
-            where: {
-              universityId,
-
-              id: {
-                not:
-                  rosterImport.id,
-              },
-
-              status:
-                UniversityRosterImportStatus.active,
-            },
-
-            data: {
-              status:
-                UniversityRosterImportStatus.archived,
-
-              archivedAt:
-                new Date(),
-            },
-          });
+        // Each roster is an independently managed source. Overlapping matric
+        // numbers are retained per import so each issuer remains auditable.
+        // Automatic matching reconciles evidence at query time.
+        const archivedPreviousRosterCount = 0;
 
         const activatedAt =
           new Date();
@@ -729,11 +706,22 @@ export async function createUniversityRosterImport(
             },
           });
 
+        await tx.adminAuditLog.create({
+          data: {
+            actorAdminId: importedByAdminId,
+            action: "university_roster_imported",
+            targetType: "university_roster_import",
+            targetId: rosterImport.id,
+            reason: `Roster supplied by ${sourceIssuer}; academic session ${academicSession}`,
+            beforeState: JSON.stringify({ existed: false }),
+            afterState: JSON.stringify({ universityId, status: "active", recordCount: parseResult.acceptedRecordCount, fileSha256 }),
+          },
+        });
+
         return {
           activated,
 
-          archivedPreviousRosterCount:
-            archiveResult.count,
+          archivedPreviousRosterCount,
         };
       },
       {

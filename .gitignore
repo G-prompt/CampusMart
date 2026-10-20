@@ -1,35 +1,63 @@
 # Dependencies
-node_modules
+node_modules/
 
 # Next.js
-.next
-out
+.next/
+.next_backup_*/
+out/
 
 # Build output
-dist
-coverage
+dist/
+coverage/
+*.tsbuildinfo
 
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
 
-# Environment files / secrets
+# Environment files and secrets
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env*
+.env.*
+*.pem
+*.key
+*.p12
 
-# OS
+# Allow safe environment templates
+!.env.example
+!**/.env.example
+
+# Operating system
 .DS_Store
+Thumbs.db
 
 # Editors
 .vscode/
+.idea/
 
 # Hosting
 .vercel/
 
-# Local archives / backups
+# Local archives
 *.zip
+
+# Temporary backups
+*.bak
+*.tmp
+*.old
+*.orig
+*.swp
+*~
+
+# Previous development batches
+_batchc_backups/
+_batch_backups/
+_tools/
+campusmart-backups/
+campusmart-batchb-backup-*/
+
+# Local temporary notes
+campusmart-last-product-files.txt
+campusmart-product-pickup-batch.txt
+pickup-step7.txt

@@ -6,7 +6,6 @@ import {
   createUniversity,
   getAdminUniversities,
   getAdminUniversityById,
-  setUniversityActiveState,
   updateUniversity,
 } from "../controllers/university.controller";
 
@@ -30,6 +29,13 @@ import {
 import {
   AdminRole,
 } from "../generated/prisma/client";
+import { changeUniversityActiveAudited } from "../controllers/adminUniversityActive.controller";
+import type { Request, Response, NextFunction } from "express";
+import { prisma } from "../lib/prisma";
+
+import { enableOfficialRoster, disableOfficialRoster, archiveUniversityRoster } from "../controllers/adminRosterActivation.controller";
+
+import { updateInstitutionRollout } from "../controllers/adminInstitutionRollout.controller";
 
 const router =
   Router();
@@ -143,8 +149,8 @@ router.post(
  *
  * - validates the entire CSV
  * - inserts roster records transactionally
- * - archives an older active roster
- * - activates the new roster
+ * - preserves other active sources
+ * - activates this independently managed roster
  *
  * It does NOT automatically enable roster verification
  * for the university.
@@ -212,6 +218,11 @@ router.get(
   getUniversityRosterImportById
 );
 
+router.post("/:universityId/rosters/:rosterImportId/enable-verification", requireAdmin, requireAdminRole(AdminRole.super_admin), enableOfficialRoster);
+router.post("/:universityId/rosters/:rosterImportId/archive", requireAdmin, requireAdminRole(AdminRole.super_admin), archiveUniversityRoster);
+router.patch("/:universityId/rollout", requireAdmin, requireAdminRole(AdminRole.super_admin), updateInstitutionRollout);
+router.post("/:universityId/rosters/disable-verification", requireAdmin, requireAdminRole(AdminRole.super_admin), disableOfficialRoster);
+
 /*
  * =======================================================
  * UNIVERSITY DETAIL
@@ -243,6 +254,29 @@ router.patch(
   requireAdminRole(
     AdminRole.university_manager
   ),
+  async (req: Request, res: Response, next: NextFunction) => {
+    // High-risk rollout controls must always use the separately audited routes.
+    if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "active")) {
+      return res.status(400).json({ success: false, code: "USE_AUDITED_ACTIVE_ROUTE", message: "Use the dedicated activation/deactivation action with a reason." });
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "sellerApplicationsOpen") ||
+        Object.prototype.hasOwnProperty.call(req.body ?? {}, "featuredInSignup")) {
+      return res.status(400).json({success:false,code:"USE_AUDITED_ROLLOUT_ROUTE",message:"Change seller applications and featured status through Campus Settings with an audit reason."});
+    }
+    if (req.body?.manualReviewEnabled === false || req.body?.studentVerificationEnabled === false) {
+      try {
+        const university = await prisma.university.findUnique({
+          where: {id: String(req.params.universityId || "")},
+          select: {sellerApplicationsOpen:true},
+        });
+        if (university?.sellerApplicationsOpen) {
+          return res.status(409).json({success:false,code:"SELLER_APPLICATIONS_REQUIRE_MANUAL_REVIEW",
+            message:"Close seller applications in Campus Settings before disabling student or manual verification."});
+        }
+      } catch (error) { return next(error); }
+    }
+    next();
+  },
   updateUniversity
 );
 
@@ -257,7 +291,7 @@ router.patch(
   requireAdminRole(
     AdminRole.university_manager
   ),
-  setUniversityActiveState
+  changeUniversityActiveAudited
 );
 
 export default router;

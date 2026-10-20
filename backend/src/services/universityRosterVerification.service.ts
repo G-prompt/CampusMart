@@ -1,42 +1,9 @@
-import {
-  UniversityRosterImportStatus,
-} from "../generated/prisma/client";
+import { UniversityRosterImportStatus } from "../generated/prisma/client";
+import { prisma } from "../lib/prisma";
+import { normalizeMatricNumber } from "../lib/studentVerification";
+import { studentNamesMatch } from "../lib/universityRoster";
 
-import {
-  prisma,
-} from "../lib/prisma";
-
-import {
-  normalizeMatricNumber,
-} from "../lib/studentVerification";
-
-import {
-  studentNamesMatch,
-} from "../lib/universityRoster";
-
-/*
- * =======================================================
- * CAMPUSMART UNIVERSITY ROSTER VERIFICATION PROVIDER
- * =======================================================
- *
- * This service answers one narrow question:
- *
- * "Does this submitted student identity match the
- * currently-authoritative imported roster for this
- * university?"
- *
- * It DOES NOT:
- *
- * - update a User
- * - mark anyone verified
- * - create an appeal
- * - choose between API/database/roster providers
- * - override authoritative mismatches
- *
- * Those responsibilities belong to the verification
- * orchestration layer we will build afterwards.
- */
-
+/** Active, explicitly certified roster sources are evaluated together. */
 export type RosterVerificationOutcome =
   | "verified"
   | "record_not_found"
@@ -48,549 +15,132 @@ export type RosterVerificationOutcome =
   | "roster_configuration_conflict";
 
 export type UniversityRosterVerificationResult = {
-  matched:
-    boolean;
-
-  outcome:
-    RosterVerificationOutcome;
-
-  definitive:
-    boolean;
-
-  universityId:
-    string;
-
-  rosterImportId:
-    | string
-    | null;
-
-  rosterAcademicSession:
-    | string
-    | null;
-
-  normalizedMatricNumber:
-    string;
-
-  /*
-   * Internal explanation intended for backend/Admin
-   * logic.
-   *
-   * Do not expose detailed mismatch information directly
-   * to unauthenticated/public clients.
-   */
-  reason:
-    string;
-
-  /*
-   * The matched database record ID is useful internally
-   * for audit/debugging.
-   *
-   * We deliberately do not return the student's roster
-   * name/email here.
-   */
-  rosterRecordId:
-    | string
-    | null;
+  matched: boolean;
+  outcome: RosterVerificationOutcome;
+  definitive: boolean;
+  universityId: string;
+  rosterImportId: string | null;
+  rosterAcademicSession: string | null;
+  normalizedMatricNumber: string;
+  reason: string;
+  rosterRecordId: string | null;
 };
 
 export type VerifyUniversityRosterInput = {
-  universityId:
-    string;
-
-  matricNumber:
-    string;
-
-  fullName:
-    string;
-
-  /*
-   * Optional deterministic clock for tests.
-   */
-  now?:
-    Date;
+  universityId: string;
+  matricNumber: string;
+  fullName: string;
+  now?: Date;
 };
 
-/*
- * =======================================================
- * MAIN MATCHER
- * =======================================================
- */
-
-export async function verifyStudentAgainstUniversityRoster(
-  input:
-    VerifyUniversityRosterInput
-): Promise<UniversityRosterVerificationResult> {
-  const universityId =
-    cleanRequiredText(
-      input.universityId
-    );
-
-  const matricNumber =
-    cleanRequiredText(
-      input.matricNumber
-    );
-
-  const fullName =
-    cleanRequiredText(
-      input.fullName
-    );
-
-  const now =
-    input.now
-      ? new Date(
-          input.now.getTime()
-        )
-      : new Date();
-
-  if (
-    !universityId
-  ) {
-    throw new Error(
-      "University ID is required for roster verification."
-    );
-  }
-
-  if (
-    !matricNumber
-  ) {
-    throw new Error(
-      "Matric number is required for roster verification."
-    );
-  }
-
-  if (
-    !fullName
-  ) {
-    throw new Error(
-      "Student name is required for roster verification."
-    );
-  }
-
-  const normalizedMatricNumber =
-    normalizeMatricNumber(
-      matricNumber
-    );
-
-  if (
-    !normalizedMatricNumber
-  ) {
-    throw new Error(
-      "A normalized matric number could not be produced."
-    );
-  }
-
-  /*
-   * There should normally be exactly one active roster.
-   *
-   * We deliberately fetch up to two instead of blindly
-   * using findFirst so corruption/configuration mistakes
-   * fail closed rather than silently choosing one source.
-   */
-  const activeRosters =
-    await prisma.universityRosterImport.findMany({
-      where: {
-        universityId,
-
-        status:
-          UniversityRosterImportStatus.active,
-      },
-
-      orderBy: [
-        {
-          activatedAt:
-            "desc",
-        },
-
-        {
-          importedAt:
-            "desc",
-        },
-      ],
-
-      take:
-        2,
-
-      select: {
-        id:
-          true,
-
-        academicSession:
-          true,
-
-        validFrom:
-          true,
-
-        expiresAt:
-          true,
-
-        activatedAt:
-          true,
-      },
-    });
-
-  if (
-    activeRosters.length ===
-    0
-  ) {
-    return {
-      matched:
-        false,
-
-      outcome:
-        "no_active_roster",
-
-      definitive:
-        false,
-
-      universityId,
-
-      rosterImportId:
-        null,
-
-      rosterAcademicSession:
-        null,
-
-      normalizedMatricNumber,
-
-      reason:
-        "No active university roster is available.",
-
-      rosterRecordId:
-        null,
-    };
-  }
-
-  if (
-    activeRosters.length >
-    1
-  ) {
-    return {
-      matched:
-        false,
-
-      outcome:
-        "roster_configuration_conflict",
-
-      definitive:
-        false,
-
-      universityId,
-
-      rosterImportId:
-        null,
-
-      rosterAcademicSession:
-        null,
-
-      normalizedMatricNumber,
-
-      reason:
-        "More than one active roster exists for this university. Automatic verification has been stopped until the configuration is corrected.",
-
-      rosterRecordId:
-        null,
-    };
-  }
-
-  const roster =
-    activeRosters[0];
-
-  /*
-   * -----------------------------------------------------
-   * ROSTER VALIDITY
-   * -----------------------------------------------------
-   */
-
-  if (
-    roster.validFrom &&
-    roster.validFrom.getTime() >
-      now.getTime()
-  ) {
-    return {
-      matched:
-        false,
-
-      outcome:
-        "roster_not_yet_valid",
-
-      definitive:
-        false,
-
-      universityId,
-
-      rosterImportId:
-        roster.id,
-
-      rosterAcademicSession:
-        roster.academicSession,
-
-      normalizedMatricNumber,
-
-      reason:
-        "The active roster has a future valid-from date.",
-
-      rosterRecordId:
-        null,
-    };
-  }
-
-  if (
-    roster.expiresAt &&
-    roster.expiresAt.getTime() <=
-      now.getTime()
-  ) {
-    return {
-      matched:
-        false,
-
-      outcome:
-        "roster_expired",
-
-      definitive:
-        false,
-
-      universityId,
-
-      rosterImportId:
-        roster.id,
-
-      rosterAcademicSession:
-        roster.academicSession,
-
-      normalizedMatricNumber,
-
-      reason:
-        "The active roster has expired and cannot be used for automatic verification.",
-
-      rosterRecordId:
-        null,
-    };
-  }
-
-  /*
-   * -----------------------------------------------------
-   * MATRIC LOOKUP
-   * -----------------------------------------------------
-   *
-   * Matric/student number identifies the candidate
-   * authoritative row first.
-   *
-   * We do NOT search by name and then try to infer which
-   * student the user meant.
-   */
-
-  const record =
-    await prisma.universityRosterRecord.findUnique({
-      where: {
-        rosterImportId_normalizedMatricNumber: {
-          rosterImportId:
-            roster.id,
-
-          normalizedMatricNumber,
-        },
-      },
-
-      select: {
-        id:
-          true,
-
-        fullName:
-          true,
-
-        isActiveStudent:
-          true,
-      },
-    });
-
-  if (
-    !record
-  ) {
-    return {
-      matched:
-        false,
-
-      outcome:
-        "record_not_found",
-
-      /*
-       * A missing record is not treated as a definitive
-       * identity mismatch.
-       *
-       * The roster may not yet contain a very recent
-       * admission/transfer.
-       *
-       * The orchestration layer may therefore decide
-       * whether Manual review is allowed by university
-       * policy.
-       */
-      definitive:
-        false,
-
-      universityId,
-
-      rosterImportId:
-        roster.id,
-
-      rosterAcademicSession:
-        roster.academicSession,
-
-      normalizedMatricNumber,
-
-      reason:
-        "No student record with this matric number exists in the active university roster.",
-
-      rosterRecordId:
-        null,
-    };
-  }
-
-  /*
-   * -----------------------------------------------------
-   * NAME MATCH
-   * -----------------------------------------------------
-   *
-   * studentNamesMatch already:
-   *
-   * - ignores harmless case differences
-   * - ignores punctuation
-   * - ignores token order
-   * - permits genuine middle-name omission
-   * - does NOT perform fuzzy spelling correction
-   */
-
-  const nameMatches =
-    studentNamesMatch(
-      record.fullName,
-      fullName
-    );
-
-  if (
-    !nameMatches
-  ) {
-    return {
-      matched:
-        false,
-
-      outcome:
-        "name_mismatch",
-
-      /*
-       * A matric number that resolves to one authoritative
-       * record but whose name does not match is a clear
-       * identity mismatch.
-       *
-       * This should NOT automatically fall into Manual
-       * review merely to override the authoritative
-       * failure.
-       */
-      definitive:
-        true,
-
-      universityId,
-
-      rosterImportId:
-        roster.id,
-
-      rosterAcademicSession:
-        roster.academicSession,
-
-      normalizedMatricNumber,
-
-      reason:
-        "The submitted student name does not match the authoritative roster record for this matric number.",
-
-      rosterRecordId:
-        record.id,
-    };
-  }
-
-  /*
-   * -----------------------------------------------------
-   * CURRENT STUDENT STATUS
-   * -----------------------------------------------------
-   */
-
-  if (
-    !record.isActiveStudent
-  ) {
-    return {
-      matched:
-        false,
-
-      outcome:
-        "inactive_student",
-
-      definitive:
-        true,
-
-      universityId,
-
-      rosterImportId:
-        roster.id,
-
-      rosterAcademicSession:
-        roster.academicSession,
-
-      normalizedMatricNumber,
-
-      reason:
-        "The university roster record exists and the name matches, but the record is not currently marked as an active student.",
-
-      rosterRecordId:
-        record.id,
-    };
-  }
-
-  /*
-   * -----------------------------------------------------
-   * VERIFIED MATCH
-   * -----------------------------------------------------
-   */
-
-  return {
-    matched:
-      true,
-
-    outcome:
-      "verified",
-
-    definitive:
-      true,
-
-    universityId,
-
-    rosterImportId:
-      roster.id,
-
-    rosterAcademicSession:
-      roster.academicSession,
-
-    normalizedMatricNumber,
-
-    reason:
-      "Matric number, student name, and current-student status match the active university roster.",
-
-    rosterRecordId:
-      record.id,
+export type RosterCandidate = {
+  id: string;
+  fullName: string;
+  isActiveStudent: boolean;
+  rosterImport: {
+    id: string;
+    academicSession: string;
   };
+};
+
+export type CandidateDecision = {
+  outcome: RosterVerificationOutcome;
+  definitive: boolean;
+  candidate: RosterCandidate | null;
+};
+
+/**
+ * Shared, pure decision policy for integration tests and production matching.
+ * Multiple sources for the same matric must agree on identity and status.
+ * A disagreement is inconclusive, never a random first-match acceptance.
+ */
+export function decideRosterCandidates(
+  candidates: RosterCandidate[],
+  submittedName: string
+): CandidateDecision {
+  if (!candidates.length) {
+    return { outcome: "record_not_found", definitive: false, candidate: null };
+  }
+  const first = candidates[0];
+  const disputed = candidates.some((item) =>
+    item.isActiveStudent !== first.isActiveStudent ||
+    !studentNamesMatch(item.fullName, first.fullName) ||
+    !studentNamesMatch(first.fullName, item.fullName)
+  );
+  if (disputed) {
+    return { outcome: "roster_configuration_conflict", definitive: false, candidate: null };
+  }
+  if (!studentNamesMatch(first.fullName, submittedName)) {
+    return { outcome: "name_mismatch", definitive: true, candidate: first };
+  }
+  if (!first.isActiveStudent) {
+    return { outcome: "inactive_student", definitive: true, candidate: first };
+  }
+  return { outcome: "verified", definitive: true, candidate: first };
 }
 
-/*
- * =======================================================
- * HELPERS
- * =======================================================
- */
+export async function verifyStudentAgainstUniversityRoster(
+  input: VerifyUniversityRosterInput
+): Promise<UniversityRosterVerificationResult> {
+  const universityId = typeof input.universityId === "string" ? input.universityId.trim() : "";
+  const matricNumber = typeof input.matricNumber === "string" ? input.matricNumber.trim() : "";
+  const fullName = typeof input.fullName === "string" ? input.fullName.trim() : "";
+  if (!universityId || !matricNumber || !fullName) {
+    throw new Error("University ID, matric number and student name are required.");
+  }
+  const normalizedMatricNumber = normalizeMatricNumber(matricNumber);
+  if (!normalizedMatricNumber) throw new Error("Invalid matric number.");
+  const now = input.now ?? new Date();
+  const result = (outcome: RosterVerificationOutcome, definitive: boolean,
+    reason: string, candidate?: RosterCandidate | null): UniversityRosterVerificationResult => ({
+      matched: outcome === "verified", outcome, definitive, universityId,
+      rosterImportId: candidate?.rosterImport.id ?? null,
+      rosterAcademicSession: candidate?.rosterImport.academicSession ?? null,
+      normalizedMatricNumber, reason, rosterRecordId: candidate?.id ?? null,
+    });
 
-function cleanRequiredText(
-  value:
-    unknown
-): string {
-  return typeof value ===
-    "string"
-    ? value
-        .normalize(
-          "NFKC"
-        )
-        .trim()
-    : "";
+  const allCertified = await prisma.universityRosterImport.findMany({
+    where: {
+      universityId,
+      status: UniversityRosterImportStatus.active,
+      trustedForAutomatedVerification: true,
+    },
+    select: { id: true, academicSession: true, validFrom: true, expiresAt: true },
+  });
+  if (!allCertified.length) {
+    return result("no_active_roster", false, "No authorised active roster source exists.");
+  }
+  const current = allCertified.filter((source) =>
+    (!source.validFrom || source.validFrom <= now) &&
+    (!source.expiresAt || source.expiresAt > now)
+  );
+  if (!current.length) {
+    const expired = allCertified.every((source) => source.expiresAt && source.expiresAt <= now);
+    return result(expired ? "roster_expired" : "roster_not_yet_valid", false,
+      "No certified roster is within its authorised validity period.");
+  }
+
+  const candidates = await prisma.universityRosterRecord.findMany({
+    where: {
+      normalizedMatricNumber,
+      rosterImportId: { in: current.map((roster) => roster.id) },
+    },
+    select: {
+      id: true, fullName: true, isActiveStudent: true,
+      rosterImport: { select: { id: true, academicSession: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  const decision = decideRosterCandidates(candidates, fullName);
+  const reasons: Record<RosterVerificationOutcome, string> = {
+    verified: "Matric, name and current-student status agree across all matched certified sources.",
+    record_not_found: "The matric number was not found among eligible certified sources.",
+    name_mismatch: "Submitted student name differs from the authoritative roster name.",
+    inactive_student: "All matched certified sources identify this student as inactive.",
+    no_active_roster: "No eligible source exists.",
+    roster_not_yet_valid: "Authorised roster is not yet valid.",
+    roster_expired: "Authorised roster has expired.",
+    roster_configuration_conflict: "Certified roster sources disagree for this matric number; manual investigation required.",
+  };
+  return result(decision.outcome, decision.definitive, reasons[decision.outcome], decision.candidate);
 }

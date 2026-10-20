@@ -1,3 +1,4 @@
+
 import Link from "next/link";
 
 import AutoScrollProducts from "@/components/common/AutoScrollProducts";
@@ -9,15 +10,28 @@ import type { Product } from "@/lib/products";
  * The homepage loads live marketplace
  * listings from the CampusMart backend.
  *
- * Do not statically generate this route
- * during `next build`.
+ * Keep this route dynamic during builds.
  */
-export const dynamic =
-  "force-dynamic";
+export const dynamic = "force-dynamic";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000";
+/*
+ * Server-side fetch requires an absolute URL.
+ * /backend-api is intended for browser requests
+ * through the Next.js rewrite.
+ */
+const configuredBackendOrigin =
+  process.env.CAMPUSMART_BACKEND_ORIGIN?.trim();
+
+const configuredPublicApi =
+  process.env.NEXT_PUBLIC_API_URL?.trim();
+
+const API_URL = (
+  configuredBackendOrigin ||
+  (configuredPublicApi &&
+  /^https?:\/\//i.test(configuredPublicApi)
+    ? configuredPublicApi
+    : "http://127.0.0.1:5000")
+).replace(/\/+$/, "");
 
 const browseCategories = [
   {
@@ -48,39 +62,31 @@ const browseCategories = [
 
 async function getLatestListings(): Promise<Product[]> {
   try {
-    const response =
-      await fetch(
-        `${API_URL}/api/products`,
-        {
-          cache: "no-store",
-        }
-      );
+    const response = await fetch(
+      `${API_URL}/api/products`,
+      {
+        cache: "no-store",
+      }
+    );
 
     if (!response.ok) {
+      console.error(
+        "Homepage listings HTTP error:",
+        response.status
+      );
       return [];
     }
 
-    const data =
-      await response.json();
+    const data = await response.json();
 
     if (
       !data.success ||
-      !Array.isArray(
-        data.products
-      )
+      !Array.isArray(data.products)
     ) {
       return [];
     }
 
-    /*
-     * Homepage carousel can carry
-     * up to 30 real marketplace
-     * products.
-     */
-    return data.products.slice(
-      0,
-      30
-    );
+    return data.products.slice(0, 30);
   } catch (error) {
     console.error(
       "Homepage listings error:",
@@ -92,8 +98,7 @@ async function getLatestListings(): Promise<Product[]> {
 }
 
 export default async function HomePage() {
-  const latestListings =
-    await getLatestListings();
+  const latestListings = await getLatestListings();
 
   return (
     <main className="bg-white">
@@ -145,7 +150,7 @@ export default async function HomePage() {
             rel="noreferrer"
             className="underline"
           >
-            Leiada Krözjhen
+            Leiada KrÃ¶zjhen
           </a>{" "}
           on Unsplash
         </p>
@@ -202,7 +207,7 @@ export default async function HomePage() {
 
       <section className="main-container py-14 sm:py-16 lg:py-20">
         <div className="max-w-xl">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+          <p className="text-xs font-bold uppercase tracking-tight text-slate-500">
             Start somewhere
           </p>
 
@@ -219,29 +224,27 @@ export default async function HomePage() {
         </div>
 
         <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {browseCategories.map(
-            (category) => (
-              <Link
-                key={category.name}
-                href={category.href}
-                className={`${category.tone} group relative min-h-[155px] rounded-[16px] p-5 transition duration-300 hover:-translate-y-1 hover:shadow-lg`}
-              >
-                <p className="text-sm font-medium text-slate-600">
-                  {category.detail}
+          {browseCategories.map((category) => (
+            <Link
+              key={category.name}
+              href={category.href}
+              className={`${category.tone} group relative min-h-[155px] rounded-[16px] p-5 transition duration-300 hover:-translate-y-1 hover:shadow-lg`}
+            >
+              <p className="text-sm font-medium text-slate-600">
+                {category.detail}
+              </p>
+
+              <div className="absolute inset-x-5 bottom-5 flex items-end justify-between gap-4">
+                <p className="text-xl font-bold text-black">
+                  {category.name}
                 </p>
 
-                <div className="absolute inset-x-5 bottom-5 flex items-end justify-between gap-4">
-                  <p className="text-xl font-bold text-black">
-                    {category.name}
-                  </p>
-
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/70 transition group-hover:translate-x-1">
-                    <ChevronRightIcon className="h-4 w-4" />
-                  </span>
-                </div>
-              </Link>
-            )
-          )}
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/70 transition group-hover:translate-x-1">
+                  <ChevronRightIcon className="h-4 w-4" />
+                </span>
+              </div>
+            </Link>
+          ))}
         </div>
       </section>
 
@@ -268,18 +271,14 @@ export default async function HomePage() {
               className="hidden items-center gap-1 text-sm font-bold text-black transition hover:text-slate-600 sm:inline-flex"
             >
               View all
-
               <ChevronRightIcon className="h-4 w-4" />
             </Link>
           </div>
 
-          {latestListings.length >
-          0 ? (
+          {latestListings.length > 0 ? (
             <>
               <AutoScrollProducts
-                products={
-                  latestListings
-                }
+                products={latestListings}
               />
 
               <div className="mt-6 flex justify-end sm:hidden">
@@ -288,7 +287,6 @@ export default async function HomePage() {
                   className="inline-flex items-center gap-1 text-sm font-bold text-black"
                 >
                   View all listings
-
                   <ChevronRightIcon className="h-4 w-4" />
                 </Link>
               </div>

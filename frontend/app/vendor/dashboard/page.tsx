@@ -171,26 +171,26 @@ function getLocalDateKey() {
   const now =
     new Date();
 
-  const year =
-    now.getFullYear();
+  return [
+    now.getFullYear(),
 
-  const month =
     String(
-      now.getMonth() + 1
+      now.getMonth() +
+        1
     ).padStart(
       2,
       "0"
-    );
+    ),
 
-  const day =
     String(
       now.getDate()
     ).padStart(
       2,
       "0"
-    );
-
-  return `${year}-${month}-${day}`;
+    ),
+  ].join(
+    "-"
+  );
 }
 
 function getReminderStorageKey(
@@ -355,9 +355,7 @@ export default function Page() {
     mounted,
     setMounted,
   ] =
-    useState(
-      false
-    );
+    useState(false);
 
   const [
     stats,
@@ -386,39 +384,25 @@ export default function Page() {
   ] =
     useState<
       SellerEligibility | null
-    >(
-      null
-    );
+    >(null);
 
   const [
     loading,
     setLoading,
   ] =
-    useState(
-      true
-    );
+    useState(true);
 
   const [
     error,
     setError,
   ] =
-    useState(
-      ""
-    );
+    useState("");
 
   const [
     showReminder,
     setShowReminder,
   ] =
-    useState(
-      false
-    );
-
-  /*
-   * =====================================================
-   * CLIENT MOUNT
-   * =====================================================
-   */
+    useState(false);
 
   useEffect(
     () => {
@@ -428,12 +412,6 @@ export default function Page() {
     },
     []
   );
-
-  /*
-   * =====================================================
-   * LOAD SELLER DASHBOARD
-   * =====================================================
-   */
 
   useEffect(() => {
     if (
@@ -481,29 +459,56 @@ export default function Page() {
               `Bearer ${token}`,
           };
 
-          /*
-           * -------------------------------------------------
-           * SELLER ELIGIBILITY
-           * -------------------------------------------------
-           */
+          const [
+            eligibilityResponse,
+            listingsResponse,
+            ordersResponse,
+          ] =
+            await Promise.all([
+              fetch(
+                `${API_URL}/api/vendor/eligibility`,
+                {
+                  headers,
+                  signal:
+                    controller.signal,
+                  cache:
+                    "no-store",
+                }
+              ),
 
-          const eligibilityResponse =
-            await fetch(
-              `${API_URL}/api/vendor/eligibility`,
-              {
-                headers,
+              fetch(
+                `${API_URL}/api/products/mine`,
+                {
+                  headers,
+                  signal:
+                    controller.signal,
+                  cache:
+                    "no-store",
+                }
+              ),
 
-                signal:
-                  controller.signal,
+              fetch(
+                `${API_URL}/api/orders/vendor`,
+                {
+                  headers,
+                  signal:
+                    controller.signal,
+                  cache:
+                    "no-store",
+                }
+              ),
+            ]);
 
-                cache:
-                  "no-store",
-              }
-            );
-
-          const eligibilityData =
-            await eligibilityResponse
-              .json();
+          const [
+            eligibilityData,
+            listingsData,
+            ordersData,
+          ] =
+            await Promise.all([
+              eligibilityResponse.json(),
+              listingsResponse.json(),
+              ordersResponse.json(),
+            ]);
 
           if (
             !eligibilityResponse.ok ||
@@ -515,42 +520,6 @@ export default function Page() {
             );
           }
 
-          const currentEligibility =
-            eligibilityData
-              .eligibility as
-              SellerEligibility;
-
-          setEligibility(
-            currentEligibility
-          );
-
-          /*
-           * -------------------------------------------------
-           * LISTINGS
-           * -------------------------------------------------
-           *
-           * Seller accounts can still view their listing
-           * history even while new selling is unavailable.
-           */
-
-          const listingsResponse =
-            await fetch(
-              `${API_URL}/api/products/mine`,
-              {
-                headers,
-
-                signal:
-                  controller.signal,
-
-                cache:
-                  "no-store",
-              }
-            );
-
-          const listingsData =
-            await listingsResponse
-              .json();
-
           if (
             !listingsResponse.ok ||
             !listingsData.success
@@ -560,48 +529,6 @@ export default function Page() {
                 "Unable to load your listings."
             );
           }
-
-          const listingCount =
-            Array.isArray(
-              listingsData.products
-            )
-              ? listingsData
-                  .products
-                  .length
-              : 0;
-
-          /*
-           * -------------------------------------------------
-           * EXISTING ORDERS
-           * -------------------------------------------------
-           *
-           * Order history does NOT depend on canSell.
-           *
-           * active
-           * pending_review
-           * restricted
-           * suspended
-           *
-           * may all view existing order history.
-           */
-
-          const ordersResponse =
-            await fetch(
-              `${API_URL}/api/orders/vendor`,
-              {
-                headers,
-
-                signal:
-                  controller.signal,
-
-                cache:
-                  "no-store",
-              }
-            );
-
-          const ordersData =
-            await ordersResponse
-              .json();
 
           if (
             !ordersResponse.ok ||
@@ -613,8 +540,20 @@ export default function Page() {
             );
           }
 
+          setEligibility(
+            eligibilityData
+              .eligibility
+          );
+
           setStats({
-            listingCount,
+            listingCount:
+              Array.isArray(
+                listingsData.products
+              )
+                ? listingsData
+                    .products
+                    .length
+                : 0,
 
             orderCount:
               Number(
@@ -668,9 +607,14 @@ export default function Page() {
               : "Unable to refresh shop information."
           );
         } finally {
-          setLoading(
-            false
-          );
+          if (
+            !controller.signal
+              .aborted
+          ) {
+            setLoading(
+              false
+            );
+          }
         }
       };
 
@@ -682,12 +626,6 @@ export default function Page() {
   }, [
     user,
   ]);
-
-  /*
-   * =====================================================
-   * SELLER SETUP REMINDER
-   * =====================================================
-   */
 
   useEffect(() => {
     if (
@@ -750,9 +688,7 @@ export default function Page() {
           storageKey
         );
 
-      if (
-        stored
-      ) {
+      if (stored) {
         const parsed =
           JSON.parse(
             stored
@@ -781,13 +717,8 @@ export default function Page() {
           };
         }
       }
-    } catch (
-      reminderError
-    ) {
-      console.warn(
-        "Unable to read seller reminder state:",
-        reminderError
-      );
+    } catch {
+      // Ignore invalid reminder state.
     }
 
     if (
@@ -798,44 +729,32 @@ export default function Page() {
     }
 
     if (
-      reminderState
-        .lastShownAt >
+      reminderState.lastShownAt >
         0 &&
       now -
-        reminderState
-          .lastShownAt <
+        reminderState.lastShownAt <
         REMINDER_COOLDOWN_MS
     ) {
       return;
     }
 
-    const updatedState:
-      ReminderState = {
-        date:
-          today,
-
-        count:
-          reminderState.count +
-          1,
-
-        lastShownAt:
-          now,
-      };
-
     try {
       localStorage.setItem(
         storageKey,
-        JSON.stringify(
-          updatedState
-        )
+        JSON.stringify({
+          date:
+            today,
+
+          count:
+            reminderState.count +
+            1,
+
+          lastShownAt:
+            now,
+        })
       );
-    } catch (
-      reminderError
-    ) {
-      console.warn(
-        "Unable to save seller reminder state:",
-        reminderError
-      );
+    } catch {
+      // Reminder storage failure should not break dashboard.
     }
 
     setShowReminder(
@@ -845,11 +764,6 @@ export default function Page() {
     eligibility,
     user,
   ]);
-
-  /*
-   * Prevent the page underneath the reminder
-   * from scrolling while the modal is open.
-   */
 
   useEffect(() => {
     if (
@@ -905,13 +819,12 @@ export default function Page() {
         }
 
         const required =
-          eligibility.requirements
-            .filter(
-              (
-                requirement
-              ) =>
-                requirement.required
-            );
+          eligibility.requirements.filter(
+            (
+              requirement
+            ) =>
+              requirement.required
+          );
 
         const complete =
           required.filter(
@@ -921,20 +834,18 @@ export default function Page() {
               requirement.complete
           ).length;
 
-        const total =
-          required.length;
-
         return {
           complete,
 
-          total,
+          total:
+            required.length,
 
           percentage:
-            total > 0
+            required.length
               ? Math.round(
                   (
                     complete /
-                    total
+                    required.length
                   ) *
                     100
                 )
@@ -945,12 +856,6 @@ export default function Page() {
         eligibility,
       ]
     );
-
-  /*
-   * =====================================================
-   * NON-SELLER
-   * =====================================================
-   */
 
   if (
     user?.role !==
@@ -963,7 +868,7 @@ export default function Page() {
       >
         <div className="site-card max-w-md p-8 text-center">
           <h2 className="text-2xl font-bold text-slate-950">
-            Vendor access required
+            Seller access required
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -982,7 +887,7 @@ export default function Page() {
             }
             className="mt-6 rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black"
           >
-            Sign in as vendor
+            Sign in as seller
           </button>
         </div>
       </PageShell>
@@ -1003,12 +908,6 @@ export default function Page() {
     eligibility
       ?.nextRequiredAction ===
       "seller_access_suspended";
-
-  /*
-   * =====================================================
-   * FULL-VIEWPORT REMINDER PORTAL
-   * =====================================================
-   */
 
   const reminderPortal =
     mounted &&
@@ -1033,16 +932,16 @@ export default function Page() {
               }
             }}
           >
-            <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl sm:p-7">
-              <div className="flex items-start justify-between gap-5">
+            <div className="w-full max-w-md rounded-2xl border border-white/70 bg-white/95 p-6 shadow-2xl backdrop-blur-xl">
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
                     Seller setup
                   </p>
 
                   <h2
                     id="seller-setup-reminder-title"
-                    className="mt-2 text-2xl font-bold tracking-tight text-slate-950"
+                    className="mt-2 text-2xl font-black text-slate-950"
                   >
                     {
                       setupAction.title
@@ -1057,23 +956,23 @@ export default function Page() {
                       false
                     )
                   }
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 text-xl leading-none text-slate-500 transition hover:border-slate-400 hover:text-black"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 text-lg text-slate-500"
                   aria-label="Close seller setup reminder"
                 >
                   ×
                 </button>
               </div>
 
-              <p className="mt-3 text-sm leading-7 text-slate-600">
+              <p className="mt-3 text-sm leading-6 text-slate-600">
                 {
                   setupAction.description
                 }
               </p>
 
               <div className="mt-5 rounded-xl bg-slate-50 p-4">
-                <div className="flex items-center justify-between gap-4 text-xs font-semibold text-slate-600">
+                <div className="flex justify-between gap-4 text-xs font-semibold text-slate-600">
                   <span>
-                    Seller setup
+                    Setup progress
                   </span>
 
                   <span>
@@ -1083,14 +982,13 @@ export default function Page() {
                     /
                     {
                       progress.total
-                    }{" "}
-                    complete
+                    }
                   </span>
                 </div>
 
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
                   <div
-                    className="h-full rounded-full bg-accent-400 transition-all"
+                    className="h-full rounded-full bg-accent-400"
                     style={{
                       width:
                         `${progress.percentage}%`,
@@ -1099,7 +997,7 @@ export default function Page() {
                 </div>
               </div>
 
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <div className="mt-5 grid grid-cols-2 gap-3">
                 <Link
                   href={
                     setupAction.href
@@ -1109,7 +1007,7 @@ export default function Page() {
                       false
                     )
                   }
-                  className="flex-1 rounded-[10px] bg-accent-400 px-5 py-3 text-center text-sm font-bold text-black transition hover:bg-accent-500"
+                  className="rounded-[10px] bg-accent-400 px-4 py-3 text-center text-sm font-bold text-black"
                 >
                   {
                     setupAction.buttonLabel
@@ -1123,18 +1021,11 @@ export default function Page() {
                       false
                     )
                   }
-                  className="flex-1 rounded-[10px] border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:border-slate-400 hover:text-black"
+                  className="rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700"
                 >
                   Not now
                 </button>
               </div>
-
-              <p className="mt-4 text-center text-[11px] leading-5 text-slate-400">
-                CampusMart limits setup
-                reminders so they do not
-                appear every time you open
-                the dashboard.
-              </p>
             </div>
           </div>,
           document.body
@@ -1143,25 +1034,40 @@ export default function Page() {
 
   return (
     <>
-      {reminderPortal}
+      {
+        reminderPortal
+      }
 
       <PageShell
         title="Vendor dashboard"
-        description="Manage your campus shop, listings, and incoming orders."
+        description="Manage your campus shop, listings, orders and pickup points."
       >
-        <div className="mb-6 flex flex-wrap gap-3">
-          <Link
-            href="/marketplace"
-            className="rounded-[10px] bg-accent-400 px-5 py-3 text-sm font-bold text-black transition hover:bg-accent-500"
-          >
-            Explore marketplace
-          </Link>
+        <div className="mb-5 flex flex-wrap gap-2">
+          {canSell ? (
+            <Link
+              href="/vendor/add-listing"
+              className="rounded-[10px] bg-accent-400 px-4 py-2.5 text-sm font-black text-black transition hover:bg-accent-500"
+            >
+              + Add product
+            </Link>
+          ) : (
+            <Link
+              href={
+                setupAction.href
+              }
+              className="rounded-[10px] bg-amber-100 px-4 py-2.5 text-sm font-black text-amber-950"
+            >
+              {
+                setupAction.buttonLabel
+              }
+            </Link>
+          )}
 
           <Link
-            href="/vendor/orders"
-            className="rounded-[10px] border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:border-black hover:text-black"
+            href="/marketplace"
+            className="rounded-[10px] border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-slate-400"
           >
-            View orders
+            View marketplace
           </Link>
         </div>
 
@@ -1169,17 +1075,17 @@ export default function Page() {
         eligibility &&
         !canSell ? (
           <section
-            className={`mb-6 rounded-2xl border p-5 sm:p-6 ${
+            className={`mb-5 rounded-xl border p-4 sm:p-5 ${
               isRestricted ||
               isSuspended
                 ? "border-red-200 bg-red-50"
                 : "border-amber-200 bg-amber-50"
             }`}
           >
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-2xl">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
                 <p
-                  className={`text-xs font-bold uppercase tracking-[0.2em] ${
+                  className={`text-[10px] font-black uppercase tracking-[0.18em] ${
                     isRestricted ||
                     isSuspended
                       ? "text-red-700"
@@ -1190,7 +1096,7 @@ export default function Page() {
                 </p>
 
                 <h2
-                  className={`mt-2 text-2xl font-bold tracking-tight ${
+                  className={`mt-1.5 text-lg font-black ${
                     isRestricted ||
                     isSuspended
                       ? "text-red-950"
@@ -1203,7 +1109,7 @@ export default function Page() {
                 </h2>
 
                 <p
-                  className={`mt-2 text-sm leading-7 ${
+                  className={`mt-1 text-sm leading-6 ${
                     isRestricted ||
                     isSuspended
                       ? "text-red-800"
@@ -1220,12 +1126,7 @@ export default function Page() {
                 href={
                   setupAction.href
                 }
-                className={`shrink-0 rounded-[10px] px-5 py-3 text-sm font-bold transition ${
-                  isRestricted ||
-                  isSuspended
-                    ? "border border-red-200 bg-white text-red-800 hover:border-red-400"
-                    : "bg-accent-400 text-black hover:bg-accent-500"
-                }`}
+                className="shrink-0 rounded-[10px] bg-white px-4 py-2.5 text-center text-xs font-black text-slate-800 shadow-sm"
               >
                 {
                   setupAction.buttonLabel
@@ -1233,240 +1134,70 @@ export default function Page() {
               </Link>
             </div>
 
-            <div className="mt-6">
-              <div className="flex items-center justify-between gap-4 text-xs font-semibold text-slate-600">
-                <span>
-                  Setup progress
-                </span>
+            {!isRestricted &&
+            !isSuspended ? (
+              <div className="mt-4">
+                <div className="flex justify-between text-[11px] font-semibold text-slate-600">
+                  <span>
+                    Setup
+                  </span>
 
-                <span>
-                  {
-                    progress.complete
-                  }
-                  /
-                  {
-                    progress.total
-                  }{" "}
-                  required steps
-                </span>
-              </div>
-
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/80">
-                <div
-                  className="h-full rounded-full bg-accent-400 transition-all"
-                  style={{
-                    width:
-                      `${progress.percentage}%`,
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {eligibility.requirements.map(
-                (
-                  requirement
-                ) => {
-                  const complete =
-                    requirement.complete;
-
-                  const optional =
-                    !requirement.required;
-
-                  return (
-                    <div
-                      key={
-                        requirement.key
-                      }
-                      className="flex items-center gap-3 rounded-xl border border-white/80 bg-white/75 px-4 py-3"
-                    >
-                      <span
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black ${
-                          complete
-                            ? "bg-emerald-100 text-emerald-700"
-                            : optional
-                              ? "bg-slate-100 text-slate-500"
-                              : "bg-amber-100 text-amber-800"
-                        }`}
-                      >
-                        {complete
-                          ? "✓"
-                          : optional
-                            ? "–"
-                            : "!"}
-                      </span>
-
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-900">
-                          {
-                            requirement.label
-                          }
-                        </p>
-
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          {complete
-                            ? "Complete"
-                            : optional
-                              ? "Not required"
-                              : "Action needed"}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                }
-              )}
-            </div>
-          </section>
-        ) : null}
-
-        {!loading &&
-        eligibility &&
-        canSell ? (
-          <section className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">
-                  Seller access
-                </p>
-
-                <h2 className="mt-2 text-xl font-bold text-emerald-950">
-                  Your shop is ready
-                  to sell
-                </h2>
-
-                <p className="mt-1 text-sm leading-6 text-emerald-800">
-                  Your student identity
-                  and seller setup meet
-                  CampusMart&apos;s current
-                  selling requirements.
-                </p>
-              </div>
-
-              <span className="rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700">
-                Active
-              </span>
-            </div>
-          </section>
-        ) : null}
-
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-          <section className="site-card p-6 sm:p-8">
-            <p className="text-sm font-bold uppercase tracking-[0.2em] text-slate-700">
-              Vendor account
-            </p>
-
-            <h2 className="mt-4 text-3xl font-bold tracking-tight text-slate-950">
-              Welcome,{" "}
-              {user.name}
-            </h2>
-
-            <p className="mt-3 max-w-xl text-sm leading-7 text-slate-600">
-              {loading
-                ? "Checking your seller account..."
-                : canSell
-                  ? "Your shop is ready. Manage your listings and keep track of incoming CampusMart orders here."
-                  : "Your seller dashboard remains available while you complete your seller requirements. Existing orders and account history remain accessible."}
-            </p>
-
-            <div className="mt-7 grid gap-4 sm:grid-cols-3">
-              <Link
-                href="/vendor/listings"
-                className="rounded-xl bg-slate-50 p-4 transition hover:bg-slate-100"
-              >
-                <p className="text-sm text-slate-500">
-                  Your listings
-                </p>
-
-                <p className="mt-2 text-2xl font-bold text-slate-950">
-                  {loading
-                    ? "—"
-                    : stats.listingCount}
-                </p>
-              </Link>
-
-              <Link
-                href="/vendor/orders"
-                className="rounded-xl bg-slate-50 p-4 transition hover:bg-slate-100"
-              >
-                <p className="text-sm text-slate-500">
-                  Orders
-                </p>
-
-                <p className="mt-2 text-2xl font-bold text-slate-950">
-                  {loading
-                    ? "—"
-                    : stats.orderCount}
-                </p>
-
-                {!loading &&
-                stats.pendingOrderCount >
-                  0 ? (
-                  <p className="mt-1 text-xs font-semibold text-amber-700">
+                  <span>
                     {
-                      stats.pendingOrderCount
-                    }{" "}
-                    pending
-                  </p>
-                ) : null}
-
-                {!loading &&
-                !canSell ? (
-                  <p className="mt-1 text-xs text-slate-500">
-                    Existing orders
-                    remain accessible
-                  </p>
-                ) : null}
-              </Link>
-
-              <Link
-                href="/vendor/orders"
-                className="rounded-xl bg-slate-50 p-4 transition hover:bg-slate-100"
-              >
-                <p className="text-sm text-slate-500">
-                  Revenue
-                </p>
-
-                <p className="mt-2 text-2xl font-bold text-slate-950">
-                  {loading
-                    ? "—"
-                    : formatNaira(
-                        stats.revenue
-                      )}
-                </p>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Paid & completed
-                </p>
-              </Link>
-            </div>
-
-            {!loading &&
-            stats.orderCount >
-              0 ? (
-              <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-200 pt-4 text-sm text-slate-600">
-                <span>
-                  <strong className="text-slate-950">
-                    {
-                      stats.itemCount
+                      progress.complete
                     }
-                  </strong>{" "}
-                  {stats.itemCount ===
-                  1
-                    ? "item"
-                    : "items"}{" "}
-                  ordered
-                </span>
-
-                <span>
-                  <strong className="text-slate-950">
+                    /
                     {
-                      stats.pendingOrderCount
+                      progress.total
                     }
-                  </strong>{" "}
-                  pending
-                </span>
+                  </span>
+                </div>
+
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
+                  <div
+                    className="h-full rounded-full bg-accent-400"
+                    style={{
+                      width:
+                        `${progress.percentage}%`,
+                    }}
+                  />
+                </div>
               </div>
             ) : null}
+          </section>
+        ) : null}
+
+        <section className="site-card overflow-hidden">
+          <div className="p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                  Seller account
+                </p>
+
+                <h2 className="mt-1.5 text-2xl font-black tracking-tight text-slate-950">
+                  Welcome,{" "}
+                  {
+                    user.name
+                  }
+                </h2>
+
+                <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+                  {loading
+                    ? "Checking your seller account..."
+                    : canSell
+                      ? "Your shop is active. Use the seller tools above to manage your CampusMart business."
+                      : "Your dashboard and existing history remain available while you finish seller setup."}
+                </p>
+              </div>
+
+              {!loading &&
+              canSell ? (
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-black text-emerald-700">
+                  Active seller
+                </span>
+              ) : null}
+            </div>
 
             {error ? (
               <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-xs font-semibold text-red-600">
@@ -1475,111 +1206,91 @@ export default function Page() {
                 }
               </p>
             ) : null}
-          </section>
+          </div>
 
-          <section className="site-card p-6 sm:p-8">
-            <p className="text-sm font-bold uppercase tracking-[0.2em] text-slate-700">
-              Shop actions
-            </p>
+          <div className="grid grid-cols-2 border-t border-slate-200 bg-slate-50/60 sm:grid-cols-4">
+            <Link
+              href="/vendor/listings"
+              className="border-b border-r border-slate-200 p-4 transition hover:bg-white sm:border-b-0"
+            >
+              <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">
+                Listings
+              </p>
 
-            <div className="mt-5 space-y-3">
-              {canSell ? (
-                <Link
-                  href="/vendor/add-listing"
-                  className="flex items-center justify-between rounded-[10px] bg-accent-400 px-4 py-4 text-sm font-bold text-black transition hover:bg-accent-500"
-                >
-                  <span>
-                    Add a product
-                  </span>
+              <p className="mt-1 text-xl font-black text-slate-950">
+                {loading
+                  ? "—"
+                  : stats.listingCount}
+              </p>
 
-                  <span aria-hidden="true">
-                    →
-                  </span>
-                </Link>
-              ) : (
-                <Link
-                  href={
-                    setupAction.href
-                  }
-                  className="flex items-center justify-between rounded-[10px] bg-amber-100 px-4 py-4 text-sm font-bold text-amber-950 transition hover:bg-amber-200"
-                >
-                  <span>
-                    {
-                      setupAction.buttonLabel
-                    }
-                  </span>
+              <p className="mt-0.5 text-[10px] text-slate-500">
+                Manage products
+              </p>
+            </Link>
 
-                  <span aria-hidden="true">
-                    →
-                  </span>
-                </Link>
-              )}
+            <Link
+              href="/vendor/orders"
+              className="border-b border-slate-200 p-4 transition hover:bg-white sm:border-b-0 sm:border-r"
+            >
+              <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">
+                Orders
+              </p>
 
-              <Link
-                href="/vendor/listings"
-                className="flex items-center justify-between rounded-[10px] border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-950 transition hover:border-black"
-              >
-                <span>
-                  Manage listings
-                </span>
+              <p className="mt-1 text-xl font-black text-slate-950">
+                {loading
+                  ? "—"
+                  : stats.orderCount}
+              </p>
 
-                <span aria-hidden="true">
-                  →
-                </span>
-              </Link>
+              <p className="mt-0.5 text-[10px] text-slate-500">
+                {
+                  stats.itemCount
+                }{" "}
+                items ordered
+              </p>
+            </Link>
 
-              <Link
-                href="/vendor/orders"
-                className="flex items-center justify-between rounded-[10px] border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-950 transition hover:border-black"
-              >
-                <span>
-                  View orders
-                </span>
+            <Link
+              href="/vendor/orders"
+              className="border-r border-slate-200 p-4 transition hover:bg-white"
+            >
+              <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">
+                Awaiting
+              </p>
 
-                <span aria-hidden="true">
-                  →
-                </span>
-              </Link>
+              <p className="mt-1 text-xl font-black text-slate-950">
+                {loading
+                  ? "—"
+                  : stats.pendingOrderCount}
+              </p>
 
-              <Link
-                href="/marketplace"
-                className="flex items-center justify-between rounded-[10px] border border-slate-200 bg-white px-4 py-4 text-sm font-bold text-slate-950 transition hover:border-black"
-              >
-                <span>
-                  View marketplace
-                </span>
+              <p className="mt-0.5 text-[10px] text-slate-500">
+                Need response
+              </p>
+            </Link>
 
-                <span aria-hidden="true">
-                  →
-                </span>
-              </Link>
-            </div>
+            <Link
+              href="/vendor/orders"
+              className="p-4 transition hover:bg-white"
+            >
+              <p className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">
+                Revenue
+              </p>
 
-            {!loading &&
-            eligibility &&
-            !canSell ? (
-              <div className="mt-5 rounded-xl bg-slate-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                  Why can&apos;t I add
-                  products?
-                </p>
+              <p className="mt-1 text-lg font-black text-slate-950">
+                {loading
+                  ? "—"
+                  : formatNaira(
+                      stats.revenue
+                    )}
+              </p>
 
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {
-                    eligibility.message
-                  }
-                </p>
-
-                <p className="mt-2 text-xs leading-5 text-slate-500">
-                  Existing orders and
-                  account history are
-                  still available from
-                  this dashboard.
-                </p>
-              </div>
-            ) : null}
-          </section>
-        </div>
+              <p className="mt-0.5 text-[10px] text-slate-500">
+                Paid + completed
+              </p>
+            </Link>
+          </div>
+        </section>
       </PageShell>
     </>
   );

@@ -1,6 +1,7 @@
 import "@/styles/globals.css";
 
 import RouteShell from "@/components/common/RouteShell";
+import { CampusMartConfirmProvider } from "@/components/common/CampusMartConfirm";
 
 import {
   AuthProvider,
@@ -31,6 +32,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-white text-slate-900">
+        <CampusMartConfirmProvider>
         <AuthProvider>
           <CartProvider>
             <SavedProvider>
@@ -40,6 +42,7 @@ export default function RootLayout({
             </SavedProvider>
           </CartProvider>
         </AuthProvider>
+        </CampusMartConfirmProvider>
       </body>
     </html>
   );

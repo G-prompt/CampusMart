@@ -1,4 +1,6 @@
 "use client";
+import { useCampusMartConfirm } from "@/components/common/CampusMartConfirm";
+
 
 import {
   useCallback,
@@ -291,6 +293,8 @@ function formatDateTime(
 }
 
 export default function VerificationCasePage() {
+  const campusMartConfirm = useCampusMartConfirm();
+
   const params =
     useParams<{
       appealId: string;
@@ -747,9 +751,7 @@ export default function VerificationCasePage() {
       }
 
       const confirmed =
-        window.confirm(
-          `Approve the student identity for ${appeal.submittedName}?`
-        );
+        await campusMartConfirm({ title: "Confirm action", description: `Approve the student identity for ${appeal.submittedName}?`, danger: false });
 
       if (!confirmed) {
         return;
@@ -790,9 +792,7 @@ export default function VerificationCasePage() {
       }
 
       const confirmed =
-        window.confirm(
-          `Reject the student verification appeal for ${appeal.submittedName}?`
-        );
+        await campusMartConfirm({ title: "Confirm action", description: `Reject the student verification appeal for ${appeal.submittedName}?`, danger: true });
 
       if (!confirmed) {
         return;

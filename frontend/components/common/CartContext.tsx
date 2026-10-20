@@ -10,43 +10,91 @@ import {
   useState,
 } from "react";
 
-import type { Product } from "@/lib/products";
-import { useAuth } from "./AuthContext";
+import type {
+  Product,
+} from "@/lib/products";
+
+import {
+  useAuth,
+} from "./AuthContext";
 
 export type CartItem = {
+  cartKey: string;
+
   id: number;
+
   title: string;
+
   price: number;
+
   quantity: number;
+
+  vendorId?: string;
+
+  seller?: string;
+
+  image?: string;
+
+  selectedSize?: string;
+
+  selectedColor?: string;
+};
+
+type CartProduct =
+  Product & {
+    vendorId?: string;
+  };
+
+type CartOptions = {
+  selectedSize?:
+    string | null;
+
+  selectedColor?:
+    string | null;
 };
 
 type CartContextValue = {
-  items: CartItem[];
-  itemCount: number;
-  productCount: number;
-  subtotal: number;
+  items:
+    CartItem[];
+
+  itemCount:
+    number;
+
+  productCount:
+    number;
+
+  subtotal:
+    number;
 
   addToCart: (
-    product: Product,
-    quantity?: number
+    product:
+      CartProduct,
+    quantity?:
+      number,
+    options?:
+      CartOptions
   ) => void;
 
   removeFromCart: (
-    id: number
+    key:
+      string | number
   ) => void;
 
   updateQuantity: (
-    id: number,
-    quantity: number
+    key:
+      string | number,
+    quantity:
+      number
   ) => void;
 
-  clearCart: () => void;
+  clearCart:
+    () => void;
 };
 
 const CartContext =
-  createContext<CartContextValue | null>(
-    null
-  );
+  createContext<
+    CartContextValue | null
+  >(null);
 
 const STORAGE_PREFIX =
   "campusmart-cart";
@@ -54,103 +102,205 @@ const STORAGE_PREFIX =
 const CART_CHANGE_EVENT =
   "campusmart-cart-change";
 
-function getStorageKey(
-  userId?: string | null
+function cleanOption(
+  value:
+    unknown
 ) {
-  if (userId) {
-    return `${STORAGE_PREFIX}:user:${userId}`;
+  if (
+    typeof value !==
+    "string"
+  ) {
+    return undefined;
   }
 
-  return `${STORAGE_PREFIX}:guest`;
+  const cleaned =
+    value.trim();
+
+  return cleaned ||
+    undefined;
+}
+
+function getCartKey(
+  productId:
+    number,
+  selectedSize?:
+    string,
+  selectedColor?:
+    string
+) {
+  return [
+    productId,
+    selectedSize ??
+      "",
+    selectedColor ??
+      "",
+  ].join(
+    "::"
+  );
+}
+
+function getStorageKey(
+  userId?:
+    string | null
+) {
+  return userId
+    ? `${STORAGE_PREFIX}:user:${userId}`
+    : `${STORAGE_PREFIX}:guest`;
 }
 
 function normalizeCart(
-  value: unknown
+  value:
+    unknown
 ): CartItem[] {
-  if (!Array.isArray(value)) {
+  if (
+    !Array.isArray(
+      value
+    )
+  ) {
     return [];
   }
 
-  const normalized =
-    value
-      .filter(
-        (
-          item
-        ): item is CartItem =>
-          Boolean(item) &&
-          typeof item.id ===
-            "number" &&
-          Number.isInteger(
-            item.id
-          ) &&
-          item.id > 0 &&
-          typeof item.title ===
-            "string" &&
-          typeof item.price ===
-            "number" &&
-          Number.isFinite(
-            item.price
-          ) &&
-          item.price >= 0 &&
-          typeof item.quantity ===
-            "number" &&
-          Number.isFinite(
-            item.quantity
-          )
-      )
-      .map((item) => ({
-        id: item.id,
-
-        title:
-          item.title,
-
-        price:
-          item.price,
-
-        quantity:
-          Math.max(
-            1,
-            Math.floor(
-              item.quantity
-            )
-          ),
-      }));
-
-  /*
-   * Merge duplicate product IDs
-   * just in case older stored cart
-   * data contains duplicates.
-   */
   const merged =
     new Map<
-      number,
+      string,
       CartItem
     >();
 
   for (
-    const item of
-    normalized
+    const raw of
+    value
   ) {
-    const existing =
-      merged.get(
+    if (
+      !raw ||
+      typeof raw !==
+        "object"
+    ) {
+      continue;
+    }
+
+    const item =
+      raw as Record<
+        string,
+        unknown
+      >;
+
+    const id =
+      Number(
         item.id
       );
 
-    if (existing) {
+    const price =
+      Number(
+        item.price
+      );
+
+    const quantity =
+      Number(
+        item.quantity
+      );
+
+    if (
+      !Number.isInteger(
+        id
+      ) ||
+      id <=
+        0 ||
+      typeof item.title !==
+        "string" ||
+      !Number.isFinite(
+        price
+      ) ||
+      price <
+        0 ||
+      !Number.isFinite(
+        quantity
+      )
+    ) {
+      continue;
+    }
+
+    const selectedSize =
+      cleanOption(
+        item.selectedSize
+      );
+
+    const selectedColor =
+      cleanOption(
+        item.selectedColor
+      );
+
+    const cartKey =
+      typeof item.cartKey ===
+        "string" &&
+      item.cartKey.trim()
+        ? item.cartKey
+        : getCartKey(
+            id,
+            selectedSize,
+            selectedColor
+          );
+
+    const next: CartItem = {
+      cartKey,
+
+      id,
+
+      title:
+        item.title,
+
+      price,
+
+      quantity:
+        Math.max(
+          1,
+          Math.floor(
+            quantity
+          )
+        ),
+
+      vendorId:
+        cleanOption(
+          item.vendorId
+        ),
+
+      seller:
+        cleanOption(
+          item.seller
+        ),
+
+      image:
+        cleanOption(
+          item.image
+        ),
+
+      selectedSize,
+
+      selectedColor,
+    };
+
+    const existing =
+      merged.get(
+        cartKey
+      );
+
+    if (
+      existing
+    ) {
       merged.set(
-        item.id,
+        cartKey,
         {
-          ...item,
+          ...existing,
+          ...next,
 
           quantity:
             existing.quantity +
-            item.quantity,
+            next.quantity,
         }
       );
     } else {
       merged.set(
-        item.id,
-        item
+        cartKey,
+        next
       );
     }
   }
@@ -161,8 +311,9 @@ function normalizeCart(
 }
 
 function readStoredCart(
-  storageKey: string
-): CartItem[] {
+  storageKey:
+    string
+) {
   if (
     typeof window ===
     "undefined"
@@ -176,15 +327,13 @@ function readStoredCart(
         storageKey
       );
 
-    if (!stored) {
-      return [];
-    }
-
-    return normalizeCart(
-      JSON.parse(
-        stored
-      )
-    );
+    return stored
+      ? normalizeCart(
+          JSON.parse(
+            stored
+          )
+        )
+      : [];
   } catch {
     return [];
   }
@@ -193,11 +342,13 @@ function readStoredCart(
 export function CartProvider({
   children,
 }: {
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
 }) {
   const {
     user,
-  } = useAuth();
+  } =
+    useAuth();
 
   const storageKey =
     useMemo(
@@ -205,32 +356,29 @@ export function CartProvider({
         getStorageKey(
           user?.id
         ),
-      [user?.id]
+      [
+        user?.id,
+      ]
     );
 
   const [
     items,
     setItems,
   ] =
-    useState<CartItem[]>(
-      []
-    );
+    useState<
+      CartItem[]
+    >([]);
 
   const itemsRef =
-    useRef<CartItem[]>(
-      []
-    );
+    useRef<
+      CartItem[]
+    >([]);
 
   const storageKeyRef =
     useRef(
       storageKey
     );
 
-  /*
-   * When the signed-in account
-   * changes, switch immediately
-   * to that account's own cart.
-   */
   useEffect(() => {
     storageKeyRef.current =
       storageKey;
@@ -250,11 +398,6 @@ export function CartProvider({
     storageKey,
   ]);
 
-  /*
-   * Keep separate tabs and
-   * same-page CampusMart
-   * components in sync.
-   */
   useEffect(() => {
     const syncCart =
       () => {
@@ -271,35 +414,41 @@ export function CartProvider({
         );
       };
 
-    const handleStorage = (
-      event: StorageEvent
-    ) => {
-      if (
-        event.key ===
-        storageKey
-      ) {
-        syncCart();
-      }
-    };
-
-    const handleCartChange = (
-      event: Event
-    ) => {
-      const customEvent =
-        event as CustomEvent<{
-          storageKey?: string;
-        }>;
-
-      if (
-        !customEvent.detail
-          ?.storageKey ||
-        customEvent.detail
-          .storageKey ===
+    const handleStorage =
+      (
+        event:
+          StorageEvent
+      ) => {
+        if (
+          event.key ===
           storageKey
-      ) {
-        syncCart();
-      }
-    };
+        ) {
+          syncCart();
+        }
+      };
+
+    const handleCartChange =
+      (
+        event:
+          Event
+      ) => {
+        const customEvent =
+          event as
+            CustomEvent<{
+              storageKey?:
+                string;
+            }>;
+
+        if (
+          !customEvent.detail
+            ?.storageKey ||
+          customEvent.detail
+            .storageKey ===
+            storageKey
+        ) {
+          syncCart();
+        }
+      };
 
     window.addEventListener(
       "storage",
@@ -329,7 +478,8 @@ export function CartProvider({
   const commitCart =
     useCallback(
       (
-        nextItems: CartItem[]
+        nextItems:
+          CartItem[]
       ) => {
         const normalized =
           normalizeCart(
@@ -371,9 +521,93 @@ export function CartProvider({
   const addToCart =
     useCallback(
       (
-        product: Product,
-        quantity = 1
+        product:
+          CartProduct,
+        quantity =
+          1,
+        options?:
+          CartOptions
       ) => {
+        const sizes =
+          product.sizes ??
+          [];
+
+        const colors =
+          product.colors ??
+          [];
+
+        const selectedSize =
+          cleanOption(
+            options?.selectedSize
+          ) ??
+          (
+            sizes.length ===
+            1
+              ? sizes[0]
+              : undefined
+          );
+
+        const selectedColor =
+          cleanOption(
+            options?.selectedColor
+          ) ??
+          (
+            colors.length ===
+            1
+              ? colors[0]
+              : undefined
+          );
+
+        if (
+          sizes.length >
+            0 &&
+          (
+            !selectedSize ||
+            !sizes.includes(
+              selectedSize
+            )
+          )
+        ) {
+          window.dispatchEvent(
+            new CustomEvent(
+              "campusmart-toast",
+              {
+                detail: {
+                  message:
+                    "Choose a size first",
+                },
+              }
+            )
+          );
+
+          return;
+        }
+
+        if (
+          colors.length >
+            0 &&
+          (
+            !selectedColor ||
+            !colors.includes(
+              selectedColor
+            )
+          )
+        ) {
+          window.dispatchEvent(
+            new CustomEvent(
+              "campusmart-toast",
+              {
+                detail: {
+                  message:
+                    "Choose a colour first",
+                },
+              }
+            )
+          );
+
+          return;
+        }
+
         const safeQuantity =
           Math.max(
             1,
@@ -382,53 +616,93 @@ export function CartProvider({
             )
           );
 
-        const current =
-          itemsRef.current;
-
-        const existing =
-          current.find(
-            (item) =>
-              item.id ===
-              product.id
+        const cartKey =
+          getCartKey(
+            product.id,
+            selectedSize,
+            selectedColor
           );
 
-        let nextItems:
-          CartItem[];
+        const existing =
+          itemsRef.current.find(
+            (
+              item
+            ) =>
+              item.cartKey ===
+              cartKey
+          );
 
-        if (existing) {
-          nextItems =
-            current.map(
-              (item) =>
-                item.id ===
-                product.id
-                  ? {
-                      ...item,
+        const nextItems =
+          existing
+            ? itemsRef.current.map(
+                (
+                  item
+                ) =>
+                  item.cartKey ===
+                  cartKey
+                    ? {
+                        ...item,
 
-                      quantity:
-                        item.quantity +
-                        safeQuantity,
-                    }
-                  : item
-            );
-        } else {
-          nextItems = [
-            ...current,
+                        title:
+                          product.title,
 
-            {
-              id:
-                product.id,
+                        price:
+                          product.price,
 
-              title:
-                product.title,
+                        vendorId:
+                          product.vendorId ??
+                          item.vendorId,
 
-              price:
-                product.price,
+                        seller:
+                          product.seller ??
+                          item.seller,
 
-              quantity:
-                safeQuantity,
-            },
-          ];
-        }
+                        image:
+                          product.images?.[0] ??
+                          item.image,
+
+                        selectedSize,
+
+                        selectedColor,
+
+                        quantity:
+                          item.quantity +
+                          safeQuantity,
+                      }
+                    : item
+              )
+            : [
+                ...itemsRef.current,
+
+                {
+                  cartKey,
+
+                  id:
+                    product.id,
+
+                  title:
+                    product.title,
+
+                  price:
+                    product.price,
+
+                  quantity:
+                    safeQuantity,
+
+                  vendorId:
+                    product.vendorId,
+
+                  seller:
+                    product.seller,
+
+                  image:
+                    product.images?.[0],
+
+                  selectedSize,
+
+                  selectedColor,
+                },
+              ];
 
         commitCart(
           nextItems
@@ -454,13 +728,20 @@ export function CartProvider({
   const removeFromCart =
     useCallback(
       (
-        id: number
+        key:
+          string | number
       ) => {
         commitCart(
           itemsRef.current.filter(
-            (item) =>
-              item.id !==
-              id
+            (
+              item
+            ) =>
+              typeof key ===
+              "number"
+                ? item.id !==
+                  key
+                : item.cartKey !==
+                  key
           )
         );
       },
@@ -472,18 +753,17 @@ export function CartProvider({
   const updateQuantity =
     useCallback(
       (
-        id: number,
-        quantity: number
+        key:
+          string | number,
+        quantity:
+          number
       ) => {
         if (
-          quantity <= 0
+          quantity <=
+          0
         ) {
-          commitCart(
-            itemsRef.current.filter(
-              (item) =>
-                item.id !==
-                id
-            )
+          removeFromCart(
+            key
           );
 
           return;
@@ -499,21 +779,31 @@ export function CartProvider({
 
         commitCart(
           itemsRef.current.map(
-            (item) =>
-              item.id ===
-              id
+            (
+              item
+            ) => {
+              const matches =
+                typeof key ===
+                "number"
+                  ? item.id ===
+                    key
+                  : item.cartKey ===
+                    key;
+
+              return matches
                 ? {
                     ...item,
-
                     quantity:
                       safeQuantity,
                   }
-                : item
+                : item;
+            }
           )
         );
       },
       [
         commitCart,
+        removeFromCart,
       ]
     );
 
@@ -547,7 +837,20 @@ export function CartProvider({
     );
 
   const productCount =
-    items.length;
+    useMemo(
+      () =>
+        new Set(
+          items.map(
+            (
+              item
+            ) =>
+              item.id
+          )
+        ).size,
+      [
+        items,
+      ]
+    );
 
   const subtotal =
     useMemo(
@@ -574,7 +877,6 @@ export function CartProvider({
         itemCount,
         productCount,
         subtotal,
-
         addToCart,
         removeFromCart,
         updateQuantity,
@@ -594,9 +896,13 @@ export function CartProvider({
 
   return (
     <CartContext.Provider
-      value={value}
+      value={
+        value
+      }
     >
-      {children}
+      {
+        children
+      }
     </CartContext.Provider>
   );
 }
@@ -607,7 +913,9 @@ export function useCart() {
       CartContext
     );
 
-  if (!context) {
+  if (
+    !context
+  ) {
     throw new Error(
       "useCart must be used within a CartProvider"
     );

@@ -1,16 +1,33 @@
+
 import {
   Router,
+  type NextFunction,
+  type Request,
+  type Response,
 } from "express";
 
 import {
   createOrder,
+} from "../controllers/orderCreation.controller";
+
+import {
   getBuyerFulfillmentCodes,
   getMyOrders,
   getOrderById,
   getVendorOrders,
-  updateVendorOrderStatus,
   verifyVendorFulfillmentCode,
 } from "../controllers/order.controller";
+
+import {
+  getOrderTimings,
+  updateVendorOrderStatusWithTiming,
+} from "../controllers/orderTiming.controller";
+
+import { markOrderReady } from "../controllers/orderReady.controller";
+
+import {
+  getOrderPickupSelections,
+} from "../controllers/orderPickup.controller";
 
 import {
   requireAuth,
@@ -18,8 +35,31 @@ import {
   requireVendorOrderFulfillment,
 } from "../middleware/auth.middleware";
 
-const router =
-  Router();
+const router = Router();
+
+/*
+ * =======================================================
+ * LEGACY PICKUP SLOT
+ * =======================================================
+ *
+ * Historical values remain in the database.
+ * New orders no longer accept the old preferredSlot.
+ */
+
+const discardLegacyPreferredSlot = (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+) => {
+  if (
+    req.body &&
+    typeof req.body === "object"
+  ) {
+    delete req.body.preferredSlot;
+  }
+
+  next();
+};
 
 /*
  * =======================================================
@@ -27,32 +67,25 @@ const router =
  * =======================================================
  */
 
-/*
- * Create a new order.
- */
 router.post(
   "/",
   requireAuth,
+  discardLegacyPreferredSlot,
   createOrder
 );
 
-/*
- * Buyer's complete order history.
- */
+router.get(
+  "/timings",
+  requireAuth,
+  getOrderTimings
+);
+
 router.get(
   "/mine",
   requireAuth,
   getMyOrders
 );
 
-/*
- * Buyer-only access to fulfilment codes for one order.
- *
- * Ownership is checked inside the controller.
- *
- * IMPORTANT:
- * Keep this route above "/:id".
- */
 router.get(
   "/:id/fulfillment-codes",
   requireAuth,
@@ -61,14 +94,22 @@ router.get(
 
 /*
  * =======================================================
+ * PICKUP SELECTIONS
+ * =======================================================
+ */
+
+router.get(
+  "/:id/pickup-selections",
+  requireAuth,
+  getOrderPickupSelections
+);
+
+/*
+ * =======================================================
  * SELLER
  * =======================================================
  */
 
-/*
- * Historical seller orders remain readable by vendor
- * accounts even if current selling eligibility changes.
- */
 router.get(
   "/vendor",
   requireAuth,
@@ -76,34 +117,15 @@ router.get(
   getVendorOrders
 );
 
-/*
- * Existing order transitions:
- *
- * pending   -> confirmed
- * pending   -> cancelled
- * confirmed -> cancelled
- *
- * Direct completion is deliberately rejected by the
- * controller.
- */
 router.patch(
   "/vendor/:id/status",
   requireAuth,
   requireVendorOrderFulfillment,
-  updateVendorOrderStatus
+  updateVendorOrderStatusWithTiming
 );
 
-/*
- * Complete an existing confirmed seller portion using
- * the private 4-digit code supplied by the buyer.
- *
- * The same existing-order fulfilment middleware applies:
- *
- * active         -> allowed
- * pending_review -> allowed
- * restricted     -> blocked
- * suspended      -> blocked
- */
+router.post("/vendor/:id/ready", requireAuth, requireVendorOrderFulfillment, markOrderReady);
+
 router.post(
   "/vendor/:id/fulfillment",
   requireAuth,
@@ -115,9 +137,8 @@ router.post(
  * =======================================================
  * INDIVIDUAL ORDER
  * =======================================================
- *
- * Keep this last because "/:id" is intentionally broad.
  */
+
 router.get(
   "/:id",
   requireAuth,

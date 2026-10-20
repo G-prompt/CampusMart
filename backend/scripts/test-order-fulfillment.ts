@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 
 import type {
   Response,
@@ -347,6 +348,9 @@ async function main() {
     buyerId =
       buyer.id;
 
+    // Current checkout is wallet-funded: the fixture must fund its buyer.
+    await prisma.wallet.create({ data: { userId: buyer.id, balance: 100000 } });
+
     /*
      * ===================================================
      * SELLER A PRODUCT
@@ -477,11 +481,10 @@ async function main() {
               },
             ],
 
-            pickupLocation:
-              "Main Campus",
-
-            preferredSlot:
-              "Afternoon",
+            pickupMode: "shared_campus",
+            campusMeetupLocation: "Main Campus Gate",
+            pickupSelections: [],
+            checkoutKey: randomUUID(),
           }
         ),
 
@@ -495,6 +498,14 @@ async function main() {
       ) {
         orderId =
           captured.body.order.id;
+      }
+
+      if (captured.statusCode !== 201 || captured.body?.success !== true || !captured.body?.order?.id) {
+        console.error("Order creation fixture response:", {
+          status: captured.statusCode,
+          code: captured.body?.code ?? null,
+          message: captured.body?.message ?? null,
+        });
       }
 
       check(
@@ -1735,11 +1746,14 @@ async function main() {
     if (
       buyerId
     ) {
+      await prisma.walletHold.deleteMany({ where: { order: { buyerId } } });
+      await prisma.walletEntry.deleteMany({ where: { userId: buyerId } });
       await prisma.order.deleteMany({
         where: {
           buyerId,
         },
       });
+      await prisma.wallet.deleteMany({ where: { userId: buyerId } });
     }
 
     const productIds =
@@ -1786,6 +1800,24 @@ async function main() {
       userIds.length >
       0
     ) {
+      // Verified handoff settles the buyer-funded holds into each seller's
+      // wallet, creating wallet rows and settlement ledger entries. They
+      // are test-owned records, but both models restrict user deletion.
+      // Clean up every fixture user's wallet data before deleting users.
+      await prisma.walletEntry.deleteMany({ where: { userId: { in: userIds } } });
+      await prisma.wallet.deleteMany({ where: { userId: { in: userIds } } });
+
+      // Conversations also have restrictive buyer/vendor foreign keys.
+      // Scope removal to these fresh test fixture users only.
+      await prisma.conversation.deleteMany({
+        where: {
+          OR: [
+            { buyerId: { in: userIds } },
+            { vendorId: { in: userIds } },
+          ],
+        },
+      });
+
       await prisma.user.deleteMany({
         where: {
           id: {

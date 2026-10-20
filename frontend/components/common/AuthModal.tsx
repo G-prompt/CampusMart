@@ -7,6 +7,10 @@ import {
   useState,
 } from "react";
 
+import { formatNigerianNationalInput, toNigeriaE164 } from "@/lib/phone";
+import { NIGERIA_LOCATIONS, NIGERIAN_STATES } from "@/lib/nigeriaLocations";
+import { institutionSearchScore, institutionDisplayCode } from "@/lib/institutionSearch";
+
 import {
   Role,
   UniversitySummary,
@@ -20,46 +24,8 @@ const API_URL =
 
 const OTHER_UNIVERSITY =
   "other";
+const NOT_A_STUDENT = "not_student";
 
-const NIGERIAN_STATES = [
-  "Abia",
-  "Adamawa",
-  "Akwa Ibom",
-  "Anambra",
-  "Bauchi",
-  "Bayelsa",
-  "Benue",
-  "Borno",
-  "Cross River",
-  "Delta",
-  "Ebonyi",
-  "Edo",
-  "Ekiti",
-  "Enugu",
-  "FCT",
-  "Gombe",
-  "Imo",
-  "Jigawa",
-  "Kaduna",
-  "Kano",
-  "Katsina",
-  "Kebbi",
-  "Kogi",
-  "Kwara",
-  "Lagos",
-  "Nasarawa",
-  "Niger",
-  "Ogun",
-  "Ondo",
-  "Osun",
-  "Oyo",
-  "Plateau",
-  "Rivers",
-  "Sokoto",
-  "Taraba",
-  "Yobe",
-  "Zamfara",
-];
 
 function CloseIcon() {
   return (
@@ -125,6 +91,58 @@ export default function AuthModal() {
     universityChoice,
     setUniversityChoice,
   ] = useState("");
+  const [universityStateFilter, setUniversityStateFilter] = useState("");
+  const [universitySearch, setUniversitySearch] = useState("");
+  const [showUniversitySuggestions, setShowUniversitySuggestions] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
+
+  // Institution aliases are search-only; the selected ID is always the
+  // canonical record returned by the backend. The state filter is preferred,
+  // but a cross-state result can be selected when the search has no local hit.
+  const filteredUniversities = useMemo(() => {
+    const query = universitySearch.trim();
+    return universities
+      .filter((university) =>
+        (!universityStateFilter ||
+          university.state.trim().toLowerCase() === universityStateFilter.toLowerCase()) &&
+        institutionSearchScore(university, query) !== null
+      )
+      .sort((a, b) => {
+        const difference =
+          (institutionSearchScore(a, query) ?? 9) -
+          (institutionSearchScore(b, query) ?? 9);
+        // Featured placement changes discovery order, not eligibility.
+        const aFeatured = Boolean((a as UniversitySummary & { featuredInSignup?: boolean }).featuredInSignup);
+        const bFeatured = Boolean((b as UniversitySummary & { featuredInSignup?: boolean }).featuredInSignup);
+        return difference || Number(bFeatured) - Number(aFeatured) || a.name.localeCompare(b.name);
+      });
+  }, [universities, universityStateFilter, universitySearch]);
+
+  const elsewhereSuggestions = useMemo(() => {
+    const query = universitySearch.trim();
+    if (!universityStateFilter || query.length < 2 || filteredUniversities.length) {
+      return [];
+    }
+    return universities
+      .filter((university) =>
+        university.state.toLowerCase() !== universityStateFilter.toLowerCase() &&
+        institutionSearchScore(university, query) !== null
+      )
+      .sort((a, b) =>
+        (institutionSearchScore(a, query) ?? 9) -
+          (institutionSearchScore(b, query) ?? 9) ||
+        a.name.localeCompare(b.name)
+      )
+      .slice(0, 5);
+  }, [universities, universityStateFilter, universitySearch, filteredUniversities]);
+
+  const visibleSuggestions = filteredUniversities.slice(0, 8);
+  const keyboardSuggestions = visibleSuggestions.length
+    ? visibleSuggestions
+    : elsewhereSuggestions;
+  const shouldShowSuggestions = showUniversitySuggestions &&
+    !universityChoice &&
+    Boolean(universitySearch.trim() || universityStateFilter);
 
   const [
     fallbackUniversityName,
@@ -173,10 +191,6 @@ export default function AuthModal() {
     setPhone,
   ] = useState("");
 
-  const [
-    bio,
-    setBio,
-  ] = useState("");
 
   const [
     businessName,
@@ -232,9 +246,8 @@ export default function AuthModal() {
       ]
     );
 
-  const isOtherUniversity =
-    universityChoice ===
-    OTHER_UNIVERSITY;
+  const isOtherUniversity = universityChoice === OTHER_UNIVERSITY;
+  const isNotStudent = universityChoice === NOT_A_STUDENT;
 
   useEffect(() => {
     if (!authOpen) {
@@ -392,6 +405,10 @@ export default function AuthModal() {
     setUniversityChoice(
       ""
     );
+    setUniversityStateFilter("");
+    setUniversitySearch("");
+    setShowUniversitySuggestions(false);
+    setActiveSuggestionIndex(0);
 
     setFallbackUniversityName(
       ""
@@ -422,7 +439,6 @@ export default function AuthModal() {
     );
 
     setPhone("");
-    setBio("");
 
     setBusinessName(
       ""
@@ -478,6 +494,8 @@ export default function AuthModal() {
     setUniversityChoice(
       value
     );
+    setShowUniversitySuggestions(false);
+    setActiveSuggestionIndex(0);
 
     setFallbackUniversityName(
       ""
@@ -551,7 +569,7 @@ export default function AuthModal() {
         !universityChoice
       ) {
         setError(
-          "Choose your university before creating your account."
+          "Search and select your institution, or choose an option under Other."
         );
 
         return;
@@ -559,10 +577,11 @@ export default function AuthModal() {
 
       if (
         !isOtherUniversity &&
+        !isNotStudent &&
         !selectedUniversity
       ) {
         setError(
-          "Please choose a valid university."
+          "Please choose an institution from the matching results."
         );
 
         return;
@@ -592,9 +611,7 @@ export default function AuthModal() {
       }
 
       if (
-        selectedRole ===
-          "vendor" &&
-        !isOtherUniversity &&
+        selectedUniversity &&
         !matricNumber.trim()
       ) {
         setError(
@@ -606,19 +623,20 @@ export default function AuthModal() {
         return;
       }
 
-      const cleanPhone =
-        phone.replace(
-          /\D/g,
-          ""
-        );
-
-      const fullPhone =
-        cleanPhone
-          ? `${countryCode}${cleanPhone.replace(
-              /^0+/,
-              ""
-            )}`
-          : "";
+      const cleanPhone = phone.replace(/\D/g, "");
+      const fullPhone = countryCode === "+234"
+        ? toNigeriaE164(phone)
+        : cleanPhone ? `${countryCode}${cleanPhone.replace(/^0+/, "")}` : null;
+      if (!fullPhone || (countryCode !== "+234" && !/^\+\d{8,15}$/.test(fullPhone))) {
+        setError(countryCode === "+234"
+          ? "Enter a valid Nigerian phone number (11 digits, starting with 0)."
+          : "Enter a valid phone number for the selected country.");
+        return;
+      }
+      if (isNotStudent && selectedRole === "vendor") {
+        setError("A student university account is required to sell on CampusMart.");
+        return;
+      }
 
       setLoading(true);
 
@@ -635,14 +653,10 @@ export default function AuthModal() {
             phone:
               fullPhone,
 
-            bio:
-              selectedRole ===
-              "client"
-                ? bio
-                : "",
+            bio: "",
 
             universityId:
-              isOtherUniversity
+              (isOtherUniversity || isNotStudent)
                 ? null
                 : universityChoice,
 
@@ -883,63 +897,189 @@ export default function AuthModal() {
                   </div>
 
                   <label className="mt-4 block text-sm font-semibold text-slate-700">
-                    University
-
+                    Find by state (optional)
                     <select
-                      name="university"
-                      required
-                      value={
-                        universityChoice
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        handleUniversityChange(
-                          event
-                            .target
-                            .value
-                        )
-                      }
-                      className="mt-1.5 w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-black focus:ring-2 focus:ring-accent-200"
+                      value={universityStateFilter}
+                      onChange={(event) => {
+                        setUniversityStateFilter(event.target.value);
+                        handleUniversityChange("");
+                        setUniversitySearch("");
+                      }}
+                      className="mt-1.5 w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-black"
                     >
-                      <option value="">
-                        {universitiesLoading
-                          ? "Loading universities..."
-                          : "Select your university"}
-                      </option>
+                      <option value="">All states and FCT</option>
+                      {NIGERIAN_STATES.map((state) => (
+                        <option key={state} value={state}>{state}</option>
+                      ))}
+                    </select>
+                  </label>
 
-                      {universities.map(
-                        (
-                          university
-                        ) => (
-                          <option
-                            key={
-                              university.id
+                  <div
+                    className="mt-3"
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        setShowUniversitySuggestions(false);
+                      }
+                    }}
+                  >
+                    <p className="text-sm font-semibold text-slate-700">
+                      Search and choose your institution
+                    </p>
+                    {selectedUniversity ? (
+                      <div className="mt-1.5 flex items-center justify-between gap-2 rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-emerald-900">
+                            {selectedUniversity.name}
+                          </p>
+                          <p className="text-xs text-emerald-800">
+                            {institutionDisplayCode(selectedUniversity)} · {selectedUniversity.state}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleUniversityChange("");
+                            setUniversitySearch("");
+                            setShowUniversitySuggestions(true);
+                          }}
+                          className="shrink-0 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-emerald-900 hover:bg-emerald-100"
+                        >
+                          Change
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="search"
+                          role="combobox"
+                          aria-autocomplete="list"
+                          aria-expanded={shouldShowSuggestions}
+                          aria-controls="signup-institution-suggestions"
+                          aria-activedescendant={shouldShowSuggestions && keyboardSuggestions.length > 0 ? `signup-institution-${activeSuggestionIndex}` : undefined}
+                          autoComplete="off"
+                          value={universitySearch}
+                          onFocus={() => setShowUniversitySuggestions(true)}
+                          onChange={(event) => {
+                            // A typed change cannot leave an old institution selected.
+                            if (universityChoice) handleUniversityChange("");
+                            setUniversitySearch(event.target.value);
+                            setActiveSuggestionIndex(0);
+                            setShowUniversitySuggestions(true);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") {
+                              event.stopPropagation();
+                              setShowUniversitySuggestions(false);
                             }
-                            value={
-                              university.id
+                            if (!shouldShowSuggestions || !keyboardSuggestions.length) return;
+                            if (event.key === "ArrowDown") {
+                              event.preventDefault();
+                              setActiveSuggestionIndex((index) =>
+                                Math.min(index + 1, keyboardSuggestions.length - 1));
+                            } else if (event.key === "ArrowUp") {
+                              event.preventDefault();
+                              setActiveSuggestionIndex((index) => Math.max(index - 1, 0));
+                            } else if (event.key === "Enter") {
+                              event.preventDefault();
+                              const picked = keyboardSuggestions[activeSuggestionIndex];
+                              if (picked) {
+                                if (picked.state !== universityStateFilter) {
+                                  setUniversityStateFilter(picked.state);
+                                }
+                                handleUniversityChange(picked.id);
+                                setUniversitySearch(picked.name);
+                              }
                             }
+                          }}
+                          placeholder="Search by name or acronym, e.g. ABSU, UNIPORT"
+                          className="mt-1.5 w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-black focus:ring-2 focus:ring-accent-200"
+                        />
+                        {shouldShowSuggestions ? (
+                          <div
+                            id="signup-institution-suggestions"
+                            role="listbox"
+                            aria-label="Matching institutions"
+                            className="mt-1.5 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-sm"
                           >
-                            {
-                              university.name
-                            }{" "}
-                            (
-                            {
-                              university.shortName
-                            }
-                            )
-                          </option>
-                        )
-                      )}
+                            {visibleSuggestions.length ? (
+                              visibleSuggestions.map((university, index) => (
+                                <button
+                                  id={`signup-institution-${index}`}
+                                  role="option"
+                                  aria-selected={index === activeSuggestionIndex}
+                                  key={university.id}
+                                  type="button"
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={() => {
+                                    handleUniversityChange(university.id);
+                                    setUniversitySearch(university.name);
+                                  }}
+                                  className={`block w-full border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-amber-50 ${index === activeSuggestionIndex ? "bg-amber-50" : ""}`}
+                                >
+                                  <span className="block text-sm font-semibold text-slate-900">
+                                    {university.name}
+                                  </span>
+                                  <span className="block text-xs text-slate-500">
+                                    {institutionDisplayCode(university)} · {university.state}
+                                  </span>
+                                </button>
+                              ))
+                            ) : (
+                              <p className="px-3 py-3 text-xs text-slate-600">
+                                No matching institutions{universityStateFilter ? ` in ${universityStateFilter}` : ""}.
+                                {elsewhereSuggestions.length
+                                  ? " Matching institutions were found in other states:"
+                                  : " Try another name or select Other below."}
+                              </p>
+                            )}
+                            {!visibleSuggestions.length && elsewhereSuggestions.map((university, index) => (
+                              <button
+                                id={`signup-institution-${index}`}
+                                key={university.id}
+                                role="option"
+                                aria-selected={index === activeSuggestionIndex}
+                                type="button"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => {
+                                  setUniversityStateFilter(university.state);
+                                  handleUniversityChange(university.id);
+                                  setUniversitySearch(university.name);
+                                }}
+                                className={`block w-full border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-amber-50 ${index === activeSuggestionIndex ? "bg-amber-50" : ""}`}
+                              >
+                                <span className="block text-sm font-semibold text-slate-900">
+                                  {university.name}
+                                </span>
+                                <span className="block text-xs text-slate-500">
+                                  {institutionDisplayCode(university)} · {university.state} · Change state to select
+                                </span>
+                              </button>
+                            ))}
+                            {filteredUniversities.length > visibleSuggestions.length ? (
+                              <p className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
+                                Showing {visibleSuggestions.length} of {filteredUniversities.length}. Type more letters to narrow the list.
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
 
-                      <option
-                        value={
-                          OTHER_UNIVERSITY
-                        }
-                      >
-                        Other / University
-                        not listed
-                      </option>
+                  <label className="mt-3 block text-sm font-semibold text-slate-700">
+                    Other
+                    <select
+                      name="otherInstitutionChoice"
+                      value={isOtherUniversity || isNotStudent ? universityChoice : ""}
+                      onChange={(event) => {
+                        handleUniversityChange(event.target.value);
+                        setUniversitySearch("");
+                      }}
+                      className="mt-1.5 w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-black"
+                    >
+                      <option value="">Select only if needed</option>
+                      <option value={NOT_A_STUDENT}>I am not a student</option>
+                      <option value={OTHER_UNIVERSITY}>My university isn't listed</option>
                     </select>
                   </label>
 
@@ -1016,11 +1156,7 @@ export default function AuthModal() {
                           onChange={(
                             event
                           ) =>
-                            setFallbackState(
-                              event
-                                .target
-                                .value
-                            )
+                            (setFallbackState(event.target.value), setFallbackCity(""))
                           }
                           className="mt-1.5 w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-black focus:ring-2 focus:ring-accent-200"
                         >
@@ -1071,8 +1207,12 @@ export default function AuthModal() {
                             )
                           }
                           className="mt-1.5 w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-black focus:ring-2 focus:ring-accent-200"
-                          placeholder="Port Harcourt"
+                          placeholder="Select a city, or enter another"
+                          list="signup-city-list"
                         />
+                        <datalist id="signup-city-list">
+                          {(NIGERIA_LOCATIONS[fallbackState] || []).map(city => <option key={city} value={city} />)}
+                        </datalist>
                       </label>
 
                       {selectedRole ===
@@ -1107,23 +1247,11 @@ export default function AuthModal() {
                     <label className="mt-4 block text-sm font-semibold text-slate-700">
                       Matric number
 
-                      {selectedRole ===
-                      "client" ? (
-                        <span className="font-normal text-slate-500">
-                          {" "}
-                          (optional for
-                          now)
-                        </span>
-                      ) : null}
-
                       <input
                         type="text"
                         name="matricNumber"
                         autoComplete="off"
-                        required={
-                          selectedRole ===
-                          "vendor"
-                        }
+                        required
                         value={
                           matricNumber
                         }
@@ -1155,29 +1283,7 @@ export default function AuthModal() {
                         themselves are not
                         guessed or corrected.
                       </p>
-
-                      {visibleMatricHint ? (
-                        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-                          <p className="text-xs font-semibold text-amber-900">
-                            Matric format
-                            example
-                          </p>
-
-                          <p className="mt-1 font-mono text-sm font-bold text-amber-950">
-                            {
-                              visibleMatricHint
-                            }
-                          </p>
-
-                          <p className="mt-1 text-xs leading-5 text-amber-800">
-                            Check your
-                            official student
-                            record and enter
-                            your details
-                            exactly.
-                          </p>
-                        </div>
-                      ) : null}
+                      {visibleMatricHint && <p className="mt-1 flex items-center gap-1 text-xs text-red-600"><span aria-hidden="true">ⓘ</span> {visibleMatricHint}</p>}
                     </label>
                   ) : null}
                 </div>
@@ -1185,13 +1291,6 @@ export default function AuthModal() {
                 <label className="block text-sm font-semibold text-slate-700">
                   Phone number
 
-                  {selectedRole ===
-                  "client" ? (
-                    <span className="font-normal text-slate-500">
-                      {" "}
-                      (optional)
-                    </span>
-                  ) : null}
 
                   <div className="mt-1.5 flex gap-2">
                     <select
@@ -1241,25 +1340,14 @@ export default function AuthModal() {
                       name="phone"
                       autoComplete="tel-national"
                       inputMode="numeric"
-                      required={
-                        selectedRole ===
-                        "vendor"
-                      }
-                      value={
-                        phone
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        setPhone(
-                          event.target.value.replace(
-                            /[^0-9]/g,
-                            ""
-                          )
-                        )
-                      }
+                      required
+                      value={phone}
+                      maxLength={countryCode === "+234" ? 13 : 20}
+                      onChange={(event) => setPhone(countryCode === "+234"
+                        ? formatNigerianNationalInput(event.target.value)
+                        : event.target.value.replace(/[^0-9]/g, ""))}
                       className="min-w-0 flex-1 rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-black focus:bg-white focus:ring-2 focus:ring-accent-200"
-                      placeholder="902865529"
+                      placeholder={countryCode === "+234" ? "0909 123 4567" : "Phone number"}
                     />
                   </div>
                 </label>
@@ -1357,36 +1445,7 @@ export default function AuthModal() {
                       />
                     </label>
                   </div>
-                ) : (
-                  <label className="block text-sm font-semibold text-slate-700">
-                    About you
-
-                    <span className="font-normal text-slate-500">
-                      {" "}
-                      (optional)
-                    </span>
-
-                    <textarea
-                      name="bio"
-                      autoComplete="off"
-                      rows={3}
-                      value={
-                        bio
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        setBio(
-                          event
-                            .target
-                            .value
-                        )
-                      }
-                      className="mt-1.5 w-full resize-y rounded-[10px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-black focus:bg-white focus:ring-2 focus:ring-accent-200"
-                      placeholder="Tell other students a little about yourself."
-                    />
-                  </label>
-                )}
+                ) : null}
               </>
             ) : null}
 
