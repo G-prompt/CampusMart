@@ -38,25 +38,25 @@ const browseCategories = [
     name: "Technology",
     detail: "Study-ready gear",
     href: "/marketplace?category=Technology",
-    tone: "bg-[#DCEBFF]",
+    tone: "bg-[#14161A]",
   },
   {
     name: "Books",
     detail: "Pass it forward",
     href: "/marketplace?category=Books",
-    tone: "bg-[#F8E7C8]",
+    tone: "bg-[#14161A]",
   },
   {
     name: "Food & Drink",
     detail: "Good moments nearby",
     href: "/marketplace?category=Food%20%26%20Drink",
-    tone: "bg-[#DDF2DE]",
+    tone: "bg-[#14161A]",
   },
   {
     name: "Events",
     detail: "Make plans",
     href: "/marketplace?category=Events",
-    tone: "bg-[#F4DCE8]",
+    tone: "bg-[#14161A]",
   },
 ];
 
@@ -101,42 +101,40 @@ export default async function HomePage() {
   const latestListings = await getLatestListings();
 
   return (
-    <main className="bg-white">
+    <main className="bg-[#08090B]">
       <section
-        className="relative min-h-[540px] overflow-hidden bg-cover bg-center sm:min-h-[630px] lg:min-h-[700px]"
+        className="relative min-h-[470px] overflow-hidden bg-cover bg-center sm:min-h-[560px] lg:min-h-[650px]"
         style={{
           backgroundImage:
-            "linear-gradient(90deg, rgba(15,23,42,0.88) 0%, rgba(15,23,42,0.58) 44%, rgba(15,23,42,0.12) 100%), url('https://images.unsplash.com/photo-1744320911030-1ab998d994d7?auto=format&fit=crop&fm=jpg&q=85&w=2400')",
+            "linear-gradient(90deg, rgba(8,9,11,0.94) 0%, rgba(8,9,11,0.68) 52%, rgba(8,9,11,0.18) 100%), url('https://images.unsplash.com/photo-1744320911030-1ab998d994d7?auto=format&fit=crop&fm=jpg&q=85&w=2400')",
         }}
         aria-label="Campus friends using CampusMart"
       >
-        <div className="main-container flex min-h-[540px] items-center py-14 sm:min-h-[630px] lg:min-h-[700px]">
+        <div className="main-container flex min-h-[470px] items-center py-12 sm:min-h-[560px] lg:min-h-[650px]">
           <div className="max-w-2xl text-white">
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-accent-300">
-              The campus marketplace
+            <p className="inline-flex rounded-full border border-accent-400/40 bg-accent-400/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-accent-300">
+              Student deals · Better prices
             </p>
 
-            <h1 className="mt-5 max-w-2xl text-5xl font-bold leading-[0.96] tracking-[-0.045em] sm:text-6xl lg:text-[78px]">
-              Good finds.
+            <h1 className="mt-5 max-w-2xl text-[42px] font-black leading-[0.98] tracking-[-0.045em] sm:text-6xl lg:text-[76px]">
+              Good products.
               <br />
-              Close by.
+              <span className="text-accent-400">Better prices.</span>
             </h1>
 
-            <p className="mt-6 max-w-xl text-base leading-7 text-white/80 sm:text-xl sm:leading-8">
-              Buy what you need,
-              sell what you no
-              longer do, and keep
-              more value moving
-              through your campus
-              community.
+            <p className="mt-5 max-w-xl text-sm leading-6 text-white/75 sm:text-lg sm:leading-8">
+              Find student-friendly deals from trusted sellers around your campus. Buy, sell and connect in one place.
             </p>
 
-            <div className="mt-9">
+            <div className="mt-7 flex flex-wrap items-center gap-3">
               <Link
                 href="/marketplace"
-                className="inline-flex items-center justify-center rounded-[12px] bg-accent-400 px-6 py-3.5 text-base font-bold text-black transition hover:-translate-y-0.5 hover:bg-accent-500"
+                className="inline-flex items-center justify-center rounded-xl bg-accent-400 px-6 py-3.5 text-sm font-black text-black transition hover:-translate-y-0.5 hover:bg-accent-500"
               >
-                Explore the marketplace
+                Shop deals <ChevronRightIcon className="ml-1 h-4 w-4" />
+              </Link>
+              <Link href="/sell" className="inline-flex items-center justify-center rounded-xl border border-white/20 bg-black/20 px-5 py-3.5 text-sm font-bold text-white transition hover:bg-white/10">
+                Start selling
               </Link>
             </div>
           </div>
@@ -156,10 +154,10 @@ export default async function HomePage() {
         </p>
       </section>
 
-      <section className="border-b border-slate-200 bg-[#F7F5EF]">
-        <div className="main-container grid divide-y divide-slate-200 py-2 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+      <section className="border-b border-[#25272B] bg-[#101114]">
+        <div className="main-container grid divide-y divide-[#25272B] py-2 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           <div className="py-5 sm:px-6 sm:first:pl-0">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+            <p className="text-lg font-black text-accent-400">
               01
             </p>
 
@@ -174,7 +172,7 @@ export default async function HomePage() {
           </div>
 
           <div className="py-5 sm:px-6">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+            <p className="text-lg font-black text-accent-400">
               02
             </p>
 
@@ -189,7 +187,7 @@ export default async function HomePage() {
           </div>
 
           <div className="py-5 sm:px-6">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+            <p className="text-lg font-black text-accent-400">
               03
             </p>
 
@@ -211,8 +209,8 @@ export default async function HomePage() {
             Start somewhere
           </p>
 
-          <h2 className="mt-3 text-3xl font-bold tracking-tight text-black sm:text-4xl">
-            Browse by mood.
+          <h2 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-4xl">
+            Shop by category
           </h2>
 
           <p className="mt-3 text-base leading-7 text-slate-600">
@@ -228,14 +226,14 @@ export default async function HomePage() {
             <Link
               key={category.name}
               href={category.href}
-              className={`${category.tone} group relative min-h-[155px] rounded-[16px] p-5 transition duration-300 hover:-translate-y-1 hover:shadow-lg`}
+              className={`${category.tone} group relative min-h-[130px] overflow-hidden rounded-2xl border border-[#27292E] p-5 transition duration-300 hover:-translate-y-1 hover:border-accent-400/50 hover:shadow-lg`}
             >
               <p className="text-sm font-medium text-slate-600">
                 {category.detail}
               </p>
 
               <div className="absolute inset-x-5 bottom-5 flex items-end justify-between gap-4">
-                <p className="text-xl font-bold text-black">
+                <p className="text-xl font-black text-white">
                   {category.name}
                 </p>
 
@@ -248,7 +246,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="border-t border-slate-100 py-14 sm:py-16">
+      <section className="border-t border-[#25272B] py-12 sm:py-16">
         <div className="main-container">
           <div className="mb-7 flex items-end justify-between gap-4">
             <div>

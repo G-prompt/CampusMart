@@ -18,7 +18,7 @@ export default function Page() {
                         <p className="text-sm font-semibold uppercase tracking-[0.24em] text-brand-700">{category.count}</p>
                         <h2 className="mt-3 text-xl font-semibold text-slate-950">{category.name}</h2>
                         <p className="mt-2 text-sm leading-7 text-slate-600">{category.description}</p>
-                        <a href="/marketplace" className="mt-4 inline-flex text-sm font-semibold text-brand-900">Browse this category →</a>
+                        <a href={category.name === "Services" ? "/marketplace/services" : "/marketplace"} className="mt-4 inline-flex text-sm font-semibold text-brand-900">Browse this category →</a>
                     </div>
                 ))}
             </div>

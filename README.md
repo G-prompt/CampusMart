@@ -17,6 +17,19 @@ Run the commands from the repository root. The root script installs and starts t
 
 Open http://localhost:3000 to view the app.
 
+### Enable live listings and backend features
+
+The frontend needs the CampusMart backend on port 5000 to load live listings. Before starting it, create `backend/.env` from `backend/.env.example` and fill in the real CampusMart PostgreSQL connection strings, JWT secrets, and Supabase project settings. Keep those credentials in the ignored `.env` file; do not commit or paste them into chat.
+
+Start the backend in a second terminal:
+
+```powershell
+Set-Location backend
+npm.cmd run dev
+```
+
+`DATABASE_URL` is used by the running API. `DIRECT_URL` is used by Prisma commands such as client generation and migrations. The local backend cannot start without the required Supabase URL and secret key.
+
 ## Deployment
 This project is ready for deployment on Vercel.
 

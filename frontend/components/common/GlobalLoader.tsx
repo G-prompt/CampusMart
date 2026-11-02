@@ -1,38 +1,64 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 export default function GlobalLoader() {
-    const [phase, setPhase] = useState<"running" | "done" | "idle">("running");
-    const pathname = usePathname();
+  const [phase, setPhase] = useState<"running" | "done" | "idle">("running");
+  const pathname = usePathname();
 
-    useEffect(() => {
-        setPhase("running");
-        const finish = window.setTimeout(() => setPhase("done"), 520);
-        const hide = window.setTimeout(() => setPhase("idle"), 760);
-        return () => {
-            window.clearTimeout(finish);
-            window.clearTimeout(hide);
-        };
-    }, [pathname]);
+  useEffect(() => {
+    setPhase("running");
 
-    if (phase === "idle") return null;
+    const finish = window.setTimeout(() => setPhase("done"), 900);
+    const hide = window.setTimeout(() => setPhase("idle"), 1_150);
 
-    return (
-        <div className={`pointer-events-none fixed inset-0 z-[999] transition-opacity duration-200 ${phase === "done" ? "opacity-0" : "opacity-100"}`} role="status" aria-live="polite" aria-label="Loading CampusMart">
-            <div className="absolute inset-x-0 top-0 h-1 overflow-hidden bg-slate-950/10">
-            <div
-                className="campusmart-loader-bar absolute left-0 top-0 h-full w-full bg-gradient-to-r from-brand-900 via-accent-400 to-brand-900"
-                style={{
-                    opacity: phase === "running" ? 1 : 0,
-                }}
-            />
-            </div>
-            <div className="absolute left-1/2 top-5 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-[11px] font-bold tracking-wide text-slate-700 shadow-sm backdrop-blur-sm">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-500" aria-hidden="true" />
-                CampusMart is loading
-            </div>
+    return () => {
+      window.clearTimeout(finish);
+      window.clearTimeout(hide);
+    };
+  }, [pathname]);
+
+  if (phase === "idle") return null;
+
+  return (
+    <div
+      className={`campusmart-loader pointer-events-none fixed inset-0 z-[999] flex items-center justify-center transition-opacity duration-300 ${
+        phase === "done" ? "opacity-0" : "opacity-100"
+      }`}
+      role="status"
+      aria-live="polite"
+      aria-label="Loading CampusMart"
+    >
+      <div className="campusmart-loader-content flex flex-col items-center">
+        <div className="campusmart-loader-mark relative flex h-24 w-24 items-center justify-center rounded-[28px] border border-white/10 bg-[#111317] p-3 shadow-[0_0_70px_rgba(255,107,0,0.12)]">
+          <span className="campusmart-loader-orbit" aria-hidden="true" />
+          <Image
+            src="/campusmart-logo.jpg"
+            alt=""
+            width={72}
+            height={72}
+            priority
+            className="relative z-10 h-full w-full rounded-[18px] object-contain"
+          />
         </div>
-    );
+
+        <p className="mt-5 text-lg font-black tracking-tight text-white">
+          Campus<span className="text-accent-400">Mart</span>
+        </p>
+        <p className="mt-1 text-xs font-medium text-slate-400">
+          Your campus marketplace
+        </p>
+
+        <div className="campusmart-loader-track mt-6 h-1 w-36 overflow-hidden rounded-full bg-white/10">
+          <span className="campusmart-loader-progress block h-full rounded-full bg-accent-400" />
+        </div>
+
+        <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+          Finding good deals nearby
+        </p>
+      </div>
+    </div>
+  );
 }

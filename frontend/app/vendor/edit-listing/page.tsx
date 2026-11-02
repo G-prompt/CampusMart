@@ -23,6 +23,8 @@ import {
 
 import {
   categories,
+  isServiceCategory,
+  serviceCategories,
   formatNaira,
 } from "@/lib/products";
 
@@ -101,6 +103,9 @@ export default function Page() {
     useState(
       ""
     );
+
+  const listingIsService =
+    isServiceCategory(category);
 
   const [
     price,
@@ -778,7 +783,7 @@ export default function Page() {
   return (
     <PageShell
       title="Edit listing"
-      description="Update your product details, options and images."
+      description={`Update your ${listingIsService ? "service details and photos" : "product details, options and images"}.`}
     >
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <Link
@@ -804,7 +809,28 @@ export default function Page() {
       >
         <div className="grid gap-5 sm:grid-cols-2">
           <label className="text-sm font-bold">
-            Product name
+            Listing type
+
+            <select
+              value={listingIsService ? "service" : "product"}
+              onChange={(event) => {
+                setCategory(
+                  event.target.value === "service"
+                    ? serviceCategories[0]
+                    : "Technology"
+                );
+                setSizes([]);
+                setColors([]);
+              }}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+            >
+              <option value="product">Product</option>
+              <option value="service">Service</option>
+            </select>
+          </label>
+
+          <label className="text-sm font-bold">
+            {listingIsService ? "Service name" : "Product name"}
 
             <input
               value={
@@ -837,7 +863,14 @@ export default function Page() {
               }
               className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
             >
-              {categories
+              {(listingIsService
+                ? serviceCategories
+                : categories.filter(
+                    (item) =>
+                      item !== "All" &&
+                      !isServiceCategory(item)
+                  )
+              )
                 .filter(
                   (
                     item
@@ -905,24 +938,22 @@ export default function Page() {
           />
         </label>
 
-        <ProductOptionsEditor
-          sizes={
-            sizes
-          }
-          colors={
-            colors
-          }
-          onSizesChange={
-            setSizes
-          }
-          onColorsChange={
-            setColors
-          }
-        />
+        {listingIsService ? (
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+            Customers can contact you from the service page to ask about availability and booking.
+          </p>
+        ) : (
+          <ProductOptionsEditor
+            sizes={sizes}
+            colors={colors}
+            onSizesChange={setSizes}
+            onColorsChange={setColors}
+          />
+        )}
 
         <section className="rounded-2xl border border-slate-200 p-5">
           <h2 className="font-black">
-            Product images
+            {listingIsService ? "Service photos" : "Product images"}
           </h2>
 
           <p className="mt-1 text-xs leading-5 text-slate-500">

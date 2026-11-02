@@ -7,14 +7,14 @@
 @import "./animations.css";
 
 :root {
-  color: #0F172A;
-  background-color: #ffffff;
+  color: #F5F5F5;
+  background-color: #08090B;
   font-size: 16px;
 }
 
 html {
   min-height: 100%;
-  background: #ffffff;
+  background: #08090B;
   overflow-x: hidden;
   scrollbar-width: none;
 }
@@ -24,7 +24,9 @@ html::-webkit-scrollbar {
 }
 
 body {
-  @apply bg-white text-slate-900 antialiased min-h-screen;
+  @apply antialiased min-h-screen;
+  background: #08090B;
+  color: #F5F5F5;
   overflow-x: clip;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 16px;
@@ -38,7 +40,7 @@ body {
 }
 
 ::selection {
-  background: rgba(250, 204, 21, 0.35);
+  background: rgba(255, 107, 0, 0.35);
 }
 
 img {
@@ -54,7 +56,7 @@ textarea {
 }
 
 :focus-visible {
-  outline: 2px solid rgba(250, 204, 21, 0.6);
+  outline: 2px solid rgba(255, 107, 0, 0.75);
   outline-offset: 2px;
 }
 
@@ -63,18 +65,233 @@ textarea {
 }
 
 .site-card {
-  border: 1px solid rgba(226, 232, 240, 0.95);
+  border: 1px solid #25272B;
   border-radius: 1.75rem;
-  background-color: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 20px 45px -24px rgba(15, 23, 42, 0.28);
+  background-color: #111317;
+  box-shadow: 0 20px 45px -24px rgba(0, 0, 0, 0.75);
 }
 
 .section-shell {
-  border: 1px solid rgba(226, 232, 240, 0.95);
+  border: 1px solid #25272B;
   border-radius: 2rem;
-  background-color: rgba(255, 255, 255, 0.8);
-  box-shadow: 0 20px 50px -28px rgba(15, 23, 42, 0.25);
+  background-color: rgba(17, 19, 23, 0.88);
+  box-shadow: 0 20px 50px -28px rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(12px);
+}
+
+.campusmart-theme {
+  min-height: 100vh;
+  background: #08090B;
+  color: #F5F5F5;
+}
+
+.campusmart-theme .bg-white {
+  background-color: #0D0F12 !important;
+}
+
+.campusmart-theme .bg-slate-50 {
+  background-color: #14161A !important;
+}
+
+.campusmart-theme .bg-slate-100 {
+  background-color: #1B1E23 !important;
+}
+
+.campusmart-theme .bg-slate-200 {
+  background-color: #282B31 !important;
+}
+
+.campusmart-theme .text-black,
+.campusmart-theme .text-slate-950,
+.campusmart-theme .text-slate-900,
+.campusmart-theme .text-slate-800 {
+  color: #F5F5F5 !important;
+}
+
+.campusmart-theme .text-slate-700 {
+  color: #D1D5DB !important;
+}
+
+.campusmart-theme .text-slate-600,
+.campusmart-theme .text-slate-500 {
+  color: #A1A1AA !important;
+}
+
+.campusmart-theme .text-slate-400 {
+  color: #858992 !important;
+}
+
+.campusmart-theme .text-brand-700 {
+  color: #FF6B00 !important;
+}
+
+.campusmart-theme .text-brand-900 {
+  color: #F5F5F5 !important;
+}
+
+.campusmart-theme .border-slate-100,
+.campusmart-theme .border-slate-200,
+.campusmart-theme .border-slate-300 {
+  border-color: #292C32 !important;
+}
+
+.campusmart-theme [class*="bg-[#FBF6ED]"],
+.campusmart-theme [class*="bg-[#FFF8EE]"] {
+  background-color: #111317 !important;
+}
+
+.campusmart-theme [class*="bg-[#F0E2D6]"] {
+  background-color: #22252A !important;
+}
+
+.campusmart-theme [class*="text-[#4A1724]"] {
+  color: #F5F5F5 !important;
+}
+
+.campusmart-theme [class*="text-[#755861]"],
+.campusmart-theme [class*="text-[#8A6670]"] {
+  color: #A1A1AA !important;
+}
+
+.campusmart-theme [class*="border-[#E5D8CC]"],
+.campusmart-theme [class*="border-[#DDCDBF]"] {
+  border-color: #30333A !important;
+}
+
+.campusmart-theme input,
+.campusmart-theme select,
+.campusmart-theme textarea {
+  color: #F5F5F5;
+}
+
+.campusmart-theme input::placeholder,
+.campusmart-theme textarea::placeholder {
+  color: #858992;
+}
+
+.campusmart-theme .site-card,
+.campusmart-theme .section-shell {
+  border-color: #25272B;
+  background-color: #111317;
+}
+
+.campusmart-theme .campusmart-topbar {
+  border-color: #24262A;
+  background: rgba(8, 9, 11, 0.94);
+}
+
+.campusmart-theme .campusmart-bottom-nav {
+  border-color: #27292E;
+  background: rgba(12, 13, 16, 0.96);
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.campusmart-theme .campusmart-bottom-nav a {
+  color: #8A8D95;
+}
+
+.campusmart-theme .campusmart-bottom-nav a[aria-current="page"] {
+  color: #FF6B00;
+}
+
+.campusmart-theme .campusmart-bottom-nav a[aria-current="page"] > span:first-child {
+  background: rgba(255, 107, 0, 0.12);
+}
+
+.campusmart-theme .campusmart-product-card {
+  border-color: #292C32;
+  background: #111317;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+}
+
+.campusmart-theme .campusmart-product-card .campusmart-product-image {
+  background: #181A1F;
+}
+
+.campusmart-theme .campusmart-product-card .campusmart-product-action-secondary {
+  border-color: #34373E;
+  background: #1A1C20;
+  color: #F5F5F5;
+}
+
+.campusmart-theme .campusmart-input {
+  border-color: #30333A;
+  background: #15171B;
+}
+
+.campusmart-theme .campusmart-muted-panel {
+  border-color: #292C32;
+  background: #14161A;
+}
+
+@media (min-width: 1024px) {
+  .campusmart-theme {
+    padding-bottom: 5.5rem;
+  }
+}
+
+.campusmart-loader {
+  background:
+    radial-gradient(ellipse at 50% 45%, rgba(32, 24, 18, 0.88), rgba(8, 9, 11, 0.98) 54%),
+    #08090B;
+}
+
+.campusmart-loader-content {
+  animation: campusmart-loader-enter 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.campusmart-loader-mark {
+  animation: campusmart-loader-breathe 1.8s ease-in-out infinite;
+}
+
+.campusmart-loader-orbit {
+  position: absolute;
+  inset: -8px;
+  border: 1px solid rgba(255, 107, 0, 0.28);
+  border-top-color: #FF6B00;
+  border-radius: 34px;
+  animation: campusmart-loader-spin 2.8s linear infinite;
+}
+
+.campusmart-loader-progress {
+  width: 36%;
+  animation: campusmart-loader-progress 1.05s ease-in-out infinite;
+}
+
+@keyframes campusmart-loader-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes campusmart-loader-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-4px) scale(1.035);
+  }
+}
+
+@keyframes campusmart-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes campusmart-loader-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(390%);
+  }
 }
 
 /*
@@ -146,5 +363,13 @@ textarea {
   .floating-menu-item {
     animation-duration: 1ms;
     animation-delay: 0ms !important;
+  }
+
+  .campusmart-loader-content,
+  .campusmart-loader-mark,
+  .campusmart-loader-orbit,
+  .campusmart-loader-progress {
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
   }
 }

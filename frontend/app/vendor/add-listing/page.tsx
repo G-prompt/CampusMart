@@ -23,6 +23,8 @@ import {
 
 import {
   categories,
+  isServiceCategory,
+  serviceCategories,
 } from "@/lib/products";
 
 const API_URL =
@@ -160,6 +162,14 @@ export default function Page() {
   ] =
     useState(
       "Technology"
+    );
+
+  const [
+    listingType,
+    setListingType,
+  ] =
+    useState<"product" | "service">(
+      "product"
     );
 
   const [
@@ -505,7 +515,9 @@ export default function Page() {
         !imageUrl.trim()
       ) {
         setError(
-          "Every listing needs a main product image."
+          listingType === "service"
+            ? "Add a main photo of your service or previous work."
+            : "Every product listing needs a main image."
         );
 
         return;
@@ -633,7 +645,9 @@ export default function Page() {
             {
               detail: {
                 message:
-                  "Listing published",
+                  listingType === "service"
+                    ? "Service published"
+                    : "Product published",
               },
             }
           )
@@ -826,7 +840,32 @@ export default function Page() {
       >
         <div className="grid gap-5 sm:grid-cols-2">
           <label className="text-sm font-bold text-slate-700">
-            Product or service name
+            Listing type
+
+            <select
+              value={listingType}
+              onChange={(event) => {
+                const nextType =
+                  event.target.value as "product" | "service";
+
+                setListingType(nextType);
+                setCategory(
+                  nextType === "service"
+                    ? serviceCategories[0]
+                    : "Technology"
+                );
+                setSizes([]);
+                setColors([]);
+              }}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
+            >
+              <option value="product">Product</option>
+              <option value="service">Service</option>
+            </select>
+          </label>
+
+          <label className="text-sm font-bold text-slate-700">
+            {listingType === "service" ? "Service name" : "Product name"}
 
             <input
               required
@@ -841,10 +880,16 @@ export default function Page() {
                 )
               }
               className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-black"
-              placeholder="e.g. Red sweater vest"
+              placeholder={
+                listingType === "service"
+                  ? "e.g. Barbering and beard trim"
+                  : "e.g. Red sweater vest"
+              }
             />
           </label>
+        </div>
 
+        <div className="grid gap-5 sm:grid-cols-2">
           <label className="text-sm font-bold text-slate-700">
             Category
 
@@ -861,7 +906,14 @@ export default function Page() {
               }
               className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
             >
-              {categories
+              {(listingType === "service"
+                ? serviceCategories
+                : categories.filter(
+                    (item) =>
+                      item !== "All" &&
+                      !isServiceCategory(item)
+                  )
+              )
                 .filter(
                   (
                     item
@@ -889,7 +941,7 @@ export default function Page() {
         </div>
 
         <label className="block text-sm font-bold text-slate-700">
-          Price in naira
+          {listingType === "service" ? "Service price in naira" : "Price in naira"}
 
           <input
             required
@@ -906,7 +958,7 @@ export default function Page() {
               )
             }
             className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-black"
-            placeholder="9000"
+            placeholder={listingType === "service" ? "e.g. 5000" : "9000"}
           />
         </label>
 
@@ -929,32 +981,36 @@ export default function Page() {
               )
             }
             className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-black"
-            placeholder="Condition, what comes with it, important details, etc."
+            placeholder={
+              listingType === "service"
+                ? "Describe what the service includes, where you work, and how customers can arrange a time."
+                : "Condition, what comes with it, important details, etc."
+            }
           />
         </label>
 
-        <ProductOptionsEditor
-          sizes={
-            sizes
-          }
-          colors={
-            colors
-          }
-          onSizesChange={
-            setSizes
-          }
-          onColorsChange={
-            setColors
-          }
-        />
+        {listingType === "product" ? (
+          <ProductOptionsEditor
+            sizes={sizes}
+            colors={colors}
+            onSizesChange={setSizes}
+            onColorsChange={setColors}
+          />
+        ) : (
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+            Customers can contact you from the service page to ask about availability and booking.
+          </p>
+        )}
 
         <section className="rounded-2xl border border-slate-200 p-4 sm:p-5">
           <h2 className="font-black text-slate-950">
-            Product photos
+            {listingType === "service" ? "Service photos" : "Product photos"}
           </h2>
 
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            The first image is your main listing image. Add up to five more preview images.
+            {listingType === "service"
+              ? "Show your work, workspace, or the service you provide. The first image is the main photo."
+              : "The first image is your main listing image. Add up to five more preview images."}
           </p>
 
           <label className="mt-4 block text-sm font-bold text-slate-700">

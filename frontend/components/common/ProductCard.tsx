@@ -14,6 +14,7 @@ import type {
 
 import {
   formatNaira,
+  isServiceCategory,
 } from "@/lib/products";
 
 import {
@@ -79,6 +80,9 @@ export default function ProductCard({
       user.id ===
         product.vendorId
     );
+
+  const isService =
+    isServiceCategory(product.category);
 
   const hasRating =
     typeof product.rating ===
@@ -163,13 +167,13 @@ export default function ProductCard({
 
   return (
     <article
-      className={`group overflow-hidden border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+      className={`campusmart-product-card group overflow-hidden border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
         compact
           ? "rounded-xl"
           : "rounded-2xl"
       }`}
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
+      <div className="campusmart-product-image relative aspect-[4/3] overflow-hidden bg-slate-100">
         <Link
           href={`/marketplace/products/${product.id}`}
           aria-label={`View ${product.title}`}
@@ -286,18 +290,18 @@ export default function ProductCard({
         <div className="mt-2 grid grid-cols-2 gap-1.5">
           <Link
             href={`/marketplace/products/${product.id}`}
-            className="inline-flex min-h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-1.5 text-center text-[9px] font-black text-slate-800 transition hover:border-slate-400 sm:text-[10px]"
+            className="campusmart-product-action-secondary inline-flex min-h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-1.5 text-center text-[9px] font-black text-slate-800 transition hover:border-slate-400 sm:text-[10px]"
           >
             View
           </Link>
 
-          {needsOptionSelection &&
+          {(needsOptionSelection || isService) &&
           !ownListing ? (
             <Link
               href={`/marketplace/products/${product.id}`}
               className="inline-flex min-h-8 items-center justify-center rounded-lg bg-accent-400 px-1.5 text-center text-[9px] font-black text-black transition hover:bg-accent-500 sm:text-[10px]"
             >
-              Choose options
+              {isService ? "Ask about service" : "Choose options"}
             </Link>
           ) : (
             <button

@@ -7,7 +7,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import PageShell from "@/components/common/PageShell";
 import { useAuth } from "@/components/common/AuthContext";
 import { useCampusMartConfirm } from "@/components/common/CampusMartConfirm";
-import { formatNaira, type Product } from "@/lib/products";
+import {
+  formatNaira,
+  isServiceCategory,
+  type Product,
+} from "@/lib/products";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -614,7 +618,9 @@ export default function Page() {
 
                   <div className="p-3.5">
                     <p className="truncate text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">
-                      {listing.category}
+                      {isServiceCategory(listing.category)
+                        ? `Service · ${listing.category}`
+                        : listing.category}
                     </p>
 
                     <h2 className="mt-1.5 line-clamp-2 min-h-10 text-sm font-black leading-5 text-slate-950">

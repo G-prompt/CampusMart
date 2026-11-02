@@ -26,6 +26,7 @@ import {
 
 import {
   formatNaira,
+  isServiceCategory,
   type Product,
 } from "@/lib/products";
 
@@ -740,6 +741,12 @@ export default function ProductPage({
       product?.vendorId &&
       user.id ===
         product.vendorId
+    );
+
+  const isService =
+    Boolean(
+      product &&
+      isServiceCategory(product.category)
     );
 
   const sellerName =
@@ -1831,24 +1838,35 @@ export default function ProductPage({
            */}
 
           <div className="mt-4">
-            <button
-              type="button"
-              disabled={
-                ownListing
-              }
-              onClick={
-                handleAddToCart
-              }
-              className="flex min-h-12 w-full items-center justify-center rounded-xl bg-accent-400 px-5 text-sm font-black text-black transition hover:bg-accent-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-            >
-              {ownListing
-                ? "This is your listing"
-                : added
-                  ? "Added to cart ✓"
-                  : "Add to cart"}
-            </button>
+            {isService ? (
+              <button
+                type="button"
+                disabled={ownListing || openingMessages}
+                onClick={() => void handleMessageSeller()}
+                className="flex min-h-12 w-full items-center justify-center rounded-xl bg-accent-400 px-5 text-sm font-black text-black transition hover:bg-accent-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+              >
+                {ownListing
+                  ? "This is your service"
+                  : openingMessages
+                    ? "Opening conversation..."
+                    : "Message to arrange a booking"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={ownListing}
+                onClick={handleAddToCart}
+                className="flex min-h-12 w-full items-center justify-center rounded-xl bg-accent-400 px-5 text-sm font-black text-black transition hover:bg-accent-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+              >
+                {ownListing
+                  ? "This is your listing"
+                  : added
+                    ? "Added to cart ✓"
+                    : "Add to cart"}
+              </button>
+            )}
 
-            {!ownListing ? (
+            {!ownListing && !isService ? (
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <Link
                   href="/cart"
@@ -1877,6 +1895,12 @@ export default function ProductPage({
                 )}
               </div>
             ) : null}
+
+            {isService && !ownListing ? (
+              <p className="mt-2 text-center text-xs leading-5 text-slate-500">
+                Contact the seller to confirm availability and agree on booking details.
+              </p>
+            ) : null}
           </div>
 
           {!ownListing && (
@@ -1893,7 +1917,7 @@ export default function ProductPage({
 
           <details className="mt-3 rounded-xl border border-slate-200 bg-white">
             <summary className="cursor-pointer list-none px-4 py-3 text-xs font-black text-slate-700">
-              Product details{" "}
+              {isService ? "Service details" : "Product details"}{" "}
               <span className="ml-1 text-slate-400">
                 +
               </span>
@@ -1972,7 +1996,11 @@ export default function ProductPage({
                     );
                   }
                 }}
-                placeholder="Hi, is this still available?"
+                placeholder={
+                  isService
+                    ? "Hi, I’d like to ask about booking this service."
+                    : "Hi, is this still available?"
+                }
                 className="mt-3 w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#4A1724]"
               />
 

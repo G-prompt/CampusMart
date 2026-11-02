@@ -40,12 +40,12 @@ export default function RouteShell({
 
   return (
     <>
-      <div className="flex min-h-screen flex-col bg-white">
+      <div className="campusmart-theme flex min-h-screen flex-col">
         <GlobalLoader />
 
         <Navbar />
 
-        <div className="flex-1 bg-white">
+        <div className="flex-1">
           {
             children
           }

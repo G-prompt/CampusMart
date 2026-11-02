@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 
 import {
@@ -642,7 +643,7 @@ const mobileLinks = [
       "/marketplace",
 
     label:
-      "Shop",
+      "Home",
 
     Icon:
       HomeIcon,
@@ -650,24 +651,13 @@ const mobileLinks = [
 
   {
     href:
-      "/marketplace/favourites",
+      "/categories",
 
     label:
-      "Saved",
+      "Categories",
 
     Icon:
-      NavHeartIcon,
-  },
-
-  {
-    href:
-      "/messages",
-
-    label:
-      "Messages",
-
-    Icon:
-      MessageIcon,
+      CategoryIcon,
   },
 
   {
@@ -679,6 +669,17 @@ const mobileLinks = [
 
     Icon:
       CartIcon,
+  },
+
+  {
+    href:
+      "/buyer/orders",
+
+    label:
+      "Orders",
+
+    Icon:
+      OrdersIcon,
   },
 
   {
@@ -840,6 +841,17 @@ export default function Navbar() {
 
       label:
         "Categories",
+
+      Icon:
+        CategoryIcon,
+    },
+
+    {
+      href:
+        "/marketplace/services",
+
+      label:
+        "Services",
 
       Icon:
         CategoryIcon,
@@ -1707,8 +1719,8 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-[#E6D8CB] bg-[#FBF6ED]/95 backdrop-blur-xl">
-        <div className="grid min-h-[70px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-3 py-2 sm:min-h-[78px] sm:px-6 lg:gap-5 lg:px-8">
+      <header className="campusmart-topbar fixed inset-x-0 top-0 z-50 border-b border-[#24262A] bg-[#08090B]/95 backdrop-blur-xl">
+        <div className="grid min-h-[60px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-3 py-2 sm:min-h-[64px] sm:px-6 lg:min-h-[78px] lg:gap-5 lg:px-8">
           <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"
@@ -1725,7 +1737,7 @@ export default function Navbar() {
                   true
                 );
               }}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#4A1724] transition hover:bg-[#F0E2D6] lg:hidden"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-100 transition hover:bg-[#22252A] lg:hidden"
               aria-label="Open navigation menu"
             >
               <MenuIcon />
@@ -1734,7 +1746,7 @@ export default function Navbar() {
             {user ? (
               <Link
                 href="/profile"
-                className="min-w-0 max-w-[7rem] truncate text-[10px] font-black text-[#4A1724] min-[390px]:max-w-[9rem] min-[390px]:text-[11px] sm:max-w-[14rem] sm:text-sm lg:hidden"
+                className="hidden"
               >
                 Welcome,{" "}
                 {
@@ -1750,7 +1762,7 @@ export default function Navbar() {
                     "client"
                   )
                 }
-                className="truncate text-[10px] font-black text-[#4A1724] min-[390px]:text-[11px] sm:text-sm lg:hidden"
+                className="hidden"
               >
                 Sign up / Login
               </button>
@@ -1789,12 +1801,12 @@ export default function Navbar() {
                   )
                 }
                 placeholder="Search CampusMart"
-                className="h-11 w-full rounded-xl border border-[#E5D8CC] bg-white/75 py-2 pl-4 pr-11 text-sm font-medium outline-none focus:border-[#8A3D48] focus:bg-white"
+                className="campusmart-input h-11 w-full rounded-xl border border-[#30333A] bg-[#15171B] py-2 pl-4 pr-11 text-sm font-medium outline-none focus:border-[#FF6B00] focus:bg-[#15171B]"
               />
 
               <button
                 type="submit"
-                className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[#6F2232]"
+                className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[#FF6B00]"
                 aria-label="Search"
               >
                 <SearchIcon />
@@ -1805,7 +1817,7 @@ export default function Navbar() {
                 0 &&
               searchSuggestions.length >
                 0 ? (
-                <div className="absolute left-0 right-0 top-12 z-20 rounded-xl border border-[#E5D8CC] bg-[#FBF6ED] p-2 shadow-xl">
+                <div className="absolute left-0 right-0 top-12 z-20 rounded-xl border border-[#30333A] bg-[#111317] p-2 shadow-xl">
                   {searchSuggestions.map(
                     (
                       suggestion
@@ -1826,7 +1838,7 @@ export default function Navbar() {
                             )}`
                           );
                         }}
-                        className="block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-[#4A1724] hover:bg-[#F0E2D6]"
+                        className="block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-100 hover:bg-[#22252A]"
                       >
                         {
                           suggestion
@@ -1841,9 +1853,19 @@ export default function Navbar() {
 
           <Link
             href="/"
-            className="justify-self-center whitespace-nowrap text-[15px] font-black tracking-tight text-black sm:text-xl lg:text-[26px]"
+            className="flex items-center justify-self-center gap-2 whitespace-nowrap text-[15px] font-black tracking-tight text-white sm:text-xl lg:text-[26px]"
           >
-            CampusMart
+            <Image
+              src="/campusmart-logo.jpg"
+              alt=""
+              width={36}
+              height={36}
+              priority
+              className="h-8 w-8 rounded-lg object-cover sm:h-9 sm:w-9"
+            />
+            <span>
+              Campus<span className="text-accent-400">Mart</span>
+            </span>
           </Link>
 
           <div className="flex min-w-0 items-center justify-end gap-0 lg:gap-1.5">
@@ -1872,7 +1894,7 @@ export default function Navbar() {
                     void loadNotifications();
                   }
                 }}
-                className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#4A1724] transition hover:bg-[#F0E2D6]"
+                className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-100 transition hover:bg-[#22252A]"
                 aria-label={`Notifications${
                   notificationUnreadCount >
                   0
@@ -1905,7 +1927,7 @@ export default function Navbar() {
                   true
                 );
               }}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#4A1724] transition hover:bg-[#F0E2D6] lg:hidden"
+              className="hidden"
               aria-label="Open search"
             >
               <SearchIcon />
@@ -1913,7 +1935,7 @@ export default function Navbar() {
 
             <Link
               href="/messages"
-              className="relative hidden h-10 w-10 items-center justify-center rounded-full text-[#4A1724] transition hover:bg-[#F0E2D6] lg:inline-flex"
+              className="relative hidden h-10 w-10 items-center justify-center rounded-full text-slate-100 transition hover:bg-[#22252A] lg:inline-flex"
             >
               <MessageIcon />
 
@@ -1926,7 +1948,7 @@ export default function Navbar() {
 
             <Link
               href="/marketplace/favourites"
-              className="relative hidden h-10 w-10 items-center justify-center rounded-full text-[#4A1724] transition hover:bg-[#F0E2D6] lg:inline-flex"
+              className="relative hidden h-10 w-10 items-center justify-center rounded-full text-slate-100 transition hover:bg-[#22252A] lg:inline-flex"
             >
               <NavHeartIcon className="h-6 w-6" />
 
@@ -1939,7 +1961,7 @@ export default function Navbar() {
 
             <Link
               href="/cart"
-              className="relative hidden h-10 w-10 items-center justify-center rounded-full text-[#4A1724] transition hover:bg-[#F0E2D6] lg:inline-flex"
+              className="relative hidden h-10 w-10 items-center justify-center rounded-full text-slate-100 transition hover:bg-[#22252A] lg:inline-flex"
             >
               <CartIcon />
 
@@ -1953,9 +1975,9 @@ export default function Navbar() {
             {user ? (
               <Link
                 href="/profile"
-                className="hidden min-w-0 max-w-[14rem] items-center gap-2 rounded-full border border-[#DDCDBF] bg-white/65 py-1.5 pl-1.5 pr-3 text-[#4A1724] hover:bg-white lg:flex"
+                className="hidden min-w-0 max-w-[14rem] items-center gap-2 rounded-full border border-[#30333A] bg-[#15171B] py-1.5 pl-1.5 pr-3 text-slate-100 hover:bg-[#1B1E23] lg:flex"
               >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#4A1724] text-[#FBF6ED]">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#FF6B00] text-white">
                   {user.avatarUrl ? (
                     <img
                       src={
@@ -1976,7 +1998,7 @@ export default function Navbar() {
                     }
                   </span>
 
-                  <span className="block text-[9px] font-bold uppercase tracking-[0.12em] text-[#8A7070]">
+                  <span className="block text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
                     {user.role ===
                     "vendor"
                       ? "Seller"
@@ -1993,16 +2015,36 @@ export default function Navbar() {
                     "client"
                   )
                 }
-                className="hidden rounded-full bg-[#4A1724] px-4 py-2 text-xs font-black text-white lg:inline-flex"
+                className="hidden rounded-full bg-accent-400 px-4 py-2 text-xs font-black text-black lg:inline-flex"
               >
                 Sign up / Login
               </button>
             )}
           </div>
         </div>
+        <form
+          onSubmit={handleSearch}
+          className="relative px-4 pb-3 lg:hidden"
+          role="search"
+        >
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search products, services..."
+            aria-label="Search products and services"
+            className="campusmart-input h-10 w-full rounded-xl border border-[#30333A] bg-[#15171B] py-2 pl-4 pr-11 text-xs text-white outline-none placeholder:text-slate-400 focus:border-[#FF6B00]"
+          />
+          <button
+            type="submit"
+            aria-label="Search"
+            className="absolute inset-y-3 right-4 flex w-10 items-center justify-center text-[#FF6B00]"
+          >
+            <SearchIcon className="h-4 w-4" />
+          </button>
+        </form>
       </header>
 
-      <div className="h-[70px] sm:h-[78px]" />
+      <div className="h-[112px] sm:h-[118px] lg:h-[78px]" />
 
       {notificationsOpen &&
       user ? (
@@ -2018,14 +2060,14 @@ export default function Navbar() {
             aria-label="Close notifications"
           />
 
-          <section className="fixed right-3 top-[78px] z-[60] w-[calc(100%-1.5rem)] max-w-[390px] overflow-hidden rounded-[22px] border border-[#E5D8CC] bg-[#FBF6ED]/98 shadow-2xl backdrop-blur-2xl sm:right-6 sm:top-[86px]">
-            <div className="flex items-center justify-between border-b border-[#E5D8CC] px-4 py-4">
+          <section className="fixed right-3 top-[78px] z-[60] w-[calc(100%-1.5rem)] max-w-[390px] overflow-hidden rounded-[22px] border border-[#30333A] bg-[#111317]/98 shadow-2xl backdrop-blur-2xl sm:right-6 sm:top-[86px]">
+            <div className="flex items-center justify-between border-b border-[#30333A] px-4 py-4">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.16em] text-[#8A6670]">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
                   CampusMart
                 </p>
 
-                <h2 className="mt-0.5 text-lg font-black text-[#4A1724]">
+                <h2 className="mt-0.5 text-lg font-black text-white">
                   Notifications
                 </h2>
               </div>
@@ -2037,7 +2079,7 @@ export default function Navbar() {
                   onClick={() =>
                     void markAllNotificationsRead()
                   }
-                  className="text-xs font-black text-[#6F2232]"
+                  className="text-xs font-black text-accent-400"
                 >
                   Mark all read
                 </button>
@@ -2061,7 +2103,7 @@ export default function Navbar() {
                         key={
                           index
                         }
-                        className="h-20 animate-pulse rounded-xl bg-[#F0E2D6]"
+                        className="h-20 animate-pulse rounded-xl bg-[#22252A]"
                       />
                     )
                   )}
@@ -2072,11 +2114,11 @@ export default function Navbar() {
               notifications.length ===
                 0 ? (
                 <div className="px-6 py-10 text-center">
-                  <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F0E2D6] text-[#6F2232]">
+                  <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#22252A] text-accent-400">
                     <BellIcon className="h-6 w-6" />
                   </span>
 
-                  <p className="mt-4 font-black text-[#4A1724]">
+                  <p className="mt-4 font-black text-white">
                     You&apos;re all caught up.
                   </p>
 
@@ -2165,14 +2207,14 @@ export default function Navbar() {
         />
 
         <section
-          className={`relative w-full border-b border-[#E5D8CC] bg-[#FBF6ED]/95 px-4 pb-6 pt-4 shadow-xl backdrop-blur-xl transition-transform ${
+          className={`relative w-full border-b border-[#30333A] bg-[#111317]/95 px-4 pb-6 pt-4 shadow-xl backdrop-blur-xl transition-transform ${
             searchOpen
               ? "translate-y-0"
               : "-translate-y-full"
           }`}
         >
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-black text-[#4A1724]">
+            <h2 className="text-lg font-black text-white">
               Search CampusMart
             </h2>
 
@@ -2183,7 +2225,7 @@ export default function Navbar() {
                   false
                 )
               }
-              className="flex h-10 w-10 items-center justify-center rounded-full text-[#4A1724]"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-white"
             >
               <CloseIcon />
             </button>
@@ -2207,7 +2249,7 @@ export default function Navbar() {
                 )
               }
               placeholder="What are you looking for?"
-              className="h-12 w-full rounded-xl border border-[#E5D8CC] bg-white py-2 pl-4 pr-12 outline-none focus:border-[#8A3D48]"
+              className="campusmart-input h-12 w-full rounded-xl border border-[#30333A] bg-[#15171B] py-2 pl-4 pr-12 outline-none focus:border-[#FF6B00]"
               autoFocus={
                 searchOpen
               }
@@ -2215,7 +2257,7 @@ export default function Navbar() {
 
             <button
               type="submit"
-              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-[#4A1724]"
+              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-accent-400"
             >
               <SearchIcon />
             </button>
@@ -2237,7 +2279,7 @@ export default function Navbar() {
               false
             )
           }
-          className={`absolute inset-0 bg-white/5 backdrop-blur-[7px] transition-opacity ${
+          className={`absolute inset-0 bg-black/70 backdrop-blur-[7px] transition-opacity ${
             menuOpen
               ? "opacity-100"
               : "opacity-0"
@@ -2251,7 +2293,7 @@ export default function Navbar() {
               false
             )
           }
-          className={`absolute left-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-[#E5D8CC] bg-[#FBF6ED]/95 text-[#4A1724] shadow-xl ${
+          className={`absolute left-4 top-4 flex h-11 w-11 items-center justify-center rounded-full border border-[#30333A] bg-[#111317]/95 text-white shadow-xl ${
             menuOpen
               ? "scale-100 opacity-100"
               : "scale-90 opacity-0"
@@ -2294,15 +2336,15 @@ export default function Navbar() {
                       : "opacity-0"
                   } flex items-center gap-4 rounded-[18px] border px-4 py-3.5 shadow-xl backdrop-blur-xl ${
                     active
-                      ? "border-[#8A3D48] bg-[#4A1724] text-white"
-                      : "border-[#E5D8CC] bg-[#FBF6ED]/95 text-[#4A1724]"
+                      ? "border-accent-400 bg-accent-400 text-black"
+                      : "border-[#30333A] bg-[#111317]/95 text-white"
                   }`}
                 >
                   <span
                     className={`flex h-10 w-10 items-center justify-center rounded-full ${
                       active
                         ? "bg-white/15"
-                        : "bg-[#F0E2D6]"
+                        : "bg-[#22252A]"
                     }`}
                   >
                     <item.Icon className="h-5 w-5" />
@@ -2328,7 +2370,7 @@ export default function Navbar() {
                 menuOpen
                   ? "floating-menu-item"
                   : "opacity-0"
-              } rounded-[18px] border border-[#E5D8CC] bg-[#FBF6ED]/95 px-5 py-4 text-left text-base font-black text-[#8A2635] shadow-xl backdrop-blur-xl`}
+              } rounded-[18px] border border-[#30333A] bg-[#111317]/95 px-5 py-4 text-left text-base font-black text-red-400 shadow-xl backdrop-blur-xl`}
             >
               Log out
             </button>
@@ -2349,7 +2391,7 @@ export default function Navbar() {
                 menuOpen
                   ? "floating-menu-item"
                   : "opacity-0"
-              } rounded-[18px] border border-[#E5D8CC] bg-[#FBF6ED]/95 px-5 py-4 text-left text-base font-black text-[#4A1724] shadow-xl backdrop-blur-xl`}
+              } rounded-[18px] border border-[#30333A] bg-[#111317]/95 px-5 py-4 text-left text-base font-black text-white shadow-xl backdrop-blur-xl`}
             >
               Sign up / Login
             </button>
@@ -2357,7 +2399,7 @@ export default function Navbar() {
         </nav>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-[#E4D8CC] bg-[#FBF6ED]/95 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(74,23,36,0.08)] backdrop-blur-xl lg:hidden">
+      <nav className="campusmart-bottom-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-[#27292E] bg-[#0C0D10]/95 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_24px_rgba(0,0,0,0.3)] backdrop-blur-xl lg:hidden">
         {mobileLinks.map(
           (
             item
@@ -2369,15 +2411,9 @@ export default function Navbar() {
 
             const count =
               item.href ===
-              "/marketplace/favourites"
-                ? savedCount
-                : item.href ===
-                    "/cart"
+              "/cart"
                   ? itemCount
-                  : item.href ===
-                      "/messages"
-                    ? messageUnreadCount
-                    : 0;
+                  : 0;
 
             return (
               <Link
@@ -2387,24 +2423,29 @@ export default function Navbar() {
                 href={
                   item.href
                 }
+                aria-current={
+                  active
+                    ? "page"
+                    : undefined
+                }
                 className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 text-[10px] font-bold ${
                   active
-                    ? "text-[#4A1724]"
-                    : "text-[#8A7070]"
+                    ? "text-[#FF6B00]"
+                    : "text-[#8A8D95]"
                 }`}
               >
                 <span
                   className={`relative flex h-8 min-w-8 items-center justify-center rounded-full ${
                     active
-                      ? "bg-[#F0E2D6]"
+                      ? "bg-[#22252A]"
                       : ""
                   }`}
                 >
                   <item.Icon
                     className={`h-5 w-5 ${
                       active
-                        ? "text-[#8A3D48]"
-                        : "text-[#8A7070]"
+                        ? "text-[#FF6B00]"
+                        : "text-[#8A8D95]"
                     }`}
                   />
 
@@ -2426,7 +2467,7 @@ export default function Navbar() {
         )}
       </nav>
 
-      <nav className="fixed bottom-5 left-1/2 z-40 hidden -translate-x-1/2 items-center gap-1 rounded-[24px] border border-[#DDCDBF] bg-[#FBF6ED]/95 p-2 shadow-[0_18px_50px_rgba(74,23,36,0.18)] backdrop-blur-xl lg:flex">
+      <nav className="fixed bottom-5 left-1/2 z-40 hidden -translate-x-1/2 items-center gap-1 rounded-[24px] border border-[#30333A] bg-[#111317]/95 p-2 shadow-[0_18px_50px_rgba(0,0,0,0.5)] backdrop-blur-xl lg:flex">
         {desktopDockLinks.map(
           (
             item
@@ -2446,8 +2487,8 @@ export default function Navbar() {
                 }
                 className={`group flex min-w-[76px] flex-col items-center justify-center gap-1 rounded-[17px] px-2.5 py-2 text-[10px] font-black transition xl:min-w-[82px] ${
                   active
-                    ? "bg-[#4A1724] text-white shadow-sm"
-                    : "text-[#755861] hover:bg-[#F0E2D6] hover:text-[#4A1724]"
+                    ? "bg-[#FF6B00] text-black shadow-sm"
+                    : "text-[#A1A1AA] hover:bg-[#22252A] hover:text-white"
                 }`}
               >
                 <item.Icon className="h-5 w-5" />

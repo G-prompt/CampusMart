@@ -21,6 +21,10 @@ export const metadata = {
 
   description:
     "A responsive marketplace for buyers, vendors, and administrators built with a modern design system.",
+
+  icons: {
+    icon: "/campusmart-logo.jpg",
+  },
 };
 
 export default function RootLayout({
@@ -31,7 +35,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-white text-slate-900">
+      <body className="bg-[#08090B] text-slate-100">
         <CampusMartConfirmProvider>
         <AuthProvider>
           <CartProvider>

@@ -204,6 +204,22 @@ export const categories = [
   "Other",
 ];
 
+export const serviceCategories = [
+  "Barbering & Grooming",
+  "Beauty & Personal Care Services",
+  "Tutoring & Academic Services",
+  "Design & Digital Services",
+  "Photography & Media",
+  "Repairs & Technical Services",
+  "Laundry & Cleaning",
+  "Transportation & Errands",
+  "Other Services",
+];
+
+export function isServiceCategory(category: string) {
+  return serviceCategories.includes(category);
+}
+
 export function getProductById(
   id:
     number
