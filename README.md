@@ -30,6 +30,18 @@ npm.cmd run dev
 
 `DATABASE_URL` is used by the running API. `DIRECT_URL` is used by Prisma commands such as client generation and migrations. The local backend cannot start without the required Supabase URL and secret key.
 
+### Seller portfolio links
+
+Listings support an optional seller portfolio URL in addition to the existing gallery of up to six images. The product API validates and returns the URL, and buyers can open it from the listing detail page.
+
+The backend and database need to be updated for portfolio links to save. The migration is `backend/prisma/migrations/20261028000000_add_product_portfolio_url/migration.sql`. After deploying the updated backend code and configuring its production `DIRECT_URL`, apply the migration from the `backend` directory:
+
+```powershell
+npx.cmd prisma migrate deploy
+```
+
+Regenerate the Prisma client and rebuild/restart the backend as required by the backend deployment workflow. The frontend can be deployed independently, but sellers' portfolio links will not persist until the backend update and database migration are live.
+
 ## Deployment
 This project is ready for deployment on Vercel.
 

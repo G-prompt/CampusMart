@@ -189,6 +189,14 @@ export default function Page() {
     );
 
   const [
+    portfolioUrl,
+    setPortfolioUrl,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
     imageFiles,
     setImageFiles,
   ] =
@@ -566,6 +574,11 @@ export default function Page() {
         formData.append(
           "description",
           description.trim()
+        );
+
+        formData.append(
+          "portfolioUrl",
+          portfolioUrl.trim()
         );
 
         formData.append(
@@ -987,6 +1000,26 @@ export default function Page() {
                 : "Condition, what comes with it, important details, etc."
             }
           />
+        </label>
+
+        <label className="block text-sm font-bold text-slate-700">
+          Portfolio or sample-work link{" "}
+          <span className="font-normal text-slate-400">optional</span>
+
+          <input
+            type="url"
+            maxLength={2048}
+            value={portfolioUrl}
+            onChange={(event) =>
+              setPortfolioUrl(event.target.value)
+            }
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-black"
+            placeholder="https://your-portfolio.example"
+          />
+
+          <span className="mt-1 block text-xs font-normal leading-5 text-slate-500">
+            Share a website where buyers can see more examples of your work.
+          </span>
         </label>
 
         {listingType === "product" ? (

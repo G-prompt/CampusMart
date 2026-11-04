@@ -25,6 +25,10 @@ import {
 } from "@/components/common/AuthContext";
 
 import {
+  useSaved,
+} from "@/components/common/SavedContext";
+
+import {
   formatNaira,
   isServiceCategory,
   type Product,
@@ -161,6 +165,12 @@ export default function ProductPage({
     openAuth,
   } =
     useAuth();
+
+  const {
+    isSaved,
+    toggleSaved,
+  } =
+    useSaved();
 
   const [
     product,
@@ -722,6 +732,11 @@ export default function ProductPage({
     product?.images ??
     [];
 
+  const saved =
+    product
+      ? isSaved(product.id)
+      : false;
+
   const sizes =
     product?.sizes ??
     [];
@@ -946,6 +961,29 @@ export default function ProductPage({
             false
           ),
         1500
+      );
+    };
+
+  const handleToggleSaved =
+    () => {
+      if (!product) {
+        return;
+      }
+
+      const nowSaved =
+        toggleSaved(product.id);
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "campusmart-toast",
+          {
+            detail: {
+              message: nowSaved
+                ? "Saved to your wishlist"
+                : "Removed from saved listings",
+            },
+          }
+        )
       );
     };
 
@@ -1439,6 +1477,17 @@ export default function ProductPage({
          */}
 
         <div className="min-w-0">
+          <div className="mb-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-700">
+              {isService ? "Work samples" : "Listing photos"}
+            </p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {isService
+                ? "Photos shared by the seller"
+                : "Browse the seller’s photos"}
+            </p>
+          </div>
+
           <div className="relative aspect-[4/3] max-h-[470px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
             {currentImage ? (
               <Image
@@ -1458,6 +1507,37 @@ export default function ProductPage({
                 CampusMart
               </div>
             )}
+
+            <button
+              type="button"
+              onClick={handleToggleSaved}
+              aria-pressed={saved}
+              aria-label={
+                saved
+                  ? `Remove ${product.title} from saved listings`
+                  : `Save ${product.title}`
+              }
+              className={`absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full border border-white/80 bg-white/95 shadow-md backdrop-blur transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8A3D48] focus-visible:ring-offset-2 ${
+                saved
+                  ? "text-[#8A3D48]"
+                  : "text-slate-600 hover:text-[#8A3D48]"
+              }`}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill={saved ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="1.8"
+                className="h-5 w-5"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78Z"
+                />
+              </svg>
+            </button>
 
             {images.length >
             1 ? (
@@ -1495,6 +1575,18 @@ export default function ProductPage({
               </>
             ) : null}
           </div>
+
+          {product.portfolioUrl ? (
+            <a
+              href={product.portfolioUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-800 transition hover:border-slate-400 hover:text-[#4A1724] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4A1724] focus-visible:ring-offset-2"
+            >
+              View more examples
+              <span aria-hidden="true">↗</span>
+            </a>
+          ) : null}
 
           {images.length >
           1 ? (

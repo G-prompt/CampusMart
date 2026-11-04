@@ -39,6 +39,7 @@ type Product = {
   price: number;
   description: string;
   images: string[];
+  portfolioUrl?: string | null;
   sizes?: string[];
   colors?: string[];
 };
@@ -118,6 +119,14 @@ export default function Page() {
   const [
     description,
     setDescription,
+  ] =
+    useState(
+      ""
+    );
+
+  const [
+    portfolioUrl,
+    setPortfolioUrl,
   ] =
     useState(
       ""
@@ -365,6 +374,10 @@ export default function Page() {
             selected.description
           );
 
+          setPortfolioUrl(
+            selected.portfolioUrl ?? ""
+          );
+
           setSizes(
             selected.sizes ??
               []
@@ -573,6 +586,11 @@ export default function Page() {
         formData.append(
           "description",
           description.trim()
+        );
+
+        formData.append(
+          "portfolioUrl",
+          portfolioUrl.trim()
         );
 
         formData.append(
@@ -936,6 +954,26 @@ export default function Page() {
             }
             className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
           />
+        </label>
+
+        <label className="block text-sm font-bold">
+          Portfolio or sample-work link{" "}
+          <span className="font-normal text-slate-400">optional</span>
+
+          <input
+            type="url"
+            maxLength={2048}
+            value={portfolioUrl}
+            onChange={(event) =>
+              setPortfolioUrl(event.target.value)
+            }
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+            placeholder="https://your-portfolio.example"
+          />
+
+          <span className="mt-1 block text-xs font-normal leading-5 text-slate-500">
+            Buyers can use this to see more examples of your work.
+          </span>
         </label>
 
         {listingIsService ? (

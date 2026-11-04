@@ -28,6 +28,7 @@ type ProductResponseRecord = {
   rating: number;
   description: string;
   images: string[];
+  portfolioUrl: string | null;
   sizes: string[];
   colors: string[];
   vendorId: string;
@@ -53,6 +54,7 @@ const productResponse = (product: ProductResponseRecord) => ({
   seller: product.vendor.name,
   description: product.description,
   images: product.images,
+  portfolioUrl: product.portfolioUrl,
   sizes: product.sizes,
   colors: product.colors,
   vendorId: product.vendorId,
@@ -65,6 +67,29 @@ const productResponse = (product: ProductResponseRecord) => ({
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizePortfolioUrl(value: string): string | null {
+  if (value.length > 2048) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      !url.hostname ||
+      url.username ||
+      url.password
+    ) {
+      return null;
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 function requestQueryValue(req: Request, key: string): string {
@@ -435,6 +460,7 @@ export const createProduct = async (
       price,
       description,
       imageUrl,
+      portfolioUrl,
     } = req.body;
 
     const numericPrice = Number(price);
@@ -453,6 +479,32 @@ export const createProduct = async (
         success: false,
         message:
           "Title, category, description and a valid price are required.",
+      });
+    }
+
+    if (
+      portfolioUrl !== undefined &&
+      typeof portfolioUrl !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Portfolio link must be a valid HTTP or HTTPS URL.",
+      });
+    }
+
+    const cleanPortfolioUrl =
+      typeof portfolioUrl === "string"
+        ? portfolioUrl.trim()
+        : "";
+    const normalizedPortfolioUrl =
+      cleanPortfolioUrl
+        ? normalizePortfolioUrl(cleanPortfolioUrl)
+        : null;
+
+    if (cleanPortfolioUrl && !normalizedPortfolioUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "Portfolio link must be a valid HTTP or HTTPS URL.",
       });
     }
 
@@ -520,6 +572,7 @@ export const createProduct = async (
         price: Math.round(numericPrice),
         description: description.trim(),
         images: safeImages.slice(0, MAX_IMAGES),
+        portfolioUrl: normalizedPortfolioUrl,
         sizes,
         colors,
         vendorId: req.user.id,
@@ -599,6 +652,7 @@ export const updateProduct = async (
       price?: number;
       description?: string;
       images?: string[];
+      portfolioUrl?: string | null;
       sizes?: string[];
       colors?: string[];
     } = {};
@@ -609,6 +663,7 @@ export const updateProduct = async (
       price,
       description,
       imageUrl,
+      portfolioUrl,
     } = req.body;
 
     if (title !== undefined) {
@@ -661,6 +716,29 @@ export const updateProduct = async (
       }
 
       updateData.description = description.trim();
+    }
+
+    if (portfolioUrl !== undefined) {
+      if (typeof portfolioUrl !== "string") {
+        return res.status(400).json({
+          success: false,
+          message: "Portfolio link must be a valid HTTP or HTTPS URL.",
+        });
+      }
+
+      const cleanPortfolioUrl = portfolioUrl.trim();
+      const normalizedPortfolioUrl = cleanPortfolioUrl
+        ? normalizePortfolioUrl(cleanPortfolioUrl)
+        : null;
+
+      if (cleanPortfolioUrl && !normalizedPortfolioUrl) {
+        return res.status(400).json({
+          success: false,
+          message: "Portfolio link must be a valid HTTP or HTTPS URL.",
+        });
+      }
+
+      updateData.portfolioUrl = normalizedPortfolioUrl;
     }
 
     const parsedSizes = parseStringArrayField(

@@ -8,6 +8,7 @@ export type Product = {
   seller: string;
   description: string;
   images: string[];
+  portfolioUrl?: string | null;
 
   sizes?: string[];
   colors?: string[];

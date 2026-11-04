@@ -209,7 +209,12 @@ export default function ProductCard({
           onClick={
             handleToggleSaved
           }
-          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-sm backdrop-blur-md transition hover:text-[#8A3D48]"
+          aria-pressed={saved}
+          className={`absolute right-2.5 top-2.5 flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white/95 shadow-md backdrop-blur-md transition hover:scale-105 hover:text-[#8A3D48] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8A3D48] focus-visible:ring-offset-2 ${
+            saved
+              ? "text-[#8A3D48]"
+              : "text-slate-600"
+          }`}
           aria-label={
             saved
               ? `Remove ${product.title} from saved listings`
@@ -224,13 +229,13 @@ export default function ProductCard({
                 : "none"
             }
             stroke="currentColor"
-            strokeWidth="2"
-            className="h-3.5 w-3.5"
+            strokeWidth="1.8"
+            className="h-5 w-5"
           >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
-              d="M20.8 5.8a5.5 5.5 0 0 0-7.8 0L12 6.9l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 22l8.8-8.4a5.5 5.5 0 0 0 0-7.8Z"
+                d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78Z"
             />
           </svg>
         </button>
