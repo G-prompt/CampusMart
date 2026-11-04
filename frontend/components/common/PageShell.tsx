@@ -52,10 +52,10 @@ export default function PageShell({
             onClick={
               goBack
             }
-            className="group inline-flex items-center gap-2 rounded-[10px] border border-slate-200 bg-white/80 px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-black"
+            className="group inline-flex items-center gap-2 rounded-xl border border-[#30333A] bg-[#15171B] px-3.5 py-2 text-sm font-bold text-slate-300 shadow-sm transition hover:border-accent-400/60 hover:bg-[#1B1E23] hover:text-white"
           >
             <span
-              className="transition-transform group-hover:-translate-x-0.5"
+              className="text-accent-400 transition-transform group-hover:-translate-x-0.5"
               aria-hidden="true"
             >
               ←

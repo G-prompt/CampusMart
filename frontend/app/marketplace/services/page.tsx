@@ -143,8 +143,8 @@ export default function Page() {
               aria-pressed={selectedCategory === category}
               className={`shrink-0 rounded-full border px-3.5 py-2 text-xs font-bold transition ${
                 selectedCategory === category
-                  ? "border-slate-950 bg-slate-950 text-white"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"
+                  ? "border-accent-400 bg-accent-400 text-black"
+                  : "border-[#30333A] bg-[#15171B] text-slate-300 hover:border-accent-400/60 hover:text-white"
               }`}
             >
               {category}

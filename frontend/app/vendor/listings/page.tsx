@@ -529,7 +529,7 @@ export default function Page() {
       ) : null}
 
       {!loading ? (
-        <div className="mt-6 inline-flex flex-wrap gap-1 rounded-full border border-white/80 bg-white/75 p-1 shadow-sm backdrop-blur-xl">
+        <div className="mt-6 inline-flex flex-wrap gap-1 rounded-full border border-[#30333A] bg-[#15171B] p-1 shadow-sm">
           {(
             [
               ["all", `All ${listings.length}`],
@@ -541,10 +541,11 @@ export default function Page() {
               key={value}
               type="button"
               onClick={() => setFilter(value)}
+              aria-pressed={filter === value}
               className={`rounded-full px-4 py-2 text-xs font-black transition ${
                 filter === value
-                  ? "bg-[#4A1724] text-white"
-                  : "text-[#755861] hover:bg-[#F5EADF]"
+                  ? "bg-accent-400 text-black shadow-sm"
+                  : "text-slate-400 hover:bg-white/5 hover:text-white"
               }`}
             >
               {label}

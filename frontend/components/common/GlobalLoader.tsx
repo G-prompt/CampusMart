@@ -2,15 +2,11 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 
 export default function GlobalLoader() {
   const [phase, setPhase] = useState<"running" | "done" | "idle">("running");
-  const pathname = usePathname();
 
   useEffect(() => {
-    setPhase("running");
-
     const finish = window.setTimeout(() => setPhase("done"), 900);
     const hide = window.setTimeout(() => setPhase("idle"), 1_150);
 
@@ -18,7 +14,7 @@ export default function GlobalLoader() {
       window.clearTimeout(finish);
       window.clearTimeout(hide);
     };
-  }, [pathname]);
+  }, []);
 
   if (phase === "idle") return null;
 
