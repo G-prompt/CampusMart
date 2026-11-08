@@ -84,6 +84,18 @@ export default function ProductCard({
   const isService =
     isServiceCategory(product.category);
 
+  const matchesUserCampus =
+    Boolean(
+      user &&
+      ((user.universityId &&
+        product.sellerUniversityId &&
+        user.universityId === product.sellerUniversityId) ||
+        (user.campus &&
+          product.sellerCampus &&
+          user.campus.trim().toLowerCase() ===
+            product.sellerCampus.trim().toLowerCase()))
+    );
+
   const hasRating =
     typeof product.rating ===
       "number" &&
@@ -203,6 +215,12 @@ export default function ProductCard({
             />
           )}
         </Link>
+
+        {matchesUserCampus ? (
+          <span className="absolute left-2.5 top-2.5 rounded-full border border-white/80 bg-white/95 px-2.5 py-1 text-[9px] font-black text-[#4A1724] shadow-sm sm:text-[10px]">
+            At your campus
+          </span>
+        ) : null}
 
         <button
           type="button"

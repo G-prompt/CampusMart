@@ -857,6 +857,17 @@ export default function Navbar() {
         CategoryIcon,
     },
 
+    {
+      href:
+        "/marketplace/wanted",
+
+      label:
+        "Wanted on campus",
+
+      Icon:
+        CategoryIcon,
+    },
+
     sellerNavigation,
 
     {

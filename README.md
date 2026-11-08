@@ -5,7 +5,14 @@ CampusMart is a polished frontend concept for a student-first marketplace experi
 ## Features
 - Modern landing experience
 - Marketplace, vendor, admin, wallet, and checkout UI flows
+- Campus-prioritised listings, budget-priced finds, and seller pickup points at checkout
+- A wanted-board interface for drafting requests locally in the browser
 - Responsive layout and polished shared design system
+
+The wanted board currently saves requests only in the visitor’s browser. A backend
+endpoint and persistence model are needed before requests can be shared with other
+students. Budget finds use live marketplace listing prices and are not represented
+as discounts.
 
 ## Local development
 ```bash

@@ -9,6 +9,7 @@ import Footer from "@/components/common/Footer";
 import GlobalLoader from "@/components/common/GlobalLoader";
 import AuthModal from "@/components/common/AuthModal";
 import ToastHost from "@/components/common/ToastHost";
+import NetworkStatus from "@/components/common/NetworkStatus";
 
 export default function RouteShell({
   children,
@@ -42,6 +43,7 @@ export default function RouteShell({
     <>
       <div className="campusmart-theme flex min-h-screen flex-col">
         <GlobalLoader />
+        <NetworkStatus />
 
         <Navbar />
 

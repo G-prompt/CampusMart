@@ -8,6 +8,8 @@ import {
   useState,
 } from "react";
 
+import Link from "next/link";
+
 import {
   useRouter,
   useSearchParams,
@@ -1183,6 +1185,29 @@ function MarketplaceContent() {
       ]
     );
 
+  const studentBudgetProducts =
+    useMemo(
+      () =>
+        [...products]
+          .filter((product) => product.price <= 10000)
+          .sort((first, second) => {
+            const firstLocal = isLocalProduct(first);
+            const secondLocal = isLocalProduct(second);
+
+            if (firstLocal !== secondLocal) {
+              return firstLocal ? -1 : 1;
+            }
+
+            return first.price - second.price;
+          })
+          .slice(0, 10),
+      [
+        products,
+        userUniversityId,
+        userCampus,
+      ]
+    );
+
   const recommendationSeed =
     searchQuery ||
     recentSearches[0] ||
@@ -1533,6 +1558,88 @@ function MarketplaceContent() {
           </div>
         </div>
       </section>
+
+      <section className="mt-6 grid gap-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(220px,0.7fr)]">
+        <div className="rounded-2xl bg-[#4A1724] p-5 text-white sm:p-6">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#F2C985]">
+            Student-to-student
+          </p>
+          <h2 className="mt-2 text-xl font-black sm:text-2xl">
+            Can’t find what you need?
+          </h2>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-white/75">
+            Save a request to your local wanted board, then search the current
+            listings for a match.
+          </p>
+          <Link
+            href="/marketplace/wanted"
+            className="mt-4 inline-flex min-h-10 items-center rounded-xl bg-accent-400 px-4 text-sm font-black text-black transition hover:bg-accent-500"
+          >
+            Open wanted board
+          </Link>
+        </div>
+
+        <div className="rounded-2xl border border-[#E8D9CC] bg-[#FBF6ED] p-5 sm:p-6">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#8A3D48]">
+            Safer handoffs
+          </p>
+          <h2 className="mt-2 text-lg font-black text-slate-950">
+            Meet at a public campus pickup point
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Sellers can offer campus pickup locations, which buyers choose at
+            checkout when available.
+          </p>
+          <Link
+            href="/help"
+            className="mt-3 inline-flex text-sm font-black text-[#4A1724] underline decoration-[#D8B9A8] underline-offset-4"
+          >
+            Read marketplace safety tips
+          </Link>
+        </div>
+      </section>
+
+      {!loading &&
+      !error &&
+      !searchQuery &&
+      activeCategory === "All" &&
+      studentBudgetProducts.length > 0 ? (
+        <section className="mt-8">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#8A6670]">
+                Student budget
+              </p>
+              <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+                Finds under ₦10,000
+              </h2>
+              <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500 sm:text-sm">
+                Current listings at or below ₦10,000—not marked-down prices.
+                Campus matches are shown first when your university is set.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMaxPrice("10000");
+                replaceParams({ maxPrice: "10000" });
+                window.requestAnimationFrame(() => {
+                  marketRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+                });
+              }}
+              className="inline-flex min-h-10 items-center rounded-full border border-slate-200 bg-white px-4 text-xs font-black text-slate-800 transition hover:border-slate-400"
+            >
+              See all under ₦10,000
+            </button>
+          </div>
+          <div className="mt-4">
+            <AutoScrollProducts products={studentBudgetProducts} />
+          </div>
+        </section>
+      ) : null}
 
       {!loading &&
       !error &&
