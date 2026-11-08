@@ -1,10 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 @import "./variables.css";
 @import "./typography.css";
 @import "./animations.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   color: #F5F5F5;
